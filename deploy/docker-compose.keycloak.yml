@@ -1,0 +1,129 @@
+# ──────────────────────────────────────────────────────────────
+#  VoiceStudio multi-user server (XELTO fork) — Keycloak sign-in
+#
+#  One GPU, several people, each signed in through Keycloak and seeing only
+#  their own work. Guide: docs/fork/multiuser.md
+#
+#    cp deploy/keycloak/.env.example deploy/keycloak/.env   # then fill it in
+#    docker compose --env-file deploy/keycloak/.env \
+#      -f deploy/docker-compose.keycloak.yml up -d --build
+#
+#  Two DNS names must point at this host: VOICESTUDIO_DOMAIN (the app) and
+#  KEYCLOAK_DOMAIN (sign-in). Caddy obtains TLS certificates for both.
+#
+#  Standalone on purpose rather than an overlay of docker-compose.yml: that
+#  file requires OMNIVOICE_API_KEY, which multi-user mode refuses.
+#  VoiceStudio's port 3900 is never published: everything goes through Caddy.
+# ──────────────────────────────────────────────────────────────
+
+services:
+  voicestudio:
+    # Built from this checkout: the published image does not contain the fork.
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: voicestudio-multiuser
+    volumes:
+      - voicestudio-data:/app/omnivoice_data
+    environment:
+      - HF_HOME=/app/omnivoice_data/huggingface
+      - HF_TOKEN=${HF_TOKEN:-}
+      - OMNIVOICE_DATA_DIR=/app/omnivoice_data
+      - PYTHONPATH=/app/backend
+      - PYTHONUNBUFFERED=1
+      - OMNIVOICE_SERVER_MODE=1
+      - OMNIVOICE_MULTIUSER=1
+      - OMNIVOICE_PUBLIC_URL=https://${VOICESTUDIO_DOMAIN:?set VOICESTUDIO_DOMAIN}
+      - OMNIVOICE_ALLOWED_ORIGINS=https://${VOICESTUDIO_DOMAIN}
+      - OMNIVOICE_MULTIUSER_SECRET=${VOICESTUDIO_SESSION_SECRET:?set VOICESTUDIO_SESSION_SECRET (openssl rand -hex 32)}
+      # Tokens name the public issuer; the backend talks to Keycloak directly
+      # on the internal network (KC_HOSTNAME_BACKCHANNEL_DYNAMIC below).
+      - OIDC_ISSUER=https://${KEYCLOAK_DOMAIN:?set KEYCLOAK_DOMAIN}/realms/voicestudio
+      - OIDC_DISCOVERY_URL=http://keycloak:8080/realms/voicestudio/.well-known/openid-configuration
+      - OIDC_CLIENT_ID=voicestudio
+      - OIDC_CLIENT_SECRET=${VOICESTUDIO_OIDC_CLIENT_SECRET:?set VOICESTUDIO_OIDC_CLIENT_SECRET}
+      # MCP acts for one user per request only from phase P5 on.
+      - OMNIVOICE_MCP_DISABLE=1
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3900/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+    # NVIDIA GPU. For CPU only, delete this block.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - keycloak
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    container_name: voicestudio-keycloak
+    command: ["start", "--import-realm"]
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://keycloak-db:5432/keycloak
+      - KC_DB_USERNAME=keycloak
+      - KC_DB_PASSWORD=${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD}
+      - KC_HOSTNAME=https://${KEYCLOAK_DOMAIN}
+      # Requests from inside the compose network get internal URLs for the
+      # token and key endpoints; browsers keep the public ones.
+      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
+      - KC_HTTP_ENABLED=true
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_HEALTH_ENABLED=true
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USER:-admin}
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD}
+      # Read by the realm import (placeholders in realm-voicestudio.json).
+      - VOICESTUDIO_PUBLIC_URL=https://${VOICESTUDIO_DOMAIN}
+      - VOICESTUDIO_OIDC_CLIENT_SECRET=${VOICESTUDIO_OIDC_CLIENT_SECRET}
+      - VOICESTUDIO_CLI_CLIENT_SECRET=${VOICESTUDIO_CLI_CLIENT_SECRET:?set VOICESTUDIO_CLI_CLIENT_SECRET}
+      - VOICESTUDIO_INITIAL_PASSWORD=${VOICESTUDIO_INITIAL_PASSWORD:?set VOICESTUDIO_INITIAL_PASSWORD}
+    volumes:
+      # Imported once, on the first start; later edits happen in the admin console.
+      - ./keycloak/realm-voicestudio.json:/opt/keycloak/data/import/realm-voicestudio.json:ro
+    depends_on:
+      - keycloak-db
+    restart: unless-stopped
+
+  keycloak-db:
+    image: postgres:16
+    container_name: voicestudio-keycloak-db
+    environment:
+      - POSTGRES_DB=keycloak
+      - POSTGRES_USER=keycloak
+      - POSTGRES_PASSWORD=${KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - keycloak-db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2
+    container_name: voicestudio-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - VOICESTUDIO_DOMAIN=${VOICESTUDIO_DOMAIN}
+      - KEYCLOAK_DOMAIN=${KEYCLOAK_DOMAIN}
+    volumes:
+      - ./keycloak/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - voicestudio
+      - keycloak
+    restart: unless-stopped
+
+volumes:
+  voicestudio-data:
+  keycloak-db:
+  caddy-data:
+  caddy-config:

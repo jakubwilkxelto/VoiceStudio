@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "로그인하는 중…"
+  },
+  "menu": {
+    "account": "계정",
+    "admin_badge": "관리자",
+    "sign_out": "로그아웃",
+    "signed_in_as": "{{name}}(으)로 로그인됨"
+  }
+}

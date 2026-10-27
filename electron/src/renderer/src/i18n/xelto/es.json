@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "Iniciando sesión…"
+  },
+  "menu": {
+    "account": "Cuenta",
+    "admin_badge": "Administrador",
+    "sign_out": "Cerrar sesión",
+    "signed_in_as": "Sesión iniciada como {{name}}"
+  }
+}

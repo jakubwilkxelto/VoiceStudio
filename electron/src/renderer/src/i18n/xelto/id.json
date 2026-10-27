@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "Sedang masuk…"
+  },
+  "menu": {
+    "account": "Akun",
+    "admin_badge": "Admin",
+    "sign_out": "Keluar",
+    "signed_in_as": "Masuk sebagai {{name}}"
+  }
+}

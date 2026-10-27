@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "サインインしています…"
+  },
+  "menu": {
+    "account": "アカウント",
+    "admin_badge": "管理者",
+    "sign_out": "サインアウト",
+    "signed_in_as": "{{name}} としてサインイン中"
+  }
+}

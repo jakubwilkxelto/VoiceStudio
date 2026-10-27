@@ -66,3 +66,9 @@ git checkout dev && git merge main
 | Plik | Co dodano | Funkcja forka |
 |---|---|---|
 | `backend/main.py` (po `app.add_middleware(BackendMarkerMiddleware)`) | 2 linie: import i wywołanie `xelto.install(app)` | tryb multiuser (`backend/xelto/`, `docs/fork/multiuser.md`) |
+| `pyproject.toml` (`dependencies`, po `cryptography`) | 1 linia: `pyjwt[crypto]` (+ 2 linie w `uv.lock`) | tryb multiuser: walidacja tokenów Keycloak |
+| `electron/src/renderer/src/app.tsx` | import + `<XeltoOidcGate>` wokół `<WebAuthGate>` | tryb multiuser: logowanie (build web) |
+| `electron/src/renderer/src/components/app-shell/account-corner.tsx` | import + `<XeltoUserMenu />` | tryb multiuser: menu użytkownika |
+| `electron/src/renderer/src/features/settings/settings-page.tsx` | import + `useXeltoVisibleSettings(...)` wokół `extras` | tryb multiuser: ukrycie stron admina |
+| `electron/src/renderer/src/features/settings/settings-nav.tsx` | import + `useXeltoPinned(...)` wokół `pinned` | tryb multiuser: ukrycie modeli/narzędzi/logów |
+| `electron/src/renderer/src/components/command-palette.tsx` | import + `useXeltoCommands(...)` wokół `items` | tryb multiuser: ukrycie poleceń admina |

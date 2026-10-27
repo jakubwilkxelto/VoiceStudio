@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "Signing in…"
+  },
+  "menu": {
+    "account": "Account",
+    "admin_badge": "Admin",
+    "sign_out": "Sign out",
+    "signed_in_as": "Signed in as {{name}}"
+  }
+}

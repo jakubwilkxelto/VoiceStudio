@@ -21,6 +21,7 @@ import { RealtimeEventSync } from '@/hooks/use-realtime-events';
 import { GenerateBudgetSync } from '@/hooks/use-generate-budget-sync';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { WebAuthGate } from '@/components/web-auth-gate';
+import { XeltoOidcGate } from '@/xelto/oidc-gate'; // XELTO: multi-user sign-in
 import { ModelLicenceGate } from '@/features/settings/model-licence-acceptance';
 
 const notifiedUpdates = new Set<string>();
@@ -115,6 +116,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
+        <XeltoOidcGate>{/* XELTO: multi-user sign-in */}
         <WebAuthGate>
           <NativeDictationSync />
           <ModelInstallSync />
@@ -133,6 +135,7 @@ export function App() {
             </TooltipProvider>
           </GenerationProvider>
         </WebAuthGate>
+        </XeltoOidcGate>
       </ErrorBoundary>
     </QueryClientProvider>
   );

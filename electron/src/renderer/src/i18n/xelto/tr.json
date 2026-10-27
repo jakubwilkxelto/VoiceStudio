@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "Oturum açılıyor…"
+  },
+  "menu": {
+    "account": "Hesap",
+    "admin_badge": "Yönetici",
+    "sign_out": "Oturumu kapat",
+    "signed_in_as": "{{name}} olarak oturum açıldı"
+  }
+}

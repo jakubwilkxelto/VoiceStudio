@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "Вход…"
+  },
+  "menu": {
+    "account": "Учётная запись",
+    "admin_badge": "Администратор",
+    "sign_out": "Выйти",
+    "signed_in_as": "Вы вошли как {{name}}"
+  }
+}
