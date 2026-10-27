@@ -19,10 +19,23 @@ class Identity:
     username: str = ""
     roles: frozenset[str] = frozenset()
     is_admin: bool = False
+    name: str = ""
+    email: str = ""
 
     @property
     def is_system(self) -> bool:
         return self is SYSTEM
+
+    def public(self) -> dict:
+        """What the signed-in user may learn about themselves."""
+        return {
+            "sub": self.sub,
+            "username": self.username,
+            "name": self.name,
+            "email": self.email,
+            "roles": sorted(self.roles),
+            "is_admin": self.is_admin,
+        }
 
 
 SYSTEM = Identity(sub="__system__", username="system")

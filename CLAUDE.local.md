@@ -66,3 +66,4 @@ git checkout dev && git merge main
 | Plik | Co dodano | Funkcja forka |
 |---|---|---|
 | `backend/main.py` (po `app.add_middleware(BackendMarkerMiddleware)`) | 2 linie: import i wywołanie `xelto.install(app)` | tryb multiuser (`backend/xelto/`, `docs/fork/multiuser.md`) |
+| `pyproject.toml` (`dependencies`, po `cryptography`) | 1 linia: `pyjwt[crypto]` (+ 2 linie w `uv.lock`) | tryb multiuser: walidacja tokenów Keycloak |
