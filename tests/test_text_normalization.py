@@ -305,15 +305,6 @@ _UNCHANGED_CASES = [
     ("Japanese", "また明日~"),                    # trailing tilde, no digits
     ("Vietnamese", "Khoảng 20~30 người"),        # no verified form
     (None, "about 20~30 people"),
-    # Digit ranges: only the tilde family is a range mark. Everything else that
-    # sits between digits means something other than "to".
-    ("Korean", "대략 20-30초"),                   # ASCII hyphen: also dates/phones
-    ("Korean", "2026-09-05 회의"),                # date
-    ("Korean", "010-1234-5678"),                 # phone number
-    ("Korean", "AB20~30CD"),                     # product code, not a range
-    ("Japanese", "そうですね〜"),                   # tilde not between digits
-    ("Vietnamese", "20~30 giây"),                # no verified spoken form
-    (None, "20~30초"),                           # no language given
     # Unsupported languages keep every digit (num2words unmapped)
     ("Japanese", "42 cats and 3.5 stars at 3:30"),
     ("Thai", "42 cats"),

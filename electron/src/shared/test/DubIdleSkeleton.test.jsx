@@ -298,7 +298,7 @@ describe('IdleSkeleton — pipeline-stage vs idle dropzone', () => {
       handleDubRetryTranscribe: retry,
     });
     fireEvent.click(screen.getByRole('button', { name: /Download Whisper large-v3/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Retry transcription' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Transcribe again' }));
     expect(install).toHaveBeenCalledOnce();
     expect(retry).toHaveBeenCalledOnce();
   });
@@ -310,7 +310,7 @@ describe('IdleSkeleton — pipeline-stage vs idle dropzone', () => {
       asrInstall: { phase: 'installing', label: 'Whisper large-v3', percent: 42 },
     });
     expect(container.querySelector('.dub-idle-drop')).toBeNull();
-    expect(screen.getByRole('status')).toHaveTextContent('Installing Whisper large-v3…');
+    expect(screen.getByRole('status')).toHaveTextContent('Installing engine: Whisper large-v3…');
     expect(screen.getByText('42%')).toBeInTheDocument();
   });
 

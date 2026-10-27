@@ -184,12 +184,12 @@ describe('CloneDesignTab — Voice Design panel redesign regressions', () => {
     // Hidden behind the toggle: the 6th personality (High energy) + all 6
     // hardcoded PRESETS (12 total - 5 visible = 7).
     expect(screen.queryByText('High energy')).toBeNull();
-    expect(screen.queryByText(/Authoritative/)).toBeNull();
+    expect(screen.queryByText(/Commanding/)).toBeNull();
     const more = screen.getByText('7 more…');
 
     fireEvent.click(more);
     expect(screen.getByText('High energy')).toBeInTheDocument();
-    expect(screen.getByText(/Authoritative/)).toBeInTheDocument();
+    expect(screen.getByText(/Commanding/)).toBeInTheDocument();
     expect(screen.queryByText(/more…/)).toBeNull();
   });
 

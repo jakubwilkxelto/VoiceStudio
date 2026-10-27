@@ -99,7 +99,7 @@ describe('useTTS auto-play pref (#1032)', () => {
     expect(playBlobAudio.mock.calls[0][0]).toBeInstanceOf(Blob);
     // Global mini-player metadata: the generate path labels its playback so
     // the bar reads "Generated audio" instead of a bare untitled track.
-    expect(playBlobAudio.mock.calls[0][1]).toMatchObject({ label: 'Generated audio' });
+    expect(playBlobAudio.mock.calls[0][1]).toMatchObject({ label: 'Synthesized audio' });
   });
 
   it('does NOT auto-play when autoPlayPreview is OFF', async () => {
