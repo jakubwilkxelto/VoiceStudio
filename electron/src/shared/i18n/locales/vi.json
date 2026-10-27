@@ -2263,7 +2263,12 @@
     "other_ways": "Những cách khác để giúp đỡ",
     "star_short": "Gắn sao",
     "star_github": "Sao trên GitHub",
-    "join_discord": "Tham gia bất hòa"
+    "join_discord": "Tham gia bất hòa",
+    "sponsors_tier_strategic": "Chiến lược",
+    "sponsors_tier_company": "Doanh nghiệp",
+    "sponsors_tier_development": "Phát triển",
+    "sponsors_tier_community": "Cộng đồng",
+    "sponsors_tier_supporter": "Người ủng hộ"
   },
   "updates": {
     "tab": "Cập nhật",

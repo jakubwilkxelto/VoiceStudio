@@ -2638,10 +2638,11 @@
     "sponsors_perk": "Los patrocinadores obtienen su logotipo en la aplicación, en README y un espacio en el sitio del proyecto.",
     "sponsors_learn_more": "¿Qué obtienen los patrocinadores?",
     "sponsors_logo_aria": "Visita {{name}}, un patrocinador de VoiceStudio",
-    "sponsors_tier_platinum": "Platino",
-    "sponsors_tier_gold": "Oro",
-    "sponsors_tier_silver": "Plata",
-    "sponsors_tier_bronze": "Bronce"
+    "sponsors_tier_strategic": "Estratégico",
+    "sponsors_tier_company": "Empresa",
+    "sponsors_tier_development": "Desarrollo",
+    "sponsors_tier_community": "Comunidad",
+    "sponsors_tier_supporter": "Colaborador"
   },
   "enterprise": {
     "title": "Licencia Comercial",

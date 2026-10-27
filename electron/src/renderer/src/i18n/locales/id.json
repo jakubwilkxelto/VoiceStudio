@@ -2634,12 +2634,13 @@
     "sponsors_become_aria": "Menjadi sponsor — membuka masalah GitHub yang telah diisi sebelumnya di browser Anda",
     "sponsors_perk": "Sponsor mendapatkan logonya di aplikasi, di README, dan slot di situs proyek.",
     "sponsors_logo_aria": "Kunjungi {{name}}, sponsor VoiceStudio",
-    "sponsors_tier_gold": "Emas",
-    "sponsors_tier_silver": "Perak",
-    "sponsors_tier_bronze": "Perunggu",
     "sponsors_empty_title": "Jadilah yang pertama mensponsori VoiceStudio",
     "sponsors_learn_more": "Apa yang didapat sponsor",
-    "sponsors_tier_platinum": "Platinum"
+    "sponsors_tier_strategic": "Strategis",
+    "sponsors_tier_company": "Perusahaan",
+    "sponsors_tier_development": "Pengembangan",
+    "sponsors_tier_community": "Komunitas",
+    "sponsors_tier_supporter": "Pendukung"
   },
   "enterprise": {
     "title": "Lisensi Komersial",

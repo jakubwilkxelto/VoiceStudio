@@ -2263,7 +2263,12 @@
     "other_ways": "Andra sätt att hjälpa till",
     "star_short": "Stjärna",
     "star_github": "Stjärna på GitHub",
-    "join_discord": "Gå med i Discord"
+    "join_discord": "Gå med i Discord",
+    "sponsors_tier_strategic": "Strategisk",
+    "sponsors_tier_company": "Företag",
+    "sponsors_tier_development": "Utveckling",
+    "sponsors_tier_community": "Community",
+    "sponsors_tier_supporter": "Supporter"
   },
   "updates": {
     "tab": "Uppdateringar",

@@ -2263,7 +2263,12 @@
     "other_ways": "Andere manieren om te helpen",
     "star_short": "Ster",
     "star_github": "Ster op GitHub",
-    "join_discord": "Sluit je aan bij Discord"
+    "join_discord": "Sluit je aan bij Discord",
+    "sponsors_tier_strategic": "Strategisch",
+    "sponsors_tier_company": "Bedrijf",
+    "sponsors_tier_development": "Ontwikkeling",
+    "sponsors_tier_community": "Community",
+    "sponsors_tier_supporter": "Supporter"
   },
   "updates": {
     "tab": "Updates",

@@ -2263,7 +2263,12 @@
     "other_ways": "Yardım etmenin diğer yolları",
     "star_short": "Yıldız",
     "star_github": "GitHub'da yıldız",
-    "join_discord": "Discord'a Katılın"
+    "join_discord": "Discord'a Katılın",
+    "sponsors_tier_strategic": "Stratejik",
+    "sponsors_tier_company": "Şirket",
+    "sponsors_tier_development": "Geliştirme",
+    "sponsors_tier_community": "Topluluk",
+    "sponsors_tier_supporter": "Destekçi"
   },
   "updates": {
     "tab": "Güncellemeler",

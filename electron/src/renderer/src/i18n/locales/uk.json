@@ -2662,10 +2662,11 @@
     "sponsors_perk": "Спонсори отримують свій логотип у програмі, у README та слот на сайті проекту.",
     "sponsors_learn_more": "Що отримують спонсори",
     "sponsors_logo_aria": "Відвідайте {{name}}, спонсора VoiceStudio",
-    "sponsors_tier_platinum": "Платина",
-    "sponsors_tier_gold": "золото",
-    "sponsors_tier_silver": "Срібло",
-    "sponsors_tier_bronze": "Бронза"
+    "sponsors_tier_strategic": "Стратегічний",
+    "sponsors_tier_company": "Компанія",
+    "sponsors_tier_development": "Розробка",
+    "sponsors_tier_community": "Спільнота",
+    "sponsors_tier_supporter": "Прихильник"
   },
   "enterprise": {
     "title": "Комерційна ліцензія",

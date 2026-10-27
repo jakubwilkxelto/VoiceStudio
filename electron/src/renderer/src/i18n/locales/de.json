@@ -2635,11 +2635,12 @@
     "sponsors_become_aria": "Sponsor werden – öffnet eine vorab ausgefüllte GitHub-Ausgabe in Ihrem Browser",
     "sponsors_learn_more": "Was Sponsoren bekommen",
     "sponsors_logo_aria": "Besuchen Sie {{name}}, einen VoiceStudio-Sponsor",
-    "sponsors_tier_silver": "Silber",
-    "sponsors_tier_bronze": "Bronze",
     "sponsors_perk": "Sponsoren erhalten ihr Logo in der App, imREADMEund einen Slot auf der Projektseite.",
-    "sponsors_tier_platinum": "Platin",
-    "sponsors_tier_gold": "Gold"
+    "sponsors_tier_strategic": "Strategisch",
+    "sponsors_tier_company": "Unternehmen",
+    "sponsors_tier_development": "Entwicklung",
+    "sponsors_tier_community": "Community",
+    "sponsors_tier_supporter": "Unterstützer"
   },
   "enterprise": {
     "title": "Kommerzielle Lizenz",

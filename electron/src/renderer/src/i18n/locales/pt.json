@@ -2636,12 +2636,13 @@
     "sponsors_become_aria": "Torne-se um patrocinador — abre um problema GitHub pré-preenchido em seu navegador",
     "sponsors_perk": "Os patrocinadores recebem seu logotipo no aplicativo, no README e um espaço no site do projeto.",
     "sponsors_logo_aria": "Visite {{name}}, um patrocinador do VoiceStudio",
-    "sponsors_tier_silver": "Prata",
-    "sponsors_tier_bronze": "Bronze",
     "sponsors_empty_desc": "Seu logotipo aqui",
     "sponsors_learn_more": "O que os patrocinadores ganham",
-    "sponsors_tier_platinum": "Platina",
-    "sponsors_tier_gold": "Ouro"
+    "sponsors_tier_strategic": "Estratégico",
+    "sponsors_tier_company": "Empresa",
+    "sponsors_tier_development": "Desenvolvimento",
+    "sponsors_tier_community": "Comunidade",
+    "sponsors_tier_supporter": "Apoiador"
   },
   "enterprise": {
     "title": "Licença Comercial",

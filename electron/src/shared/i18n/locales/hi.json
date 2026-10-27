@@ -2263,7 +2263,12 @@
     "other_ways": "मदद करने के अन्य तरीके",
     "star_short": "स्टार",
     "star_github": "GitHub पर स्टार लगाएं",
-    "join_discord": "कलह में शामिल हों"
+    "join_discord": "कलह में शामिल हों",
+    "sponsors_tier_strategic": "रणनीतिक",
+    "sponsors_tier_company": "कंपनी",
+    "sponsors_tier_development": "विकास",
+    "sponsors_tier_community": "समुदाय",
+    "sponsors_tier_supporter": "समर्थक"
   },
   "updates": {
     "tab": "अद्यतन",

@@ -2263,7 +2263,12 @@
     "other_ways": "Другие способы помочь",
     "star_short": "Звезда",
     "star_github": "Звезда на GitHub",
-    "join_discord": "Присоединяйтесь к Discord"
+    "join_discord": "Присоединяйтесь к Discord",
+    "sponsors_tier_strategic": "Стратегический",
+    "sponsors_tier_company": "Компания",
+    "sponsors_tier_development": "Разработка",
+    "sponsors_tier_community": "Сообщество",
+    "sponsors_tier_supporter": "Сторонник"
   },
   "updates": {
     "tab": "Обновления",

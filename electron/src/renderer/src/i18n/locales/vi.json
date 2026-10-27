@@ -2636,10 +2636,11 @@
     "sponsors_perk": "Các nhà tài trợ có biểu tượng của họ trong ứng dụng, trong README và một vị trí trên trang web dự án.",
     "sponsors_learn_more": "Nhà tài trợ nhận được gì",
     "sponsors_logo_aria": "Hãy ghé thăm {{name}}, nhà tài trợ VoiceStudio",
-    "sponsors_tier_platinum": "Bạch kim",
-    "sponsors_tier_gold": "Vàng",
-    "sponsors_tier_silver": "Bạc",
-    "sponsors_tier_bronze": "đồng"
+    "sponsors_tier_strategic": "Chiến lược",
+    "sponsors_tier_company": "Doanh nghiệp",
+    "sponsors_tier_development": "Phát triển",
+    "sponsors_tier_community": "Cộng đồng",
+    "sponsors_tier_supporter": "Người ủng hộ"
   },
   "enterprise": {
     "title": "Giấy phép thương mại",

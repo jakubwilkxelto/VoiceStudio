@@ -22,6 +22,10 @@
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio&style=stats" alt="閲覧数" /></a>
   </p>
+  <p>
+    <sub>戦略スポンサー</sub><br />
+    <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="48" /></picture></a>
+  </p>
 </div>
 
 ![Electron アプリのツアー：音声クローン、ボイスデザイン、吹き替え、モデル管理](../../docs/media/electron/voicestudio.gif)

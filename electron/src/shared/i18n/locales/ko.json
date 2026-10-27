@@ -2647,10 +2647,11 @@
     "sponsors_become_aria": "후원자 되기 — 브라우저에서 미리 작성된 GitHub 이슈를 엽니다",
     "sponsors_learn_more": "후원 혜택 알아보기",
     "sponsors_logo_aria": "VoiceStudio 후원사 {{name}} 방문",
-    "sponsors_tier_platinum": "플래티넘",
-    "sponsors_tier_gold": "골드",
-    "sponsors_tier_silver": "실버",
-    "sponsors_tier_bronze": "브론즈"
+    "sponsors_tier_strategic": "전략",
+    "sponsors_tier_company": "기업",
+    "sponsors_tier_development": "개발",
+    "sponsors_tier_community": "커뮤니티",
+    "sponsors_tier_supporter": "후원자"
   },
   "updates": {
     "tab": "업데이트",

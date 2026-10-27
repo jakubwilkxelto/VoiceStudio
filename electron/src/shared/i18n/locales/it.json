@@ -2263,7 +2263,12 @@
     "other_ways": "Altri modi per aiutare",
     "star_short": "Stella",
     "star_github": "Stella su GitHub",
-    "join_discord": "Unisciti a Discord"
+    "join_discord": "Unisciti a Discord",
+    "sponsors_tier_strategic": "Strategico",
+    "sponsors_tier_company": "Azienda",
+    "sponsors_tier_development": "Sviluppo",
+    "sponsors_tier_community": "Community",
+    "sponsors_tier_supporter": "Sostenitore"
   },
   "updates": {
     "tab": "Aggiornamenti",

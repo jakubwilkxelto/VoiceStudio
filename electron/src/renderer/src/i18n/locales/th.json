@@ -2634,12 +2634,13 @@
     "sponsors_become": "มาเป็นสปอนเซอร์",
     "sponsors_become_aria": "ร่วมเป็นผู้สนับสนุน — เปิดปัญหา GitHub ที่กรอกไว้ล่วงหน้าในเบราว์เซอร์ของคุณ",
     "sponsors_logo_aria": "เยี่ยมชม {{name}} ซึ่งเป็นผู้สนับสนุน VoiceStudio",
-    "sponsors_tier_gold": "ทอง",
-    "sponsors_tier_silver": "เงิน",
-    "sponsors_tier_bronze": "สีบรอนซ์",
     "sponsors_perk": "ผู้สนับสนุนจะได้รับโลโก้ของตนในแอปในREADMEและช่องบนไซต์โครงการ",
     "sponsors_learn_more": "สิ่งที่สปอนเซอร์ได้รับ",
-    "sponsors_tier_platinum": "แพลตตินัม"
+    "sponsors_tier_strategic": "เชิงกลยุทธ์",
+    "sponsors_tier_company": "บริษัท",
+    "sponsors_tier_development": "การพัฒนา",
+    "sponsors_tier_community": "ชุมชน",
+    "sponsors_tier_supporter": "ผู้สนับสนุน"
   },
   "enterprise": {
     "title": "ใบอนุญาตการค้า",

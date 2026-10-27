@@ -2636,10 +2636,11 @@
     "sponsors_perk": "贊助商可以在應用程式的 README 中取得他們的徽標，並在專案網站上獲得一個位置。",
     "sponsors_learn_more": "贊助商得到什麼",
     "sponsors_logo_aria": "存取 {{name}}，VoiceStudio 贊助商",
-    "sponsors_tier_platinum": "鉑",
-    "sponsors_tier_gold": "金子",
-    "sponsors_tier_silver": "銀",
-    "sponsors_tier_bronze": "青銅"
+    "sponsors_tier_strategic": "策略",
+    "sponsors_tier_company": "企業",
+    "sponsors_tier_development": "開發",
+    "sponsors_tier_community": "社群",
+    "sponsors_tier_supporter": "支持者"
   },
   "enterprise": {
     "title": "商業許可",

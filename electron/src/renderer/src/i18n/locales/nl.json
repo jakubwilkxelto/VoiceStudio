@@ -2636,10 +2636,11 @@
     "sponsors_perk": "Sponsors krijgen hun logo in de app, in de README en een plek op de projectsite.",
     "sponsors_learn_more": "Wat sponsoren krijgen",
     "sponsors_logo_aria": "Bezoek {{name}}, een VoiceStudio sponsor",
-    "sponsors_tier_platinum": "Platina",
-    "sponsors_tier_gold": "Goud",
-    "sponsors_tier_silver": "Zilver",
-    "sponsors_tier_bronze": "Bronzen"
+    "sponsors_tier_strategic": "Strategisch",
+    "sponsors_tier_company": "Bedrijf",
+    "sponsors_tier_development": "Ontwikkeling",
+    "sponsors_tier_community": "Community",
+    "sponsors_tier_supporter": "Supporter"
   },
   "enterprise": {
     "title": "Commerciële licentie",

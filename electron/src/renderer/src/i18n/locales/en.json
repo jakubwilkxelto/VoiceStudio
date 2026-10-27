@@ -2703,10 +2703,11 @@
     "sponsors_perk": "Sponsors get their logo in the app, in the README, and a slot on the project site.",
     "sponsors_learn_more": "What sponsors get",
     "sponsors_logo_aria": "Visit {{name}}, a VoiceStudio sponsor",
-    "sponsors_tier_platinum": "Platinum",
-    "sponsors_tier_gold": "Gold",
-    "sponsors_tier_silver": "Silver",
-    "sponsors_tier_bronze": "Bronze"
+    "sponsors_tier_strategic": "Strategic",
+    "sponsors_tier_company": "Company",
+    "sponsors_tier_development": "Development",
+    "sponsors_tier_community": "Community",
+    "sponsors_tier_supporter": "Supporter"
   },
   "enterprise": {
     "title": "Commercial license",

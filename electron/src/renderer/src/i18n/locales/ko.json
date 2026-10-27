@@ -2635,10 +2635,11 @@
     "sponsors_learn_more": "스폰서 혜택 안내",
     "sponsors_logo_aria": "VoiceStudio 스폰서인 {{name}} 방문하기",
     "sponsors_perk": "스폰서는 앱, README, 프로젝트 사이트에 로고를 노출할 수 있습니다.",
-    "sponsors_tier_bronze": "브론즈",
-    "sponsors_tier_gold": "골드",
-    "sponsors_tier_platinum": "플래티넘",
-    "sponsors_tier_silver": "실버",
+    "sponsors_tier_strategic": "전략",
+    "sponsors_tier_company": "기업",
+    "sponsors_tier_development": "개발",
+    "sponsors_tier_community": "커뮤니티",
+    "sponsors_tier_supporter": "후원자",
     "sponsors_title": "스폰서"
   },
   "enterprise": {

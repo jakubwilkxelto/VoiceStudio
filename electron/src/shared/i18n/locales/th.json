@@ -2263,7 +2263,12 @@
     "other_ways": "วิธีอื่นในการช่วยเหลือ",
     "star_short": "ให้ดาว",
     "star_github": "ติดดาวบน GitHub",
-    "join_discord": "เข้าร่วมความไม่ลงรอยกัน"
+    "join_discord": "เข้าร่วมความไม่ลงรอยกัน",
+    "sponsors_tier_strategic": "เชิงกลยุทธ์",
+    "sponsors_tier_company": "บริษัท",
+    "sponsors_tier_development": "การพัฒนา",
+    "sponsors_tier_community": "ชุมชน",
+    "sponsors_tier_supporter": "ผู้สนับสนุน"
   },
   "updates": {
     "tab": "อัพเดท",

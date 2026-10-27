@@ -2688,10 +2688,11 @@
     "sponsors_perk": "يحصل الرعاة على شعارهم في التطبيق، في README، وفي مكان على موقع المشروع.",
     "sponsors_learn_more": "ما يحصل عليه الرعاة",
     "sponsors_logo_aria": "قم بزيارة {{name}}، أحد الجهات الراعية لـ VoiceStudio",
-    "sponsors_tier_platinum": "البلاتين",
-    "sponsors_tier_gold": "ذهب",
-    "sponsors_tier_silver": "فضي",
-    "sponsors_tier_bronze": "برونزية"
+    "sponsors_tier_strategic": "استراتيجي",
+    "sponsors_tier_company": "شركة",
+    "sponsors_tier_development": "تطوير",
+    "sponsors_tier_community": "مجتمع",
+    "sponsors_tier_supporter": "داعم"
   },
   "enterprise": {
     "title": "رخصة تجارية",

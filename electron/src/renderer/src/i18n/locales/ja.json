@@ -2636,10 +2636,11 @@
     "sponsors_perk": "スポンサーは、アプリ、README、およびプロジェクト サイトのスロットでロゴを取得します。",
     "sponsors_learn_more": "スポンサーが得られるもの",
     "sponsors_logo_aria": "VoiceStudio スポンサーである {{name}} にアクセスしてください",
-    "sponsors_tier_platinum": "白金",
-    "sponsors_tier_gold": "金",
-    "sponsors_tier_silver": "銀",
-    "sponsors_tier_bronze": "ブロンズ"
+    "sponsors_tier_strategic": "戦略",
+    "sponsors_tier_company": "企業",
+    "sponsors_tier_development": "開発",
+    "sponsors_tier_community": "コミュニティ",
+    "sponsors_tier_supporter": "サポーター"
   },
   "enterprise": {
     "title": "商用ライセンス",

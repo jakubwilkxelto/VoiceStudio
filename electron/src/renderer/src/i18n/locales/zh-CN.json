@@ -2636,10 +2636,11 @@
     "sponsors_perk": "赞助者的 Logo 会出现在应用内、README 中，以及项目网站的一个展示位。",
     "sponsors_learn_more": "赞助者权益",
     "sponsors_logo_aria": "访问 {{name}}（VoiceStudio 赞助者）",
-    "sponsors_tier_platinum": "铂金",
-    "sponsors_tier_gold": "金牌",
-    "sponsors_tier_silver": "银牌",
-    "sponsors_tier_bronze": "铜牌"
+    "sponsors_tier_strategic": "战略",
+    "sponsors_tier_company": "企业",
+    "sponsors_tier_development": "开发",
+    "sponsors_tier_community": "社区",
+    "sponsors_tier_supporter": "支持者"
   },
   "enterprise": {
     "title": "商业许可",

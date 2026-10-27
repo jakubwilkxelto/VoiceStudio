@@ -2652,10 +2652,11 @@
     "sponsors_become_aria": "成为赞助者——在浏览器中打开预填好的 GitHub issue",
     "sponsors_learn_more": "赞助者权益",
     "sponsors_logo_aria": "访问 {{name}}（VoiceStudio 赞助者）",
-    "sponsors_tier_platinum": "铂金",
-    "sponsors_tier_gold": "金牌",
-    "sponsors_tier_silver": "银牌",
-    "sponsors_tier_bronze": "铜牌"
+    "sponsors_tier_strategic": "战略",
+    "sponsors_tier_company": "企业",
+    "sponsors_tier_development": "开发",
+    "sponsors_tier_community": "社区",
+    "sponsors_tier_supporter": "支持者"
   },
   "updates": {
     "tab": "更新",

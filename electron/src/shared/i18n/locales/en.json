@@ -2945,10 +2945,11 @@
     "sponsors_become_aria": "Become a sponsor — opens a prefilled GitHub issue in your browser",
     "sponsors_learn_more": "What sponsors get",
     "sponsors_logo_aria": "Visit {{name}}, a VoiceStudio sponsor",
-    "sponsors_tier_platinum": "Platinum",
-    "sponsors_tier_gold": "Gold",
-    "sponsors_tier_silver": "Silver",
-    "sponsors_tier_bronze": "Bronze"
+    "sponsors_tier_strategic": "Strategic",
+    "sponsors_tier_company": "Company",
+    "sponsors_tier_development": "Development",
+    "sponsors_tier_community": "Community",
+    "sponsors_tier_supporter": "Supporter"
   },
   "openapi": {
     "title": "VoiceStudio API",

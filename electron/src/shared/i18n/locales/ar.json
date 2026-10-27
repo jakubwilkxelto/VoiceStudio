@@ -2263,7 +2263,12 @@
     "other_ways": "طرق أخرى للمساعدة",
     "star_short": "نجمة",
     "star_github": "نجمة على جيثب",
-    "join_discord": "انضم إلى الفتنة"
+    "join_discord": "انضم إلى الفتنة",
+    "sponsors_tier_strategic": "استراتيجي",
+    "sponsors_tier_company": "شركة",
+    "sponsors_tier_development": "تطوير",
+    "sponsors_tier_community": "مجتمع",
+    "sponsors_tier_supporter": "داعم"
   },
   "updates": {
     "tab": "التحديثات",

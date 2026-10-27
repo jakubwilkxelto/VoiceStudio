@@ -2263,7 +2263,12 @@
     "other_ways": "Cara lain untuk membantu",
     "star_short": "Beri bintang",
     "star_github": "Bintangi di GitHub",
-    "join_discord": "Bergabunglah dengan Perselisihan"
+    "join_discord": "Bergabunglah dengan Perselisihan",
+    "sponsors_tier_strategic": "Strategis",
+    "sponsors_tier_company": "Perusahaan",
+    "sponsors_tier_development": "Pengembangan",
+    "sponsors_tier_community": "Komunitas",
+    "sponsors_tier_supporter": "Pendukung"
   },
   "updates": {
     "tab": "Pembaruan",

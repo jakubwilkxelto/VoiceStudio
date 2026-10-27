@@ -2635,11 +2635,12 @@
     "sponsors_perk": "Sponsorlar logolarını uygulamada, README'da ve proje sitesinde bir alanda alırlar.",
     "sponsors_learn_more": "Sponsorlar ne alıyor",
     "sponsors_logo_aria": "VoiceStudio sponsoru olan {{name}}'ı ziyaret edin",
-    "sponsors_tier_platinum": "Platin",
-    "sponsors_tier_gold": "Altın",
-    "sponsors_title": "Sponsorlar",
-    "sponsors_tier_silver": "Gümüş",
-    "sponsors_tier_bronze": "Bronz"
+    "sponsors_tier_strategic": "Stratejik",
+    "sponsors_tier_company": "Şirket",
+    "sponsors_tier_development": "Geliştirme",
+    "sponsors_tier_community": "Topluluk",
+    "sponsors_tier_supporter": "Destekçi",
+    "sponsors_title": "Sponsorlar"
   },
   "enterprise": {
     "title": "Ticari Lisans",

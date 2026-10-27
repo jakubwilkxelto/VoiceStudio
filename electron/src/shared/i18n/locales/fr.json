@@ -2263,7 +2263,12 @@
     "other_ways": "Autres moyens d'aider",
     "star_short": "Étoile",
     "star_github": "Étoile sur GitHub",
-    "join_discord": "Rejoignez Discorde"
+    "join_discord": "Rejoignez Discorde",
+    "sponsors_tier_strategic": "Stratégique",
+    "sponsors_tier_company": "Entreprise",
+    "sponsors_tier_development": "Développement",
+    "sponsors_tier_community": "Communauté",
+    "sponsors_tier_supporter": "Soutien"
   },
   "updates": {
     "tab": "Mises à jour",

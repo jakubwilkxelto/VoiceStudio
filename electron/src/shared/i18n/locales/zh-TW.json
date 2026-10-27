@@ -2263,7 +2263,12 @@
     "other_ways": "其他幫助方法",
     "star_short": "加星",
     "star_github": "在 GitHub 上加星標",
-    "join_discord": "加入不和諧"
+    "join_discord": "加入不和諧",
+    "sponsors_tier_strategic": "策略",
+    "sponsors_tier_company": "企業",
+    "sponsors_tier_development": "開發",
+    "sponsors_tier_community": "社群",
+    "sponsors_tier_supporter": "支持者"
   },
   "updates": {
     "tab": "更新",

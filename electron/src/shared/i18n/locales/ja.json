@@ -2263,7 +2263,12 @@
     "other_ways": "その他の支援方法",
     "star_short": "スター",
     "star_github": "GitHub でスターを付ける",
-    "join_discord": "Discordに参加する"
+    "join_discord": "Discordに参加する",
+    "sponsors_tier_strategic": "戦略",
+    "sponsors_tier_company": "企業",
+    "sponsors_tier_development": "開発",
+    "sponsors_tier_community": "コミュニティ",
+    "sponsors_tier_supporter": "サポーター"
   },
   "updates": {
     "tab": "アップデート",
