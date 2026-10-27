@@ -72,4 +72,11 @@ Cel z planu (< 3 ms narzutu) **nie jest osiągnięty**; najlepszy wariant daje +
 
 ### Decyzja po spike'u
 
-_Do podjęcia_. Semantyka działa; otwarty jest tylko koszt. Opcje opisuje raport z P0.
+**Widoki TEMP (2026-10-27).** Semantyka działa. Narzut ~3 ms na połączenie
+jest pomijalny przy operacjach GPU trwających sekundy, więc próg 3 ms z planu
+uznajemy za nieistotny. Jawne filtry `owner_id` dałyby ~146 punktów konfliktu
+z upstreamem. W P2:
+
+- DDL cache'owany po `PRAGMA main.schema_version` i wykonywany jednym `executescript`;
+- korekta `rowcount` przez licznik z triggerów (`xelto_count()`), nie przez `total_changes`;
+- lint SQL wyłapuje `RETURNING` na tabelach usera.
