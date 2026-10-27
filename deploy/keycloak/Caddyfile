@@ -1,0 +1,12 @@
+# TLS termination for the multi-user deployment (deploy/docker-compose.keycloak.yml).
+# Caddy obtains certificates for both names and forwards X-Forwarded-* headers,
+# which VoiceStudio and Keycloak (KC_PROXY_HEADERS=xforwarded) honour.
+
+{$VOICESTUDIO_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy voicestudio:3900
+}
+
+{$KEYCLOAK_DOMAIN} {
+	reverse_proxy keycloak:8080
+}

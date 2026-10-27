@@ -1,0 +1,129 @@
+{
+  "realm": "voicestudio",
+  "displayName": "VoiceStudio",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "failureFactor": 10,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 7200,
+  "ssoSessionMaxLifespan": 43200,
+  "revokeRefreshToken": false,
+  "roles": {
+    "client": {
+      "voicestudio": [
+        { "name": "voicestudio-admin", "description": "Manages engines, models and server settings" },
+        { "name": "voicestudio-user", "description": "Uses VoiceStudio with their own voices and projects" }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "voicestudio",
+      "name": "VoiceStudio",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${VOICESTUDIO_OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "redirectUris": ["${VOICESTUDIO_PUBLIC_URL}/api/auth/oidc/callback"],
+      "webOrigins": ["${VOICESTUDIO_PUBLIC_URL}"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${VOICESTUDIO_PUBLIC_URL}/"
+      },
+      "protocolMappers": [
+        {
+          "name": "voicestudio-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "voicestudio",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "voicestudio-cli",
+      "name": "VoiceStudio API clients",
+      "description": "Service account for scripts using the OpenAI-compatible API with a Bearer token",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${VOICESTUDIO_CLI_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "voicestudio-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "voicestudio",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-voicestudio-cli",
+      "enabled": true,
+      "serviceAccountClientId": "voicestudio-cli",
+      "clientRoles": { "voicestudio": ["voicestudio-user"] }
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@example.com",
+      "emailVerified": true,
+      "firstName": "VoiceStudio",
+      "lastName": "Admin",
+      "credentials": [
+        { "type": "password", "value": "${VOICESTUDIO_INITIAL_PASSWORD}", "temporary": true }
+      ],
+      "clientRoles": { "voicestudio": ["voicestudio-admin", "voicestudio-user"] }
+    },
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Example",
+      "credentials": [
+        { "type": "password", "value": "${VOICESTUDIO_INITIAL_PASSWORD}", "temporary": true }
+      ],
+      "clientRoles": { "voicestudio": ["voicestudio-user"] }
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Example",
+      "credentials": [
+        { "type": "password", "value": "${VOICESTUDIO_INITIAL_PASSWORD}", "temporary": true }
+      ],
+      "clientRoles": { "voicestudio": ["voicestudio-user"] }
+    }
+  ]
+}

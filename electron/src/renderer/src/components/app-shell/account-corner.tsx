@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { isMac } from '@/components/bridge';
 import { cn } from '@/lib/utils';
 import { AccountMenu } from './account-menu';
+import { XeltoUserMenu } from '@/xelto/user-menu'; // XELTO: multi-user account
 import { SystemNotifications } from './system-notifications';
 
 const SPACE_VAR = '--corner-space';
@@ -51,6 +52,7 @@ export function AccountCorner({ notificationsEnabled }: { notificationsEnabled: 
       )}
     >
       <AccountMenu />
+      <XeltoUserMenu />{/* XELTO: multi-user account */}
       <SystemNotifications enabled={notificationsEnabled} titlebar />
     </div>
   );

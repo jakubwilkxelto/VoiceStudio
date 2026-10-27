@@ -44,6 +44,7 @@ import { SettingsContent, SettingsPageTitleContext } from './settings-layout';
 import { SettingsNav, type SettingsLocation } from './settings-nav';
 import { AppearanceResetButton, AppearanceSettings, GeneralSettings } from './settings-preferences';
 import { rememberSettingsRoute } from '@/lib/settings-route';
+import { useXeltoVisibleSettings } from '@/xelto/admin-visibility'; // XELTO: hide admin pages
 
 const extraSettings = [
   {
@@ -194,7 +195,8 @@ export function SettingsPage() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const extras = extraSettingsFor(useAccount().state?.available === true);
+  // XELTO: hide admin pages from non-admin users in multi-user mode.
+  const extras = useXeltoVisibleSettings(extraSettingsFor(useAccount().state?.available === true));
   const extra = extras.find((item) => pathname === item.to);
   const isOpenApi = pathname === '/settings/openapi';
   const isModels = pathname.includes('/models');

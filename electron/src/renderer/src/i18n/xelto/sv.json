@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "Loggar in…"
+  },
+  "menu": {
+    "account": "Konto",
+    "admin_badge": "Administratör",
+    "sign_out": "Logga ut",
+    "signed_in_as": "Inloggad som {{name}}"
+  }
+}

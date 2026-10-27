@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "正在登入…"
+  },
+  "menu": {
+    "account": "帳戶",
+    "admin_badge": "管理員",
+    "sign_out": "登出",
+    "signed_in_as": "已登入為 {{name}}"
+  }
+}

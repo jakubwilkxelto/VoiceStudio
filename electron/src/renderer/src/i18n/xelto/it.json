@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "Accesso in corso…"
+  },
+  "menu": {
+    "account": "Account",
+    "admin_badge": "Amministratore",
+    "sign_out": "Esci",
+    "signed_in_as": "Accesso effettuato come {{name}}"
+  }
+}

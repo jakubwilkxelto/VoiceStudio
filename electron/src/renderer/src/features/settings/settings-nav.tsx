@@ -17,6 +17,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { cn } from '@/lib/utils';
+import { useXeltoPinned } from '@/xelto/admin-visibility'; // XELTO: hide admin pages
 import { familyIcons, type ModelFamily } from './model-family';
 import {
   fieldKey,
@@ -120,11 +121,12 @@ export function SettingsNav({
   const extraMatches = extras.filter((item) => keysMatch(t, item.fields, needle));
   const onModels = location.kind === 'models';
   const families = matchingFamilies(t, needle, onModels);
-  const pinned = {
+  // XELTO: hide admin pages from non-admin users in multi-user mode.
+  const pinned = useXeltoPinned({
     models: keysMatch(t, pinnedPages.models, needle),
     media: keysMatch(t, pinnedPages.media, needle),
     logs: keysMatch(t, pinnedPages.logs, needle),
-  };
+  });
   const nothing =
     sections.length === 0 &&
     extraMatches.length === 0 &&

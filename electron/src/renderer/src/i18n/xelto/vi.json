@@ -1,0 +1,11 @@
+{
+  "gate": {
+    "signing_in": "Đang đăng nhập…"
+  },
+  "menu": {
+    "account": "Tài khoản",
+    "admin_badge": "Quản trị viên",
+    "sign_out": "Đăng xuất",
+    "signed_in_as": "Đã đăng nhập với tên {{name}}"
+  }
+}

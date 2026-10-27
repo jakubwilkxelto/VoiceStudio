@@ -13,6 +13,7 @@ import { openTake } from '@/lib/store/takes';
 import { selectCloneProfile } from '@/lib/store/reference';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { SETTINGS_ENTRIES } from '@/features/settings/settings-index';
+import { useXeltoCommands } from '@/xelto/admin-visibility'; // XELTO: hide admin commands
 import { cn } from '@/lib/utils';
 import { Kbd } from '@/components/ui/kbd';
 import { isMac } from '@/components/bridge';
@@ -361,7 +362,7 @@ export function CommandPalette() {
         run: () => navigate({ to: entry.to }),
       }))
     : [];
-  const items = [...source, ...settingsItems]
+  const items = useXeltoCommands([...source, ...settingsItems]) // XELTO: hide admin commands
     .filter((item) => commandMatches(item, query))
     .slice(0, 30);
   const run = (index: number) => {
