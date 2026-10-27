@@ -24,6 +24,8 @@ export interface Profile {
   seed: number | null;
   personality: string | null;
   vd_states: string | null;
+  /** Complete native Voice Design prompt, explicit picks and authoring engine. */
+  design_recipe?: string | null;
   /** Epoch seconds (SQLite REAL) on the wire; tolerate ISO strings too. */
   created_at: number | string;
   is_locked: boolean | number | null;
@@ -49,7 +51,7 @@ export interface HistoryItem {
   generation_time: number | null;
   seed: number | null;
   starred: boolean | number | null;
-  /** JSON `DesignRecipe` for Voice Design takes; null for other takes and older rows (#2389). */
+  /** JSON copy of the Voice Design draft behind a design take; null for any other take or a row saved earlier. */
   design_recipe?: string | null;
   /** Epoch seconds (SQLite REAL) on the wire; tolerate ISO strings too. */
   created_at: number | string;
@@ -82,7 +84,7 @@ export interface EngineBackend {
   default_voice?: string | null;
   /** False: needs a reference clip, so Voice Design is unavailable. Null/absent: undeclared. */
   supports_voice_design?: boolean | null;
-  /** "tags" = OmniVoice's closed design vocabulary; "freeform" = sent as written (#2389). */
+  /** Whether `instruct` must be one of a fixed tag list (OmniVoice) or may be any wording. */
   instruct_vocabulary?: InstructVocabulary;
   /** Seconds of a clone reference the engine uses; null when not verified (#2281). */
   max_ref_seconds?: number | null;
@@ -138,13 +140,11 @@ export interface SystemInfo {
   ffmpeg_path?: string;
 }
 
+/** `tags` = the fixed OmniVoice attribute list; `freeform` = any wording is passed through. */
 export type InstructVocabulary = 'tags' | 'freeform';
 
-/**
- * The Voice Design draft sent with a take so reopening it rebuilds the draft.
- * The stored recipe also carries `mapped`, which the backend derives from the
- * description itself.
- */
+/** What the client reports about its Voice Design draft. The server adds a
+ *  `mapped` section of its own before storing it. */
 export interface DesignRecipe {
   description: string;
   picks: Record<string, string>;
@@ -167,11 +167,12 @@ export interface CloneGenerateInput {
   refAudio?: File | Blob | null;
   refAudioName?: string;
   refText?: string;
-  /** Free-text style; sanitised through the instruct whitelist unless the engine is "freeform". */
+  /** Style or design wording. It is filtered through the instruct whitelist
+   *  unless `instructVocabulary` says the engine is free-form. */
   instruct?: string;
-  /** How the target engine reads `instruct`; absent means the OmniVoice tag set. */
+  /** The target engine's reading of `instruct`. Leave unset for the OmniVoice tag list. */
   instructVocabulary?: InstructVocabulary;
-  /** Voice Design draft stored with the take; never affects synthesis. */
+  /** Draft recorded next to a design take for later reopening; has no effect on the audio. */
   designRecipe?: DesignRecipe;
   /** IndexTTS2 independent emotion conditioning (text or eight weights). */
   emoText?: string;

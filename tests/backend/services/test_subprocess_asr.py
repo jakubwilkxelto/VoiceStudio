@@ -183,7 +183,8 @@ def test_sidecar_accepts_max_profile_decode_width(monkeypatch):
     assert calls == [
         (
             "/max.wav",
-            {"word_timestamps": False, "beam_size": 8, "best_of": 8},
+            {"word_timestamps": False, "condition_on_previous_text": False,
+             "beam_size": 8, "best_of": 8},
         )
     ]
     assert result["text"] == "heard"

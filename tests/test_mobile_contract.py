@@ -10,6 +10,7 @@ import copy
 import hashlib
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -37,13 +38,28 @@ def test_openapi_operation_ids_are_unique():
     assert len(ids) == len(set(ids))
 
 
+def _bun() -> str | None:
+    """Full path to bun, as found on PATH (honouring PATHEXT on Windows).
+
+    Spawn this, never a bare "bun": an npm-installed bun on Windows is only
+    `bun.cmd`/`bun.ps1`, which `shutil.which` finds but CreateProcess does not.
+    """
+    return shutil.which("bun")
+
+
 def _electron_deps_installed() -> bool:
-    if shutil.which("bun") is None:
+    # Runs at collection (skipif), so it must never raise: one failed spawn
+    # here would abort the whole pytest run instead of skipping one test.
+    bun = _bun()
+    if bun is None:
         return False
-    probe = subprocess.run(
-        ["bun", "--no-install", "-e", "Bun.resolveSync('tailwindcss/theme.css', process.argv[1])", str(ROOT / "electron")],
-        capture_output=True, timeout=60,
-    )
+    try:
+        probe = subprocess.run(
+            [bun, "--no-install", "-e", "Bun.resolveSync('tailwindcss/theme.css', process.argv[1])", str(ROOT / "electron")],
+            capture_output=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
     return probe.returncode == 0
 
 
@@ -52,10 +68,34 @@ def _electron_deps_installed() -> bool:
 @pytest.mark.skipif(not _electron_deps_installed(), reason="needs bun and installed Electron deps")
 def test_mobile_tokens_match_electron_theme():
     result = subprocess.run(
-        ["bun", "--no-install", "scripts/export-mobile-tokens.ts", "--check"],
+        [_bun(), "--no-install", "scripts/export-mobile-tokens.ts", "--check"],
         cwd=ROOT, capture_output=True, text=True, timeout=120,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_bun_probe_spawns_resolved_path_and_never_raises(monkeypatch):
+    shim = r"C:\npm\bun.CMD"
+    monkeypatch.setattr(shutil, "which", lambda name: shim if name == "bun" else None)
+    spawned = []
+
+    def fake_run(argv, **_kwargs):
+        spawned.append(argv[0])
+        raise FileNotFoundError(argv[0])
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert _electron_deps_installed() is False
+    assert spawned == [shim]
+
+
+def test_tests_never_spawn_bare_bun():
+    bare = [
+        f"{path.relative_to(ROOT)}:{number}"
+        for path in (ROOT / "tests").rglob("*.py")
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"subprocess\.\w+\(\s*\[\s*[\"']bun[\"']", line)
+    ]
+    assert not bare, f"spawn the shutil.which('bun') path instead of a bare 'bun': {bare}"
 
 
 def test_mobile_string_keys_are_namespaced():
@@ -410,9 +450,9 @@ def test_android_home_contributors_match_electron_snapshot():
         assert list((ROOT / "electron/src/renderer/src/features/home/contributors").glob(f"{login}.*"))
 
 
-@pytest.mark.skipif(shutil.which("bun") is None, reason="needs bun")
+@pytest.mark.skipif(_bun() is None, reason="needs bun")
 def test_mobile_voice_design_traits_match_electron():
-    result = subprocess.run(["bun", "scripts/export-mobile-design.ts", "--check"], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    result = subprocess.run([_bun(), "scripts/export-mobile-design.ts", "--check"], cwd=ROOT, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     catalogue = json.loads((CONTRACT / "design.json").read_text())
     locales = [json.loads(path.read_text()) for path in (ROOT / "electron/src/renderer/src/i18n/locales").glob("*.json")]

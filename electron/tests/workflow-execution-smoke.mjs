@@ -114,7 +114,7 @@ async function fromTemplate(name) {
 }
 try {
   await page.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
-  await page.goto(base + '/#/calls');
+  await page.goto(base + '/#/workflows');
   await fromTemplate('Batch narration · Normalize audio');
   await page.getByLabel('Scripts', { exact: true }).fill('First lesson\n---\nSecond lesson');
   await page.locator('.react-flow__node').filter({ hasText: 'Speak' }).click();

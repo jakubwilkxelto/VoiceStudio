@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backendStartupFailure, isBrokenEnvironmentOutput } from './backendOutput';
+import { backendStartupFailure, isBrokenEnvironmentOutput, windowsLoadBlock } from './backendOutput';
 
 const TRACE = [
   'Traceback (most recent call last):',
@@ -70,5 +70,35 @@ describe('isBrokenEnvironmentOutput', () => {
 
   it('reports nothing for empty output', () => {
     expect(isBrokenEnvironmentOutput([])).toBe(false);
+  });
+});
+
+describe('windowsLoadBlock (#3209)', () => {
+  const blocked = (reason: string) => [
+    'Traceback (most recent call last):',
+    '    import torch',
+    `ImportError: DLL load failed while importing _C: ${reason}`,
+  ];
+  it('names an application-control block and keeps it out of the repair path', () => {
+    const lines = blocked('An Application Control policy has blocked this file.');
+    expect(windowsLoadBlock(lines)).toBe('application_control');
+    expect(isBrokenEnvironmentOutput(lines)).toBe(false);
+    expect(windowsLoadBlock(blocked('This program is blocked by group policy.'))).toBe(
+      'group_policy',
+    );
+  });
+  it('names an antivirus that refused the load', () => {
+    expect(
+      windowsLoadBlock(
+        blocked(
+          'Operation did not complete successfully because the file contains a virus or potentially unwanted software.',
+        ),
+      ),
+    ).toBe('antivirus');
+  });
+  it('leaves an ordinary missing DLL to the broken-environment check', () => {
+    const lines = blocked('The specified module could not be found.');
+    expect(windowsLoadBlock(lines)).toBeNull();
+    expect(isBrokenEnvironmentOutput(lines)).toBe(true);
   });
 });

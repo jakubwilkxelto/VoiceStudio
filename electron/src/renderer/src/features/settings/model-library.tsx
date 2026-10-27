@@ -26,8 +26,9 @@ import { SettingsSection, SettingsRow } from './settings-layout';
 import { familyIcons, type ModelFamily } from './model-family';
 import { useModelCatalogue, type CatalogueModel } from './model-catalogue-query';
 import { ModelLicense } from './model-license';
-import { resolvePerformanceModelPack } from './performance-model-packs';
+import { largestFittingTier, resolvePerformanceModelPack } from './performance-model-packs';
 import { modelDiskShortfall } from './model-disk-space';
+import { fmtGb } from '@shared/components/settings/models/format';
 import { useModelOps } from './model-list/model-ops';
 import { describeJob } from './model-list/model-job';
 import { ModelActions } from './model-list/model-actions';
@@ -77,12 +78,19 @@ export function PerformanceModelPacks({ compact = false }: { compact?: boolean }
   // Preview independently of the runtime profile: packs must be selectable
   // before any applicable engine is installed. Persist only on confirmation.
   const [selectedTier, setSelectedTier] = useState<PerformanceTier | null>(null);
-  const tier =
-    selectedTier ??
+  const profileTier =
     (profile.data?.global === 'auto'
       ? (profile.data.plan?.resolved ?? 'balanced')
-      : profile.data?.global) ??
-    'balanced';
+      : profile.data?.global) ?? 'balanced';
+  // Preselect the largest pack that fits the model disk, never one that cannot.
+  const tier =
+    selectedTier ??
+    largestFittingTier(
+      catalogue.data?.models ?? [],
+      profileTier,
+      catalogue.data?.disk_free_gb,
+      catalogue.data?.disk_headroom_gb,
+    );
   const pack = resolvePerformanceModelPack(catalogue.data?.models ?? [], tier);
   const packRepos = new Set(pack.models.map((model) => model.repo_id));
   const activeJobs =
@@ -115,7 +123,10 @@ export function PerformanceModelPacks({ compact = false }: { compact?: boolean }
       // reconciles this profile after each successful model install, making
       // the pack active without another selection or an app restart.
       await profile.setTier({
-        tier: selectedTier === null && profile.data.global === 'auto' ? 'auto' : tier,
+        tier:
+          selectedTier === null && profile.data.global === 'auto' && tier === profileTier
+            ? 'auto'
+            : tier,
         family: null,
       });
       if (pack.missing.length === 0) {
@@ -216,7 +227,7 @@ export function PerformanceModelPacks({ compact = false }: { compact?: boolean }
                     {t(
                       model.installed ? 'modelMaintenance.installed' : 'modelMaintenance.download',
                     )}{' '}
-                    · {model.size_gb} GB
+                    · {fmtGb(model.size_gb)}
                   </span>
                 </span>
                 {active ? (

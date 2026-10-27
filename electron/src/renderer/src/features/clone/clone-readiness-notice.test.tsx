@@ -18,6 +18,8 @@ it('points a model that designs but cannot clone to Voice design', () => {
   render(<CloneReadinessNotice id="r" blocker="cloning" demo={false} />);
   expect(screen.getByRole('status')).toHaveTextContent('clone.cannotCloneUseDesign');
   expect(screen.getByRole('link', { name: 'nav.design' })).toHaveAttribute('href', '/design');
+  // One next step, not a second jargon link beside it.
+  expect(screen.getAllByRole('link')).toHaveLength(1);
 });
 
 it('keeps the plain notice when the model can neither clone nor design', () => {
@@ -25,4 +27,8 @@ it('keeps the plain notice when the model can neither clone nor design', () => {
   render(<CloneReadinessNotice id="r" blocker="cloning" demo={false} />);
   expect(screen.getByRole('status')).toHaveTextContent('convert.cloning_required');
   expect(screen.queryByRole('link', { name: 'nav.design' })).toBeNull();
+  expect(screen.getByRole('link', { name: 'engines.set_up' })).toHaveAttribute(
+    'href',
+    '/settings/models/$family',
+  );
 });

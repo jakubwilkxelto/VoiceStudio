@@ -198,7 +198,8 @@ def extract_segment_refs(
                    "ref_text": "the source-language line",
                    "duration": 4.12}, ...}
 
-    Segments shorter than ``MIN_SEGMENT_REF_DURATION_S`` are omitted — the
+    Segments shorter than ``MIN_SEGMENT_REF_DURATION_S``, and segments that
+    overlap another speaker's segment, are omitted — the
     caller falls back to the per-speaker reference for those (a strict
     improvement over per-speaker-only, never a regression). Uses the
     *original* segment timestamps (pre slack-absorption); only the vocals are
@@ -221,6 +222,11 @@ def extract_segment_refs(
         start = float(seg.get("start", 0.0))
         end = float(seg.get("end", 0.0))
         if end - start < MIN_SEGMENT_REF_DURATION_S:
+            continue
+        if _overlaps_other_speaker(seg, segments):
+            # Overlapping speech (#3419): the clip would carry both voices and
+            # this line's dub would sound like a blend of them. The line uses
+            # its speaker's pooled reference instead.
             continue
         s = max(0, int(start * sr))
         e = min(audio.size, int(end * sr))
@@ -324,6 +330,19 @@ def _adjacent_to_other_speaker(
         o1 = float(other.get("end", 0.0))
         # Signed gap between the two spans; negative = overlap.
         if max(o0 - s1, s0 - o1) < ADJACENT_TURN_GUARD_S:
+            return True
+    return False
+
+
+def _overlaps_other_speaker(seg: dict, all_segments: list[dict]) -> bool:
+    """True when a segment of a different speaker overlaps ``seg`` in time."""
+    speaker_id = seg.get("speaker_id") or "Speaker 1"
+    s0 = float(seg.get("start", 0.0))
+    s1 = float(seg.get("end", 0.0))
+    for other in all_segments:
+        if other is seg or (other.get("speaker_id") or "Speaker 1") == speaker_id:
+            continue
+        if min(s1, float(other.get("end", 0.0))) - max(s0, float(other.get("start", 0.0))) > 1e-3:
             return True
     return False
 

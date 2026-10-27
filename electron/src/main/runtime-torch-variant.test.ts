@@ -224,6 +224,16 @@ describe('CPU-only runtime install', () => {
     ]);
     expect(CPU_TORCH_ARGS.join(' ')).toContain('download.pytorch.org/whl/cpu');
   });
+  it('asks a Mac for 5 GiB too: its wheels carry no CUDA libraries', async () => {
+    host('darwin', 'arm64');
+    const { bundle, project } = await fixture();
+    vi.mocked(statfs).mockResolvedValueOnce({ bavail: 4 * 1024 ** 3, bsize: 1 } as Awaited<
+      ReturnType<typeof statfs>
+    >);
+    await expect(
+      installRuntime(bundle, project, 'uv', vi.fn(), new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'ENOSPC', requiredGib: 5 });
+  });
   it('needs 5 GiB instead of 9 GiB and says so', async () => {
     host('win32', 'x64');
     const { bundle, project } = await fixture();

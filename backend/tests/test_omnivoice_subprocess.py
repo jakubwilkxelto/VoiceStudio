@@ -376,94 +376,67 @@ def test_engine_catalogue_reports_effective_mps_isolation(monkeypatch):
     assert row["isolation_mode"] == "subprocess"
 
 
-def test_mps_catalogue_hides_redundant_explicit_omnivoice_sidecar(monkeypatch):
-    """The picker advertises the canonical id, while legacy callers retain both."""
+def _catalogue_host(monkeypatch, family, registry):
     from core.device_caps import HostCaps
     from services import tts_backend
 
-    monkeypatch.setattr(
-        tts_backend,
-        "_REGISTRY",
-        {
-            "omnivoice": OmniVoiceBackend,
-            "omnivoice-subprocess": OmniVoiceSubprocessBackend,
-        },
-    )
+    families = (family,) if family == "cpu" else (family, "cpu")
+    monkeypatch.setattr(tts_backend, "_REGISTRY", registry)
     monkeypatch.setattr(
         "core.device_caps.detect_host_caps",
-        lambda: HostCaps(family="mps", available_families=("mps", "cpu")),
+        lambda: HostCaps(family=family, available_families=families),
     )
     monkeypatch.setattr(
         OmniVoiceSubprocessBackend,
         "is_available",
-        classmethod(lambda cls: (True, "ready")),
+        classmethod(lambda cls: (True, "sidecar healthy")),
     )
 
-    picker_ids = {item["id"] for item in list_backends()}
-    assert picker_ids == {"omnivoice"}
-    assert get_backend_class("omnivoice") is OmniVoiceMPSSubprocessBackend
 
-    all_ids = {item["id"] for item in list_backends(include_hidden=True)}
-    assert all_ids == {"omnivoice", "omnivoice-subprocess"}
+def test_mps_public_inventory_has_one_omnivoice_identity(monkeypatch):
+    registry = {
+        "omnivoice": OmniVoiceBackend,
+        "omnivoice-subprocess": OmniVoiceSubprocessBackend,
+    }
+    _catalogue_host(monkeypatch, "mps", registry)
+
+    public_ids = tuple(item["id"] for item in list_backends())
+    internal_ids = tuple(item["id"] for item in list_backends(include_hidden=True))
+
+    assert public_ids == ("omnivoice",)
+    assert internal_ids == tuple(registry)
+    assert get_backend_class("omnivoice") is OmniVoiceMPSSubprocessBackend
     assert get_backend_class("omnivoice-subprocess") is OmniVoiceSubprocessBackend
 
 
-def test_mps_active_routing_preserves_hidden_compatibility_id(monkeypatch):
-    from core.device_caps import HostCaps
+def test_active_routing_preserves_hidden_mps_compatibility_id(monkeypatch):
     from services import tts_backend
 
-    monkeypatch.setattr(
-        tts_backend,
-        "_REGISTRY",
+    _catalogue_host(
+        monkeypatch,
+        "mps",
         {"omnivoice-subprocess": OmniVoiceSubprocessBackend},
     )
     monkeypatch.setattr(tts_backend, "active_backend_id", lambda: "omnivoice-subprocess")
-    monkeypatch.setattr(
-        "core.device_caps.detect_host_caps",
-        lambda: HostCaps(family="mps", available_families=("mps", "cpu")),
-    )
-    monkeypatch.setattr(
-        OmniVoiceSubprocessBackend,
-        "is_available",
-        classmethod(lambda cls: (True, "ready")),
-    )
+    route = tts_backend.active_routing()
+    assert route is not None
+    assert route["engine"] == "omnivoice-subprocess"
+    assert (route["available"], route["effective_device"]) == (True, "mps")
+    assert (route["routing_status"], route["routing_reason"]) == ("accelerated", None)
 
-    assert tts_backend.active_routing() == {
-        "engine": "omnivoice-subprocess",
-        "available": True,
-        "effective_device": "mps",
-        "routing_status": "accelerated",
-        "routing_reason": None,
+
+@pytest.mark.parametrize(
+    "family",
+    [pytest.param("cuda", id="nvidia"), pytest.param("cpu", id="software")],
+)
+def test_non_mps_inventory_does_not_suppress_compatibility_choice(monkeypatch, family):
+    entries = {
+        "omnivoice": OmniVoiceBackend,
+        "omnivoice-subprocess": OmniVoiceSubprocessBackend,
     }
-
-
-@pytest.mark.parametrize("family", ("cuda", "cpu"))
-def test_non_mps_catalogue_keeps_explicit_omnivoice_sidecar(monkeypatch, family):
-    from core.device_caps import HostCaps
-    from services import tts_backend
-
-    monkeypatch.setattr(
-        tts_backend,
-        "_REGISTRY",
-        {
-            "omnivoice": OmniVoiceBackend,
-            "omnivoice-subprocess": OmniVoiceSubprocessBackend,
-        },
-    )
-    monkeypatch.setattr(
-        "core.device_caps.detect_host_caps",
-        lambda: HostCaps(family=family, available_families=(family, "cpu")),
-    )
-    monkeypatch.setattr(
-        OmniVoiceSubprocessBackend,
-        "is_available",
-        classmethod(lambda cls: (True, "ready")),
-    )
-
-    assert {item["id"] for item in list_backends()} == {
-        "omnivoice",
-        "omnivoice-subprocess",
-    }
+    _catalogue_host(monkeypatch, family, entries)
+    visible = {row["id"]: row for row in list_backends()}
+    assert visible.keys() == entries.keys()
 
 
 def test_mps_startup_does_not_preload_native_model(monkeypatch):
@@ -533,15 +506,14 @@ class _PlainBackend(SubprocessBackend):
         return ["multi"]
 
 
-def test_base_default_recv_timeout_covers_a_generation():
-    # A sidecar that does not choose gets a deadline that outlasts the
-    # wall-clock budget its own job was granted (#2103).
+def test_base_generate_deadline_is_the_generate_constant_not_the_ping_budget():
     from services.subprocess_backend import GENERATE_RECV_TIMEOUT_S
-    assert SubprocessBackend.recv_timeout_s == GENERATE_RECV_TIMEOUT_S == 600.0
-    assert _PlainBackend().recv_timeout_s == 600.0
-    # The ping budget itself is unchanged: health_check() still wants 60s.
-    assert RECV_TIMEOUT_S == 60.0
 
+    assert GENERATE_RECV_TIMEOUT_S == 600.0
+    assert _PlainBackend.recv_timeout_s == GENERATE_RECV_TIMEOUT_S
+    assert _PlainBackend().recv_timeout_s == GENERATE_RECV_TIMEOUT_S
+    assert SubprocessBackend.recv_timeout_s == GENERATE_RECV_TIMEOUT_S
+    assert RECV_TIMEOUT_S == 60.0
 
 def test_sidecar_spawn_delegates_all_containment_to_nested_owner(monkeypatch, tmp_path):
     from services import subprocess_backend as backend_module

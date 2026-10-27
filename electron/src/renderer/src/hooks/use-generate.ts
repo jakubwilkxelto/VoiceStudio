@@ -18,6 +18,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { throttle } from '@tanstack/react-pacer';
 import { toast } from 'sonner';
 import { ApiError, apiJson, describeError, isAbortError } from '@/lib/api/client';
+import { failureTopicOf } from '@shared/utils/failureCatalog';
 import { generateClone, sanitizeInstruct } from '@/lib/api/generate';
 import type {
   DesignRecipe,
@@ -58,7 +59,7 @@ export interface DesignGenerateInput {
   seed?: number;
   language?: string;
   profileId?: string | null;
-  /** Stored with the take so reopening it rebuilds the same draft (#2389). */
+  /** Draft to record alongside the take (display only; the audio ignores it). */
   recipe?: DesignRecipe;
 }
 
@@ -106,18 +107,17 @@ export interface UseGenerateClone {
    */
   designBlockerFor(profile: Profile | null | undefined): DesignBlocker;
   cloneBlocker: CloneBlocker;
-  /** How the active engine reads `instruct`: OmniVoice tags or as written (#2389). */
+  /** The active engine's reading of `instruct`; the OmniVoice tag list unless it says otherwise. */
   instructVocabulary: InstructVocabulary;
 }
 
-function failureTopic(err: unknown): string | null {
-  if (!(err instanceof ApiError) || !err.payload) return null;
-  const detail = err.payload.detail;
-  const topic =
-    typeof detail === 'object' && detail !== null
-      ? (detail as { docs_topic?: unknown }).docs_topic
-      : undefined;
-  return typeof topic === 'string' && topic ? topic : null;
+/** A saved voice carries its own transcript; send only a manual correction (#3192),
+ * so unchanged or blank text keeps the server's stored-transcript path. */
+export function manualProfileTranscript(
+  typed: string,
+  stored: string | null | undefined,
+): string | undefined {
+  return typed.trim() && typed !== (stored ?? '') ? typed : undefined;
 }
 
 function isModelNotDownloaded(err: unknown): boolean {
@@ -339,13 +339,11 @@ function useGenerateController(): UseGenerateClone {
         const free =
           design?.instruct ??
           (presetOnly && activeTts?.supports_voice_design === false ? '' : settings.instruct);
-        // Only OmniVoice's closed tag set needs reducing; other engines read
-        // the description natively and would lose whatever the sanitizer drops.
-        const instruct = !free.trim()
-          ? ''
-          : instructVocabulary === 'freeform'
-            ? free.trim()
-            : announceInstructWarnings(free);
+        // Only tag-list engines need the text filtered (with warnings); a
+        // free-form engine reads whatever was written.
+        const wording = free.trim();
+        let instruct = wording;
+        if (wording && instructVocabulary !== 'freeform') instruct = announceInstructWarnings(free);
         const input = {
           text: design?.text ?? settings.text,
           seed: design?.seed,
@@ -358,7 +356,17 @@ function useGenerateController(): UseGenerateClone {
               ? null
               : settings.selectedProfileId,
           refAudio: design || settings.selectedProfileId || presetOnly ? null : reference.file,
-          refText: design || presetOnly ? undefined : settings.refText,
+          refText:
+            design || presetOnly
+              ? undefined
+              : settings.selectedProfileId
+                ? manualProfileTranscript(
+                    settings.refText,
+                    queryClient
+                      .getQueryData<Profile[]>(queryKeys.profiles)
+                      ?.find((profile) => profile.id === settings.selectedProfileId)?.ref_text,
+                  )
+                : settings.refText,
           instruct,
           instructVocabulary,
           designRecipe: design?.recipe,
@@ -423,7 +431,7 @@ function useGenerateController(): UseGenerateClone {
       } catch (err) {
         if (!cancelledRef.current) {
           recordActionBreadcrumb(`generate:${reportMode}:error`);
-          setErrorTopic(failureTopic(err));
+          setErrorTopic(failureTopicOf(err) ?? null);
           setError(
             isAbortError(err)
               ? tr('tts_errors.timeout')

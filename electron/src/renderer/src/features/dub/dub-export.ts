@@ -1,3 +1,5 @@
+import { apiJson } from '@/lib/api/client';
+import { cueSourceId } from '@shared/utils/segments';
 export type DubExportFormat = 'mp4' | 'wav' | 'mp3' | 'srt' | 'vtt' | 'ass' | 'stems' | 'clips';
 export interface DubExportOptions {
   jobId: string;
@@ -88,4 +90,34 @@ export function restoreExportPreferences(raw: unknown): DubExportPreferences {
   if (['128', '192', '256', '320'].includes(String(value.bitrate)))
     result.bitrate = String(value.bitrate);
   return result;
+}
+
+interface TranscriptLine {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  text_original?: string;
+}
+/** Before any dub exists, exports read the job's stored transcript; send the
+ *  editor's lines first so the original video or subtitles carry the edits
+ *  (#3393). The backend refuses once a dub exists. */
+export function transcriptSyncBody(segments: readonly TranscriptLine[]) {
+  return {
+    segments: segments.map((segment) => ({
+      id: segment.id,
+      start: Math.max(0, segment.start),
+      end: Math.max(0, segment.end),
+      text: segment.text || '',
+      text_original: segment.text_original || undefined,
+      cue_source_id: cueSourceId(segment) ?? undefined,
+    })),
+  };
+}
+export async function syncDubTranscript(jobId: string, segments: readonly TranscriptLine[]) {
+  await apiJson('/dub/sync-transcript/' + encodeURIComponent(jobId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(transcriptSyncBody(segments)),
+  });
 }

@@ -5,11 +5,12 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { SecondarySidebar } from '@/components/workspace-sidebar';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { EngineNotice } from '@/components/engine-notice';
+import { DisabledReason, firstReason } from '@/components/disabled-reason';
 import { AgentFixButton } from '@/components/agent-fix-button';
 import { getBridge } from '@/components/bridge';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { hasCompleteTranslation, multiLangTargets } from '@shared/utils/multiLang';
-import { segmentGenInputs } from '@shared/utils/segments';
+import { castSpeakers, segmentGenInputs } from '@shared/utils/segments';
 import { clampSegmentEdit } from '@shared/utils/timeline';
 import { DubExportPanel } from './dub-export-panel';
 import { DubEmptyState } from './dub-empty-state';
@@ -19,6 +20,8 @@ import { DubTranslationPanel } from './dub-translation-panel';
 import { argosPackInstall, argosPackStatus, buildArgosPackRequest } from './argos-packs';
 import { dubSourceLanguage } from './source-language';
 import { DubTimeline } from './dub-timeline';
+import { TranscriptIssueNavigation } from './transcript-issue-navigation';
+import { getDubTranslationError } from './transcript-issues';
 import { PasteTranslation } from './paste-translation';
 import { GlossaryPanel } from './glossary-panel';
 import { SegmentFindBar } from './segment-find-bar';
@@ -30,6 +33,7 @@ import { CheckpointBanner, type CheckpointStage } from './checkpoint-banner';
 import { ConfirmDialog } from '../clone/confirm-dialog';
 import { useDubOnsets } from './use-dub-onsets';
 import { useDubLivePreview } from './use-dub-live-preview';
+import { formatSegmentTime, parseSegmentTimeField } from './segment-time-field';
 import { setDubFitOptions, setDubQuality, setDubProduction } from './dub-session';
 import { DEFAULT_REPAIR_AGENT_KEY } from '@/lib/repair-agent-events';
 import type { RepairAgentId, RepairAgentInfo } from '../../../../preload/index.d';
@@ -67,6 +71,7 @@ import {
   Undo2Icon,
   WandSparklesIcon,
   XIcon,
+  FolderOpenIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -118,6 +123,8 @@ import {
   applyDubQc,
   applyDubTranslationRows,
   assignDubSpeakerProfile,
+  nextDubSpeakerId,
+  setDubSegmentsSpeaker,
   dubSession,
   DUB_STOP_FAILED,
   DUB_AGENT_UNAVAILABLE,
@@ -197,6 +204,7 @@ export function DubPage() {
   const input = useRef<HTMLInputElement>(null);
   const cursors = useRef(new Map<string, number>());
   const mainScroll = useRef<HTMLDivElement>(null);
+  const mainScrollContent = useRef<HTMLDivElement>(null);
   const segmentList = useRef<HTMLDivElement>(null);
   const [segmentScrollMargin, setSegmentScrollMargin] = useState(0);
   const target = session.target;
@@ -218,6 +226,9 @@ export function DubPage() {
   const [pasteTranslationOpen, setPasteTranslationOpen] = useState(false);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [glossaryCount, setGlossaryCount] = useState(0);
+  const glossaryLabel = glossaryCount
+    ? t('dub.glossary_terms', { count: glossaryCount })
+    : t('dub.glossary_label');
   const [recoveringAsr, setRecoveringAsr] = useState(false);
   const [installingArgosPacks, setInstallingArgosPacks] = useState(false);
   const [translationAgents, setTranslationAgents] = useState<RepairAgentInfo[]>([]);
@@ -303,19 +314,37 @@ export function DubPage() {
     getItemKey: (index) => session.segments[index]?.id ?? index,
     scrollMargin: segmentScrollMargin,
   });
+  const selectTranscriptSegment = (id: string) => {
+    const index = session.segments.findIndex((segment) => segment.id === id);
+    if (index < 0) return;
+    setSelectedSegmentId(id);
+    // CSS smooth scrolling can interrupt distant jumps as virtual rows are measured.
+    requestAnimationFrame(() =>
+      segmentVirtualizer.scrollToIndex(index, { align: 'center', behavior: 'instant' }),
+    );
+  };
   useLayoutEffect(() => {
     const list = segmentList.current;
-    if (!list) return;
-    const measure = () => setSegmentScrollMargin(list.offsetTop);
+    const scroll = mainScroll.current;
+    const content = mainScrollContent.current;
+    if (!list || !scroll || !content) return;
+    // Measure in the virtualizer's scroll context, not an unrelated offset parent.
+    const measure = () =>
+      setSegmentScrollMargin(
+        list.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop,
+      );
     measure();
     const observer = new ResizeObserver(measure);
-    if (list.parentElement) observer.observe(list.parentElement);
+    observer.observe(scroll);
+    // Include recovery/error notices that can move the list without resizing the scrollport.
+    observer.observe(content);
     return () => observer.disconnect();
   }, [session.segments.length]);
   useLayoutEffect(() => {
     requestAnimationFrame(() => segmentVirtualizer.measure());
   }, [editingSegmentId, expandedSegmentId, segmentVirtualizer]);
   const code = translationTargetCode(target);
+  const speakers = useMemo(() => castSpeakers(session.segments) as string[], [session.segments]);
   const scrollToSegmentRow = useCallback(
     (row: number) => segmentVirtualizer.scrollToIndex(row, { align: 'center' }),
     [segmentVirtualizer],
@@ -399,11 +428,7 @@ export function DubPage() {
     (segment) => segment.translations && Object.keys(segment.translations).length > 0,
   );
   const failedTranslationCount = code
-    ? session.segments.filter(
-        (segment) =>
-          segment.translate_errors?.[code] ||
-          (!segment.translate_errors && segment.translate_error),
-      ).length
+    ? session.segments.filter((segment) => getDubTranslationError(segment, code)).length
     : 0;
   const canRestoreOriginal = session.segments.some(
     (segment) =>
@@ -540,15 +565,20 @@ export function DubPage() {
       )
         return;
       const key = event.key.toLowerCase();
+      const field = event.target;
       if (key === 'z') {
         // The find and replace inputs keep their own text undo.
-        if (isFindBarTarget(event.target)) return;
+        if (isFindBarTarget(field)) return;
+        // Other inputs keep their own undo; only segment text shares the transcript history.
+        const editing =
+          field instanceof HTMLElement &&
+          (field.matches('input, textarea') || field.isContentEditable);
+        if (editing && !(field instanceof HTMLTextAreaElement && field.dataset.segmentId)) return;
         event.preventDefault();
         if (event.shiftKey) redoDubEdit();
         else undoDubEdit();
         return;
       }
-      const field = event.target;
       if (!(field instanceof HTMLTextAreaElement)) return;
       const id = field.dataset.segmentId;
       if (!id) return;
@@ -754,7 +784,9 @@ export function DubPage() {
       if (skipped.length) toast.error(t('dub.multi_lang_skipped', { langs: skipped.join(', ') }));
       else
         toast.success(
-          t('dub.agent_translation_complete', { agent: selectedTranslationAgent.label }),
+          t('dub.agent_translation_complete', {
+            agent: selectedTranslationAgent.label,
+          }),
         );
       return;
     }
@@ -831,15 +863,17 @@ export function DubPage() {
     <div className="flex h-full min-h-0 flex-col">
       <WorkspaceHeader>
         <h1 className="text-sm font-medium">{t('dubWorkspace.title')}</h1>
-        <Link to="/projects" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-          {t('projects.title')}
-        </Link>
         <span
           className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
           title={session.filename}
         >
           {compactSourceLabel(session.filename)}
         </span>
+        {/* After the flexible source name, so the pane title is never followed by a lookalike. */}
+        <Link to="/projects" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+          <FolderOpenIcon />
+          {t('projects.title')}
+        </Link>
         {storyFromDub && (
           <Button
             variant="ghost"
@@ -1186,1138 +1220,1241 @@ export function DubPage() {
             disabled={busy || Boolean(session.recovery)}
           />
         </SecondarySidebar>
-        <section data-slot="dub-transcript" className="flex min-w-0 flex-1 flex-col">
+        <section data-slot="dub-transcript" className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {session.segments.length > 0 && (
+            <div
+              data-slot="dub-transcript-toolbar"
+              className="grid min-h-12 w-full min-w-0 shrink-0 isolate grid-cols-[auto_minmax(0,1fr)_auto] items-center overflow-hidden border-y border-border/60 px-2 py-1 shadow-sm max-[1100px]:grid-cols-[minmax(0,1fr)_auto]"
+              style={{ backgroundColor: 'var(--background)' }}
+            >
+              <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5">
+                <span className="shrink-0 rounded-md bg-muted/35 px-2 py-1 text-xs font-medium tabular-nums text-muted-foreground">
+                  {t('dub.segment_count', { count: session.segments.length })}
+                </span>
+                <Button
+                  data-slot="dub-live-preview-toggle"
+                  size="sm"
+                  variant={livePreviewEnabled ? 'secondary' : 'ghost'}
+                  aria-pressed={livePreviewEnabled}
+                  aria-label={t('dub.live_preview')}
+                  title={t('dub.live_preview_title')}
+                  disabled={busy || Boolean(session.recovery)}
+                  onClick={() => {
+                    const next = !livePreviewEnabled;
+                    setLivePreviewEnabled(next);
+                    setSegmentPreview(null);
+                    try {
+                      localStorage.setItem(LIVE_PREVIEW_KEY, next ? '1' : '0');
+                    } catch {
+                      // The toggle still applies for this session.
+                    }
+                  }}
+                >
+                  <HeadphonesIcon />
+                  <span className="hidden @5xl:inline">{t('dub.live_preview')}</span>
+                </Button>
+              </div>
+              <div className="contents">
+                {batchTargets.length > 1 && (
+                  <div className="col-start-3 row-start-1 ml-2 flex min-w-0 items-center gap-2 max-[1100px]:col-start-2">
+                    <span className="hidden text-xs text-muted-foreground @3xl:inline">
+                      {t('dub.target_language')}
+                    </span>
+                    <LanguagePicker
+                      value={target}
+                      options={batchTargets.map((item) => item.lang)}
+                      onValueChange={(language) => {
+                        const next = batchTargets.find((item) => item.lang === language);
+                        if (next) switchEditingLanguage(next);
+                      }}
+                      className="w-40 bg-muted/30 sm:w-48"
+                    />
+                    <span
+                      className="shrink-0 rounded-md bg-muted/40 px-2 py-1 text-xs tabular-nums text-muted-foreground"
+                      title={`${activeTranslatedCount}/${session.segments.length}`}
+                    >
+                      {activeTranslatedCount}/{session.segments.length}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-center gap-1 overflow-x-auto px-2 [scrollbar-width:none] max-[1100px]:col-span-2 max-[1100px]:col-start-1 max-[1100px]:row-start-2 max-[1100px]:mt-1 max-[1100px]:justify-start max-[1100px]:border-t max-[1100px]:border-border/50 max-[1100px]:pt-1 [&::-webkit-scrollbar]:hidden">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('projects.all')}
+                  title={t('projects.all')}
+                  aria-pressed={selectedSegmentIds.size === session.segments.length}
+                  onClick={() =>
+                    setSelectedSegmentIds((current) =>
+                      current.size === session.segments.length
+                        ? new Set()
+                        : new Set(session.segments.map((segment) => segment.id)),
+                    )
+                  }
+                >
+                  <CheckCheckIcon />
+                  {t('projects.all')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('segmentEditing.undo')}
+                  title={t('segmentEditing.undo')}
+                  disabled={busy || Boolean(session.recovery) || editHistory.undoDepth === 0}
+                  onClick={undoDubEdit}
+                >
+                  <Undo2Icon />
+                  <span className="hidden @6xl:inline">{t('segmentEditing.undo')}</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('segmentEditing.redo')}
+                  title={t('segmentEditing.redo')}
+                  disabled={busy || Boolean(session.recovery) || editHistory.redoDepth === 0}
+                  onClick={redoDubEdit}
+                >
+                  <Redo2Icon />
+                  <span className="hidden @6xl:inline">{t('segmentEditing.redo')}</span>
+                </Button>
+                {failedTranslationCount > 0 && code && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy || Boolean(session.recovery) || !translationReady}
+                    onClick={() =>
+                      void translateDub(code, provider?.id || 'argos', {
+                        retryFailed: true,
+                      })
+                    }
+                  >
+                    <RotateCcwIcon />
+                    {t('dub.retry_failed', {
+                      count: failedTranslationCount,
+                    })}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={pasteTranslationOpen ? 'secondary' : 'ghost'}
+                  disabled={busy || Boolean(session.recovery) || !code}
+                  aria-expanded={pasteTranslationOpen}
+                  aria-label={t('dub.paste_translation_btn')}
+                  title={t('dub.paste_translation_btn')}
+                  onClick={() => {
+                    setPasteTranslationOpen((open) => !open);
+                    setGlossaryOpen(false);
+                  }}
+                >
+                  <ClipboardPasteIcon />
+                  <span className="hidden @5xl:inline">{t('dub.paste_translation_btn')}</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant={glossaryOpen ? 'secondary' : 'ghost'}
+                  disabled={busy || Boolean(session.recovery) || !code || !session.jobId}
+                  aria-expanded={glossaryOpen}
+                  aria-label={glossaryLabel}
+                  title={glossaryLabel}
+                  onClick={() => {
+                    setGlossaryOpen((open) => !open);
+                    setPasteTranslationOpen(false);
+                  }}
+                >
+                  <BookOpenIcon />
+                  <span className="hidden @6xl:inline">{glossaryLabel}</span>
+                </Button>
+                <Menu.Root>
+                  <Menu.Trigger
+                    disabled={busy || Boolean(session.recovery)}
+                    aria-label={t('segmentEditing.more')}
+                    className={buttonVariants({
+                      variant: 'ghost',
+                      size: 'icon-sm',
+                    })}
+                  >
+                    {session.phase === 'cleaning' || session.phase === 'mirroring' ? (
+                      <LoaderCircleIcon className="animate-spin" />
+                    ) : (
+                      <MoreHorizontalIcon />
+                    )}
+                  </Menu.Trigger>
+                  <Menu.Portal>
+                    <Menu.Positioner sideOffset={6} align="end" className="z-50">
+                      <Menu.Popup className="min-w-52 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
+                        <Menu.Item
+                          disabled={!session.jobId}
+                          onClick={() =>
+                            void cleanupDubSegments()
+                              .then((removed) => {
+                                if (removed === null) {
+                                  toast.error(
+                                    t('dub_workflow.cleanup_failed', {
+                                      message: dubSession.state.error || t('common.error'),
+                                    }),
+                                  );
+                                  return;
+                                }
+                                const valid = new Set(
+                                  dubSession.state.segments.map((item) => item.id),
+                                );
+                                setSelectedSegmentIds(
+                                  (current) => new Set([...current].filter((id) => valid.has(id))),
+                                );
+                                toast.success(
+                                  removed
+                                    ? t('dub_workflow.cleaned', {
+                                        count: removed,
+                                      })
+                                    : t('dub_workflow.segments_clean'),
+                                );
+                              })
+                              .catch((error) =>
+                                toast.error(
+                                  t('dub_workflow.cleanup_failed', {
+                                    message: describeError(error),
+                                  }),
+                                ),
+                              )
+                          }
+                          className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
+                        >
+                          <WandSparklesIcon className="size-4" />
+                          {t('dub.clean_up')}
+                        </Menu.Item>
+                        <Menu.Item
+                          disabled={!session.jobId}
+                          onClick={() =>
+                            void mirrorDubSourceDelivery()
+                              .then((outcome) => {
+                                if (!outcome) {
+                                  toast.error(
+                                    t('dub_workflow.mirror_failed', {
+                                      message: dubSession.state.error || t('common.error'),
+                                    }),
+                                  );
+                                } else if (outcome.applied > 0) {
+                                  toast.success(
+                                    t('dub_workflow.mirror_applied', {
+                                      count: outcome.applied,
+                                    }),
+                                  );
+                                } else if (outcome.measured === 0) {
+                                  toast.info(t('dub_workflow.mirror_insufficient'));
+                                } else {
+                                  toast.info(t('dub_workflow.mirror_none'));
+                                }
+                              })
+                              .catch((error) =>
+                                toast.error(
+                                  t('dub_workflow.mirror_failed', {
+                                    message: describeError(error),
+                                  }),
+                                ),
+                              )
+                          }
+                          className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
+                        >
+                          <AudioWaveformIcon className="size-4" />
+                          {t('dub.mirror_delivery')}
+                        </Menu.Item>
+                        <Menu.Item
+                          disabled={!canRestoreOriginal}
+                          onClick={restoreDubSegments}
+                          className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
+                        >
+                          <RotateCcwIcon className="size-4" />
+                          {t('dub.restore')}
+                        </Menu.Item>
+                        {failedTranslationCount > 0 && code && (
+                          <Menu.Item
+                            onClick={() => skipFailedDubTranslations(code)}
+                            className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
+                          >
+                            <XIcon className="size-4" />
+                            {t('dub.skip_failed')}
+                          </Menu.Item>
+                        )}
+                      </Menu.Popup>
+                    </Menu.Positioner>
+                  </Menu.Portal>
+                </Menu.Root>
+                {session.phase === 'done' && session.tracks.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title={t('dub.qc_btn')}
+                    disabled={qcRunning || busy || Boolean(session.recovery)}
+                    aria-busy={qcRunning}
+                    onClick={() => void verifyDub()}
+                  >
+                    {qcRunning ? (
+                      <LoaderCircleIcon className="animate-spin" />
+                    ) : (
+                      <ShieldCheckIcon />
+                    )}
+                    {t('dub.verify')}
+                  </Button>
+                )}
+              </div>
+              <TranscriptIssueNavigation
+                segments={session.segments}
+                language={code}
+                selectedId={selectedSegmentId}
+                disabled={busy || Boolean(session.recovery)}
+                onSelect={selectTranscriptSegment}
+              />
+            </div>
+          )}
+          {session.segments.length > 0 && (
+            <div className="shrink-0 py-2 pl-6 pr-16">
+              <DubTimeline
+                segments={session.segments}
+                disabled={busy || Boolean(session.recovery)}
+                mediaDuration={session.duration}
+                onsets={timelineOnsets.onsets}
+                peaks={timelineOnsets.peaks}
+                previewingId={previewingSegmentId}
+                selectedId={selectedSegmentId}
+                onSelect={selectTranscriptSegment}
+                onPreviewSegment={(segment) => void previewDubSegment(segment)}
+              />
+            </div>
+          )}
+          {/* Leave the fixed right-edge agent launcher clear of transcript actions. */}
           <div
             ref={mainScroll}
+            data-slot="dub-transcript-scroll"
             className={cn(
-              'studio-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-5 scroll-smooth motion-reduce:scroll-auto',
-              session.segments.length > 0 ? 'pt-0' : 'pt-5',
+              // A floor for the segment list: toolbar, timeline and footer never squeeze it away.
+              'studio-scrollbar min-h-40 flex-1 overflow-y-auto overscroll-contain pb-5 pl-6 pr-16',
+              session.segments.length > 0 ? 'pt-3' : 'pt-5',
             )}
           >
-            {session.recovery && !busy && (
-              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-warning/20 bg-warning/5 p-3">
-                <div className="mr-auto min-w-48">
-                  <p className="text-sm font-medium">
-                    {session.asrModelMissing ? t('asr_missing.message') : t('dub.pipeline')}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {session.asrModelMissing && installedAsrModel
-                      ? `${installedAsrModel.label} · ${t('asr_missing.installed')}`
-                      : t(
-                          session.recovery === 'transcribing'
-                            ? 'dub.retry_transcription'
-                            : session.recovery === 'generating'
-                              ? 'dub_workflow.generating_dub'
-                              : 'dub.prep_preparing',
+            <div ref={mainScrollContent}>
+              {session.recovery && !busy && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-warning/20 bg-warning/5 p-3">
+                  <div className="mr-auto min-w-48">
+                    <p className="text-sm font-medium">
+                      {session.asrModelMissing ? t('asr_missing.message') : t('dub.pipeline')}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {session.asrModelMissing && installedAsrModel
+                        ? `${installedAsrModel.label} · ${t('asr_missing.installed')}`
+                        : t(
+                            session.recovery === 'transcribing'
+                              ? 'dub.retry_transcription'
+                              : session.recovery === 'generating'
+                                ? 'dub_workflow.generating_dub'
+                                : 'dub.prep_preparing',
+                          )}
+                    </p>
+                  </div>
+                  {session.asrModelMissing ? (
+                    installedAsrModel ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={recoveringAsr}
+                        onClick={() => void recoverWithInstalledAsr()}
+                      >
+                        {recoveringAsr && (
+                          <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
                         )}
-                  </p>
-                </div>
-                {session.asrModelMissing ? (
-                  installedAsrModel ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={recoveringAsr}
-                      onClick={() => void recoverWithInstalledAsr()}
-                    >
-                      {recoveringAsr && (
-                        <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
-                      )}
-                      {t('asr_missing.use', { label: installedAsrModel.label })}
-                    </Button>
+                        {t('asr_missing.use', {
+                          label: installedAsrModel.label,
+                        })}
+                      </Button>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          to="/settings/models/$family"
+                          params={{ family: 'asr' }}
+                          className={buttonVariants({
+                            variant: 'outline',
+                            size: 'sm',
+                          })}
+                        >
+                          {t('asr_missing.choose')}
+                        </Link>
+                        <AgentFixButton request="Restore local ASR readiness for this Dubbing job. Install and activate the best supported Faster-Whisper model through VoiceStudio's setup interfaces, preserve the prepared media, and leave transcription ready to retry." />
+                      </div>
+                    )
                   ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        to="/settings/models/$family"
-                        params={{ family: 'asr' }}
+                    <Button size="sm" variant="outline" onClick={() => void resumeDub()}>
+                      {t(session.recovery === 'transcribing' ? 'common.retry' : 'common.resume')}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => void cancelDub()}>
+                    {t('common.cancel')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      discardDubRecovery();
+                      input.current?.click();
+                    }}
+                  >
+                    {t('dub.change_file')}
+                  </Button>
+                </div>
+              )}
+              {errorMessage && (
+                <PipelineFailure
+                  className="mb-4"
+                  failure={session.failure}
+                  fallback={errorMessage}
+                  onDismiss={dismissDubError}
+                />
+              )}
+              {!session.segments.length && (!session.recovery || busy) && (
+                <DubEmptyState
+                  session={session}
+                  busy={busy}
+                  stage={stage}
+                  localPreview={
+                    localSource?.name === session.filename &&
+                    ['idle', 'preparing'].includes(session.phase)
+                      ? localSource.url
+                      : undefined
+                  }
+                  onChangeFile={() => input.current?.click()}
+                  demo={
+                    !demoDismissed && !busy ? (
+                      <DubbingDemo
+                        onTry={() => input.current?.click()}
+                        onEdit={async ({ path, filename }) => {
+                          try {
+                            const response = await apiFetch(path);
+                            const blob = await response.blob();
+                            startUpload(
+                              new File([blob], filename, {
+                                type: blob.type || 'video/mp4',
+                              }),
+                            );
+                          } catch (error) {
+                            toast.error(describeError(error));
+                          }
+                        }}
+                        onDismiss={() => {
+                          setDemoDismissed(true);
+                          try {
+                            localStorage.setItem('omnivoice.dubbingDemoDismissed', '1');
+                          } catch {
+                            // The demo still dismisses for this session when storage is unavailable.
+                          }
+                        }}
+                      />
+                    ) : undefined
+                  }
+                />
+              )}
+              <div className="w-full space-y-4">
+                {/* Find, the stage checkpoint and readiness share one slim strip, so the
+                    segment rows below stay on screen in a short window. */}
+                <div
+                  data-slot="dub-transcript-strip"
+                  className="divide-y divide-border/50 overflow-hidden rounded-lg border border-border/60 bg-muted/15 empty:hidden"
+                >
+                  {session.segments.length > 0 && (
+                    <SegmentFindBar
+                      {...find.bar}
+                      canReplace={find.bar.canReplace && !busy && !session.recovery}
+                      canReplaceAll={find.bar.canReplaceAll && !busy && !session.recovery}
+                      disabled={busy || Boolean(session.recovery)}
+                    />
+                  )}
+                  {showCheckpoint && checkpointStage && (
+                    <CheckpointBanner
+                      stage={checkpointStage}
+                      timingWarnings={
+                        session.segments.filter(
+                          (segment) => segment.fit_status?.status === 'overflows',
+                        ).length
+                      }
+                      disabled={
+                        checkpointStage === 'asr'
+                          ? !code || !translationReady
+                          : checkpointStage === 'translate'
+                            ? !code || ttsBlocker !== null
+                            : false
+                      }
+                      onContinue={
+                        checkpointStage === 'asr'
+                          ? () => void translateTargets()
+                          : checkpointStage === 'translate'
+                            ? () => void generateTargets()
+                            : undefined
+                      }
+                      onDismiss={() =>
+                        setDismissedCheckpoints((current) => new Set(current).add(checkpointId))
+                      }
+                    />
+                  )}
+                  <EngineNotice
+                    operation="dub"
+                    compact
+                    className="rounded-none border-0 bg-transparent"
+                  />
+                </div>
+                {pasteTranslationOpen && code && session.segments.length > 0 && (
+                  <PasteTranslation
+                    segments={session.segments}
+                    disabled={busy || Boolean(session.recovery)}
+                    onClose={() => setPasteTranslationOpen(false)}
+                    onApply={(rows) => applyDubTranslationRows(code, rows)}
+                  />
+                )}
+                {glossaryOpen && code && session.jobId && session.segments.length > 0 && (
+                  <GlossaryPanel
+                    projectId={session.jobId}
+                    sourceLang={
+                      dubSourceLanguage(session.sourceLanguage, session.sourceLang) || 'auto'
+                    }
+                    targetLang={code}
+                    segments={session.segments}
+                    disabled={busy || Boolean(session.recovery)}
+                    onCountChange={setGlossaryCount}
+                    onClose={() => setGlossaryOpen(false)}
+                  />
+                )}
+                {selectedSegmentIds.size > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-2.5">
+                    <span className="mr-auto flex items-center gap-2 px-1 text-sm font-medium text-primary">
+                      <CheckCheckIcon className="size-4" />
+                      {t('dub.selected_count', {
+                        count: selectedSegmentIds.size,
+                      })}
+                    </span>
+                    <Menu.Root>
+                      <Menu.Trigger
+                        disabled={busy || Boolean(session.recovery)}
                         className={buttonVariants({
                           variant: 'outline',
                           size: 'sm',
                         })}
                       >
-                        {t('asr_missing.choose')}
-                      </Link>
-                      <AgentFixButton request="Restore local ASR readiness for this Dubbing job. Install and activate the best supported Faster-Whisper model through VoiceStudio's setup interfaces, preserve the prepared media, and leave transcription ready to retry." />
-                    </div>
-                  )
-                ) : (
-                  <Button size="sm" variant="outline" onClick={() => void resumeDub()}>
-                    {t(session.recovery === 'transcribing' ? 'common.retry' : 'common.resume')}
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" onClick={() => void cancelDub()}>
-                  {t('common.cancel')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    discardDubRecovery();
-                    input.current?.click();
-                  }}
-                >
-                  {t('dub.change_file')}
-                </Button>
-              </div>
-            )}
-            {errorMessage && (
-              <PipelineFailure
-                className="mb-4"
-                failure={session.failure}
-                fallback={errorMessage}
-                onDismiss={dismissDubError}
-              />
-            )}
-            {!session.segments.length && (!session.recovery || busy) && (
-              <DubEmptyState
-                session={session}
-                busy={busy}
-                stage={stage}
-                localPreview={
-                  localSource?.name === session.filename &&
-                  ['idle', 'preparing'].includes(session.phase)
-                    ? localSource.url
-                    : undefined
-                }
-                onChangeFile={() => input.current?.click()}
-                demo={
-                  !demoDismissed && !busy ? (
-                    <DubbingDemo
-                      onTry={() => input.current?.click()}
-                      onEdit={async ({ path, filename }) => {
-                        try {
-                          const response = await apiFetch(path);
-                          const blob = await response.blob();
-                          startUpload(
-                            new File([blob], filename, {
-                              type: blob.type || 'video/mp4',
-                            }),
-                          );
-                        } catch (error) {
-                          toast.error(describeError(error));
-                        }
-                      }}
-                      onDismiss={() => {
-                        setDemoDismissed(true);
-                        try {
-                          localStorage.setItem('omnivoice.dubbingDemoDismissed', '1');
-                        } catch {
-                          // The demo still dismisses for this session when storage is unavailable.
-                        }
-                      }}
-                    />
-                  ) : undefined
-                }
-              />
-            )}
-            <div className="w-full space-y-4">
-              {session.segments.length > 0 && (
-                <div
-                  className="sticky top-0 z-30 -mx-6 grid min-h-12 w-[calc(100%+3rem)] min-w-0 isolate grid-cols-[auto_minmax(0,1fr)_auto] items-center overflow-hidden border-y border-border/60 px-2 py-1 shadow-sm max-[1100px]:grid-cols-[minmax(0,1fr)_auto]"
-                  style={{ backgroundColor: 'var(--background)' }}
-                >
-                  <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5">
-                    <span className="shrink-0 rounded-md bg-muted/35 px-2 py-1 text-xs font-medium tabular-nums text-muted-foreground">
-                      {session.segments.length} {t('dub.segments')}
-                    </span>
-                    <Button
-                      data-slot="dub-live-preview-toggle"
-                      size="sm"
-                      variant={livePreviewEnabled ? 'secondary' : 'ghost'}
-                      aria-pressed={livePreviewEnabled}
-                      aria-label={t('dub.live_preview')}
-                      title={t('dub.live_preview_title')}
-                      disabled={busy || Boolean(session.recovery)}
-                      onClick={() => {
-                        const next = !livePreviewEnabled;
-                        setLivePreviewEnabled(next);
-                        setSegmentPreview(null);
-                        try {
-                          localStorage.setItem(LIVE_PREVIEW_KEY, next ? '1' : '0');
-                        } catch {
-                          // The toggle still applies for this session.
-                        }
-                      }}
-                    >
-                      <HeadphonesIcon />
-                      <span className="hidden @5xl:inline">{t('dub.live_preview')}</span>
-                    </Button>
-                  </div>
-                  <div className="contents">
-                    {batchTargets.length > 1 && (
-                      <div className="col-start-3 row-start-1 ml-2 flex min-w-0 items-center gap-2 max-[1100px]:col-start-2">
-                        <span className="hidden text-xs text-muted-foreground @3xl:inline">
-                          {t('dub.target_language')}
-                        </span>
-                        <LanguagePicker
-                          value={target}
-                          options={batchTargets.map((item) => item.lang)}
-                          onValueChange={(language) => {
-                            const next = batchTargets.find((item) => item.lang === language);
-                            if (next) switchEditingLanguage(next);
-                          }}
-                          className="w-40 bg-muted/30 sm:w-48"
-                        />
-                        <span
-                          className="shrink-0 rounded-md bg-muted/40 px-2 py-1 text-xs tabular-nums text-muted-foreground"
-                          title={`${activeTranslatedCount}/${session.segments.length}`}
-                        >
-                          {activeTranslatedCount}/{session.segments.length}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-center gap-1 overflow-x-auto px-2 [scrollbar-width:none] max-[1100px]:col-span-2 max-[1100px]:col-start-1 max-[1100px]:row-start-2 max-[1100px]:mt-1 max-[1100px]:justify-start max-[1100px]:border-t max-[1100px]:border-border/50 max-[1100px]:pt-1 [&::-webkit-scrollbar]:hidden">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t('projects.all')}
-                      title={t('projects.all')}
-                      aria-pressed={selectedSegmentIds.size === session.segments.length}
-                      onClick={() =>
-                        setSelectedSegmentIds((current) =>
-                          current.size === session.segments.length
-                            ? new Set()
-                            : new Set(session.segments.map((segment) => segment.id)),
-                        )
-                      }
-                    >
-                      <CheckCheckIcon />
-                      {t('projects.all')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t('segmentEditing.undo')}
-                      title={t('segmentEditing.undo')}
-                      disabled={busy || Boolean(session.recovery) || editHistory.undoDepth === 0}
-                      onClick={undoDubEdit}
-                    >
-                      <Undo2Icon />
-                      <span className="hidden @6xl:inline">{t('segmentEditing.undo')}</span>
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t('segmentEditing.redo')}
-                      title={t('segmentEditing.redo')}
-                      disabled={busy || Boolean(session.recovery) || editHistory.redoDepth === 0}
-                      onClick={redoDubEdit}
-                    >
-                      <Redo2Icon />
-                      <span className="hidden @6xl:inline">{t('segmentEditing.redo')}</span>
-                    </Button>
-                    {failedTranslationCount > 0 && code && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={busy || Boolean(session.recovery) || !translationReady}
-                        onClick={() =>
-                          void translateDub(code, provider?.id || 'argos', {
-                            retryFailed: true,
-                          })
-                        }
-                      >
-                        <RotateCcwIcon />
-                        {t('dub.retry_failed', {
-                          count: failedTranslationCount,
-                        })}
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant={pasteTranslationOpen ? 'secondary' : 'ghost'}
-                      disabled={busy || Boolean(session.recovery) || !code}
-                      aria-expanded={pasteTranslationOpen}
-                      aria-label={t('dub.paste_translation_btn')}
-                      title={t('dub.paste_translation_btn')}
-                      onClick={() => {
-                        setPasteTranslationOpen((open) => !open);
-                        setGlossaryOpen(false);
-                      }}
-                    >
-                      <ClipboardPasteIcon />
-                      <span className="hidden @5xl:inline">{t('dub.paste_translation_btn')}</span>
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={glossaryOpen ? 'secondary' : 'ghost'}
-                      disabled={busy || Boolean(session.recovery) || !code || !session.jobId}
-                      aria-expanded={glossaryOpen}
-                      aria-label={t('dub.glossary_btn', {
-                        count: glossaryCount,
-                      })}
-                      title={t('dub.glossary_btn', { count: glossaryCount })}
-                      onClick={() => {
-                        setGlossaryOpen((open) => !open);
-                        setPasteTranslationOpen(false);
-                      }}
-                    >
-                      <BookOpenIcon />
-                      <span className="hidden @6xl:inline">
-                        {t('dub.glossary_btn', { count: glossaryCount })}
-                      </span>
-                    </Button>
-                    <Menu.Root>
-                      <Menu.Trigger
-                        disabled={busy || Boolean(session.recovery)}
-                        aria-label={t('segmentEditing.more')}
-                        className={buttonVariants({
-                          variant: 'ghost',
-                          size: 'icon-sm',
-                        })}
-                      >
-                        {session.phase === 'cleaning' || session.phase === 'mirroring' ? (
-                          <LoaderCircleIcon className="animate-spin" />
-                        ) : (
-                          <MoreHorizontalIcon />
-                        )}
+                        {t('dub.set_voice')}
+                        <ChevronDownIcon />
                       </Menu.Trigger>
                       <Menu.Portal>
                         <Menu.Positioner sideOffset={6} align="end" className="z-50">
-                          <Menu.Popup className="min-w-52 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
+                          <Menu.Popup className="max-h-72 min-w-52 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
                             <Menu.Item
-                              disabled={!session.jobId}
                               onClick={() =>
-                                void cleanupDubSegments()
-                                  .then((removed) => {
-                                    if (removed === null) {
-                                      toast.error(
-                                        t('dub_workflow.cleanup_failed', {
-                                          message: dubSession.state.error || t('common.error'),
-                                        }),
-                                      );
-                                      return;
-                                    }
-                                    const valid = new Set(
-                                      dubSession.state.segments.map((item) => item.id),
-                                    );
-                                    setSelectedSegmentIds(
-                                      (current) =>
-                                        new Set([...current].filter((id) => valid.has(id))),
-                                    );
-                                    toast.success(
-                                      removed
-                                        ? t('dub_workflow.cleaned', {
-                                            count: removed,
-                                          })
-                                        : t('dub_workflow.segments_clean'),
-                                    );
-                                  })
-                                  .catch((error) =>
-                                    toast.error(
-                                      t('dub_workflow.cleanup_failed', {
-                                        message: describeError(error),
-                                      }),
-                                    ),
-                                  )
+                                editDubSegments(selectedSegmentIds, {
+                                  profile_id: undefined,
+                                })
                               }
-                              className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
-                            >
-                              <WandSparklesIcon className="size-4" />
-                              {t('dub.clean_up')}
-                            </Menu.Item>
-                            <Menu.Item
-                              disabled={!session.jobId}
-                              onClick={() =>
-                                void mirrorDubSourceDelivery()
-                                  .then((outcome) => {
-                                    if (!outcome) {
-                                      toast.error(
-                                        t('dub_workflow.mirror_failed', {
-                                          message: dubSession.state.error || t('common.error'),
-                                        }),
-                                      );
-                                    } else if (outcome.applied) {
-                                      toast.success(
-                                        t('dub_workflow.mirror_applied', {
-                                          count: outcome.applied,
-                                        }),
-                                      );
-                                    } else if (!outcome.measured) {
-                                      toast.info(t('dub_workflow.mirror_insufficient'));
-                                    } else {
-                                      toast.info(t('dub_workflow.mirror_none'));
-                                    }
-                                  })
-                                  .catch((error) =>
-                                    toast.error(
-                                      t('dub_workflow.mirror_failed', {
-                                        message: describeError(error),
-                                      }),
-                                    ),
-                                  )
-                              }
-                              className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
-                            >
-                              <AudioWaveformIcon className="size-4" />
-                              {t('dub.mirror_delivery')}
-                            </Menu.Item>
-                            <Menu.Item
-                              disabled={!canRestoreOriginal}
-                              onClick={restoreDubSegments}
-                              className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
+                              className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
                             >
                               <RotateCcwIcon className="size-4" />
-                              {t('dub.restore')}
+                              {t('dub.clear_voice')}
                             </Menu.Item>
-                            {failedTranslationCount > 0 && code && (
+                            {profiles.data?.map((profile) => (
                               <Menu.Item
-                                onClick={() => skipFailedDubTranslations(code)}
-                                className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
+                                key={profile.id}
+                                onClick={() =>
+                                  editDubSegments(selectedSegmentIds, {
+                                    profile_id: profile.id,
+                                  })
+                                }
+                                className="cursor-default rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
                               >
-                                <XIcon className="size-4" />
-                                {t('dub.skip_failed')}
+                                {profile.name}
                               </Menu.Item>
-                            )}
+                            ))}
                           </Menu.Popup>
                         </Menu.Positioner>
                       </Menu.Portal>
                     </Menu.Root>
-                    {session.phase === 'done' && session.tracks.length > 0 && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title={t('dub.qc_btn')}
-                        disabled={qcRunning || busy || Boolean(session.recovery)}
-                        aria-busy={qcRunning}
-                        onClick={() => void verifyDub()}
+                    <Menu.Root>
+                      <Menu.Trigger
+                        disabled={busy || Boolean(session.recovery)}
+                        className={buttonVariants({
+                          variant: 'outline',
+                          size: 'sm',
+                        })}
                       >
-                        {qcRunning ? (
-                          <LoaderCircleIcon className="animate-spin" />
-                        ) : (
-                          <ShieldCheckIcon />
-                        )}
-                        {t('dub.verify')}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-              {session.segments.length > 0 && (
-                <SegmentFindBar
-                  {...find.bar}
-                  canReplace={find.bar.canReplace && !busy && !session.recovery}
-                  canReplaceAll={find.bar.canReplaceAll && !busy && !session.recovery}
-                  disabled={busy || Boolean(session.recovery)}
-                />
-              )}
-              {showCheckpoint && checkpointStage && (
-                <CheckpointBanner
-                  stage={checkpointStage}
-                  timingWarnings={
-                    session.segments.filter((segment) => segment.fit_status?.status === 'overflows')
-                      .length
-                  }
-                  disabled={
-                    checkpointStage === 'asr'
-                      ? !code || !translationReady
-                      : checkpointStage === 'translate'
-                        ? !code || ttsBlocker !== null
-                        : false
-                  }
-                  onContinue={
-                    checkpointStage === 'asr'
-                      ? () => void translateTargets()
-                      : checkpointStage === 'translate'
-                        ? () => void generateTargets()
-                        : undefined
-                  }
-                  onDismiss={() =>
-                    setDismissedCheckpoints((current) => new Set(current).add(checkpointId))
-                  }
-                />
-              )}
-              {pasteTranslationOpen && code && session.segments.length > 0 && (
-                <PasteTranslation
-                  segments={session.segments}
-                  disabled={busy || Boolean(session.recovery)}
-                  onClose={() => setPasteTranslationOpen(false)}
-                  onApply={(rows) => applyDubTranslationRows(code, rows)}
-                />
-              )}
-              {glossaryOpen && code && session.jobId && session.segments.length > 0 && (
-                <GlossaryPanel
-                  projectId={session.jobId}
-                  sourceLang={
-                    dubSourceLanguage(session.sourceLanguage, session.sourceLang) || 'auto'
-                  }
-                  targetLang={code}
-                  segments={session.segments}
-                  disabled={busy || Boolean(session.recovery)}
-                  onCountChange={setGlossaryCount}
-                  onClose={() => setGlossaryOpen(false)}
-                />
-              )}
-              {selectedSegmentIds.size > 0 && (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-2.5">
-                  <span className="mr-auto flex items-center gap-2 px-1 text-sm font-medium text-primary">
-                    <CheckCheckIcon className="size-4" />
-                    {t('dub.selected_count', {
-                      count: selectedSegmentIds.size,
-                    })}
-                  </span>
-                  <Menu.Root>
-                    <Menu.Trigger
-                      disabled={busy || Boolean(session.recovery)}
-                      className={buttonVariants({
-                        variant: 'outline',
-                        size: 'sm',
-                      })}
-                    >
-                      {t('dub.set_voice')}
-                      <ChevronDownIcon />
-                    </Menu.Trigger>
-                    <Menu.Portal>
-                      <Menu.Positioner sideOffset={6} align="end" className="z-50">
-                        <Menu.Popup className="max-h-72 min-w-52 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
-                          <Menu.Item
-                            onClick={() =>
-                              editDubSegments(selectedSegmentIds, {
-                                profile_id: undefined,
-                              })
-                            }
-                            className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
-                          >
-                            <RotateCcwIcon className="size-4" />
-                            {t('dub.clear_voice')}
-                          </Menu.Item>
-                          {profiles.data?.map((profile) => (
+                        {t('dub.set_speaker')}
+                        <ChevronDownIcon />
+                      </Menu.Trigger>
+                      <Menu.Portal>
+                        <Menu.Positioner sideOffset={6} align="end" className="z-50">
+                          <Menu.Popup className="max-h-72 min-w-52 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
+                            {speakers.map((speaker) => (
+                              <Menu.Item
+                                key={speaker}
+                                onClick={() => setDubSegmentsSpeaker(selectedSegmentIds, speaker)}
+                                className="cursor-default rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
+                              >
+                                {speaker}
+                              </Menu.Item>
+                            ))}
                             <Menu.Item
-                              key={profile.id}
                               onClick={() =>
-                                editDubSegments(selectedSegmentIds, {
-                                  profile_id: profile.id,
-                                })
+                                setDubSegmentsSpeaker(
+                                  selectedSegmentIds,
+                                  nextDubSpeakerId(session.segments),
+                                )
                               }
-                              className="cursor-default rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
+                              className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
                             >
-                              {profile.name}
+                              <PlusIcon className="size-4" />
+                              {t('dub.new_speaker')}
                             </Menu.Item>
-                          ))}
-                        </Menu.Popup>
-                      </Menu.Positioner>
-                    </Menu.Portal>
-                  </Menu.Root>
-                  <EngineLanguagePicker
-                    operation="dub"
-                    value={t('dub.set_lang')}
-                    options={targetOptions}
-                    disabled={busy || Boolean(session.recovery)}
-                    onValueChange={(language) => {
-                      const langCode = translationTargetCode(language);
-                      if (langCode)
+                          </Menu.Popup>
+                        </Menu.Positioner>
+                      </Menu.Portal>
+                    </Menu.Root>
+                    <EngineLanguagePicker
+                      operation="dub"
+                      value={t('dub.set_lang')}
+                      options={targetOptions}
+                      disabled={busy || Boolean(session.recovery)}
+                      onValueChange={(language) => {
+                        const langCode = translationTargetCode(language);
+                        if (langCode)
+                          editDubSegments(selectedSegmentIds, {
+                            target_lang: langCode,
+                          });
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy || Boolean(session.recovery)}
+                      onClick={() =>
                         editDubSegments(selectedSegmentIds, {
-                          target_lang: langCode,
-                        });
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy || Boolean(session.recovery)}
-                    onClick={() =>
-                      editDubSegments(selectedSegmentIds, {
-                        target_lang: undefined,
-                      })
-                    }
+                          target_lang: undefined,
+                        })
+                      }
+                    >
+                      <RotateCcwIcon />
+                      {t('dub.default_lang')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy || Boolean(session.recovery)}
+                      onClick={() => {
+                        deleteDubSegments(selectedSegmentIds);
+                        setSelectedSegmentIds(new Set());
+                      }}
+                    >
+                      <Trash2Icon />
+                      {t('dub.delete_selected')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSelectedSegmentIds(new Set())}
+                    >
+                      <XIcon />
+                      {t('dub.clear_selection')}
+                    </Button>
+                  </div>
+                )}
+                {session.segments.length > 0 && (
+                  <div
+                    ref={segmentList}
+                    className="relative w-full"
+                    style={{ height: segmentVirtualizer.getTotalSize() }}
                   >
-                    <RotateCcwIcon />
-                    {t('dub.default_lang')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy || Boolean(session.recovery)}
-                    onClick={() => {
-                      deleteDubSegments(selectedSegmentIds);
-                      setSelectedSegmentIds(new Set());
-                    }}
-                  >
-                    <Trash2Icon />
-                    {t('dub.delete_selected')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setSelectedSegmentIds(new Set())}
-                  >
-                    <XIcon />
-                    {t('dub.clear_selection')}
-                  </Button>
-                </div>
-              )}
-              {session.segments.length > 0 && (
-                <DubTimeline
-                  segments={session.segments}
-                  disabled={busy || Boolean(session.recovery)}
-                  mediaDuration={session.duration}
-                  onsets={timelineOnsets.onsets}
-                  peaks={timelineOnsets.peaks}
-                  previewingId={previewingSegmentId}
-                  selectedId={selectedSegmentId}
-                  onSelect={(id) => {
-                    setSelectedSegmentId(id);
-                    const index = session.segments.findIndex((segment) => segment.id === id);
-                    if (index >= 0)
-                      requestAnimationFrame(() =>
-                        segmentVirtualizer.scrollToIndex(index, {
-                          align: 'center',
-                        }),
-                      );
-                  }}
-                  onPreviewSegment={(segment) => void previewDubSegment(segment)}
-                />
-              )}
-              {session.segments.length > 0 && (
-                <div
-                  ref={segmentList}
-                  className="relative w-full"
-                  style={{ height: segmentVirtualizer.getTotalSize() }}
-                >
-                  {segmentVirtualizer.getVirtualItems().map((row) => {
-                    const index = row.index;
-                    const segment = session.segments[index];
-                    if (!segment) return null;
-                    return (
-                      <div
-                        key={row.key}
-                        ref={segmentVirtualizer.measureElement}
-                        data-index={row.index}
-                        className="absolute top-0 left-0 w-full [contain:layout_style] [will-change:transform]"
-                        style={{
-                          transform: `translate3d(0, ${row.start - segmentScrollMargin}px, 0)`,
-                        }}
-                      >
-                        <article
-                          data-dub-row-id={segment.id}
-                          onFocusCapture={() => setSelectedSegmentId(segment.id)}
-                          className={cn(
-                            'group/segment relative isolate grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 px-2 py-3.5 transition-[background-color,box-shadow] after:pointer-events-none after:absolute after:right-2 after:bottom-0 after:left-[4.25rem] after:h-px after:bg-gradient-to-r after:from-border/65 after:via-border/35 after:to-transparent after:transition-opacity hover:bg-muted/[0.12] hover:after:opacity-100 focus-within:bg-muted/[0.16] focus-within:after:from-primary/45',
-                            selectedSegmentId === segment.id &&
-                              'bg-primary/[0.05] shadow-[inset_2px_0_0_color-mix(in_oklab,var(--primary)_55%,transparent)] after:from-primary/55 after:via-primary/20',
-                          )}
+                    {segmentVirtualizer.getVirtualItems().map((row) => {
+                      const index = row.index;
+                      const segment = session.segments[index];
+                      if (!segment) return null;
+                      const translationError = getDubTranslationError(segment, code);
+                      return (
+                        <div
+                          key={row.key}
+                          ref={segmentVirtualizer.measureElement}
+                          data-index={row.index}
+                          className="absolute top-0 left-0 w-full [contain:layout_style] [will-change:transform]"
+                          style={{
+                            transform: `translate3d(0, ${row.start - segmentScrollMargin}px, 0)`,
+                          }}
                         >
-                          <div
+                          <article
+                            data-dub-row-id={segment.id}
+                            aria-current={selectedSegmentId === segment.id ? 'true' : undefined}
+                            onFocusCapture={() => setSelectedSegmentId(segment.id)}
                             className={cn(
-                              'flex items-start gap-1.5 pt-1 font-mono text-[11px] text-muted-foreground/55 transition-colors group-hover/segment:text-muted-foreground/75 group-focus-within/segment:text-muted-foreground',
-                              selectedSegmentId === segment.id && 'text-muted-foreground/90',
+                              'group/segment relative isolate grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 px-2 py-3.5 transition-[background-color,box-shadow] after:pointer-events-none after:absolute after:right-2 after:bottom-0 after:left-[4.25rem] after:h-px after:bg-gradient-to-r after:from-border/65 after:via-border/35 after:to-transparent after:transition-opacity hover:bg-muted/[0.12] hover:after:opacity-100 focus-within:bg-muted/[0.16] focus-within:after:from-primary/45',
+                              selectedSegmentId === segment.id &&
+                                'bg-primary/[0.05] shadow-[inset_2px_0_0_color-mix(in_oklab,var(--primary)_55%,transparent)] after:from-primary/55 after:via-primary/20',
                             )}
                           >
-                            <input
-                              type="checkbox"
-                              checked={selectedSegmentIds.has(segment.id)}
-                              disabled={busy || Boolean(session.recovery)}
-                              aria-label={`${t('modelSettings.select')} ${index + 1}`}
-                              className="mt-0.5 size-4 accent-primary"
-                              onChange={() =>
-                                setSelectedSegmentIds((current) => {
-                                  const next = new Set(current);
-                                  if (next.has(segment.id)) next.delete(segment.id);
-                                  else next.add(segment.id);
-                                  return next;
-                                })
-                              }
-                            />
-                            <span>{segmentTimeLabel(segment.start)}</span>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex min-h-6 min-w-0 items-center gap-1">
-                              <Button
-                                data-segment-options-trigger
-                                size="sm"
-                                variant="ghost"
-                                className={cn(
-                                  'h-6 min-w-0 max-w-[14rem] justify-start px-1 text-[11px] font-medium tracking-[0.01em] text-muted-foreground/55 hover:text-foreground group-hover/segment:text-muted-foreground/75 group-focus-within/segment:text-foreground/85',
-                                  selectedSegmentId === segment.id && 'text-foreground/85',
-                                )}
-                                aria-expanded={expandedSegmentId === segment.id}
-                                aria-controls={`dub-segment-options-${index}`}
-                                onClick={() => {
-                                  setExpandedSegmentId((current) =>
-                                    current === segment.id ? null : segment.id,
-                                  );
-                                  requestAnimationFrame(() => segmentVirtualizer.measure());
-                                }}
-                              >
-                                <ChevronDownIcon
-                                  className={cn(
-                                    'size-3.5 transition-transform',
-                                    expandedSegmentId === segment.id && 'rotate-180',
-                                  )}
-                                />
-                                <span className="truncate">
-                                  {segment.speaker_id || t('clone.voice_source')} &middot;{' '}
-                                  {profiles.data?.find(
-                                    (profile) => profile.id === segment.profile_id,
-                                  )?.name ||
-                                    (segment.profile_id?.startsWith('auto:')
-                                      ? t('clone.auto')
-                                      : segment.profile_id) ||
-                                    t('clone.auto')}
-                                </span>
-                              </Button>
-                              {segment.text_original && segment.text_original !== segment.text ? (
-                                <p
-                                  className={cn(
-                                    'min-w-0 flex-1 px-1 text-xs text-muted-foreground/50 transition-colors group-hover/segment:text-muted-foreground/70 group-focus-within/segment:text-foreground/70',
-                                    selectedSegmentId === segment.id && 'text-foreground/72',
-                                    // Show the whole line while it holds the active find hit.
-                                    find.holdsActive(segment.id, 'text_original')
-                                      ? 'break-words'
-                                      : 'truncate',
-                                  )}
-                                  title={segment.text_original}
-                                  dir="auto"
-                                >
-                                  <HighlightedText
-                                    text={segment.text_original}
-                                    query={find.query}
-                                    {...find.activeRange(segment.id, 'text_original')}
-                                  />
-                                </p>
-                              ) : (
-                                <span className="min-w-0 flex-1" />
+                            <div
+                              className={cn(
+                                'flex items-start gap-1.5 pt-1 font-mono text-[11px] text-muted-foreground/55 transition-colors group-hover/segment:text-muted-foreground/75 group-focus-within/segment:text-muted-foreground',
+                                selectedSegmentId === segment.id && 'text-muted-foreground/90',
                               )}
-                              {(segment.translate_error ||
-                                segment.translate_degraded ||
-                                segment.plan?.status === 'tight' ||
-                                segment.plan?.status === 'impossible' ||
-                                segment.fit_status?.status === 'overflows') && (
-                                <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
-                                  {segment.translate_error && (
-                                    <span
-                                      className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
-                                      title={t('segment.translate_error_title', {
-                                        error: segment.translate_error,
-                                      })}
-                                    >
-                                      <AlertCircleIcon className="size-3" />
-                                      {t('common.error')}
-                                    </span>
-                                  )}
-                                  {segment.translate_degraded && (
-                                    <span
-                                      className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning"
-                                      title={t('segment.translate_degraded_title', {
-                                        reason: segment.translate_degraded,
-                                      })}
-                                    >
-                                      <AlertCircleIcon className="size-3" />
-                                      {t('dub.fast_quality')}
-                                    </span>
-                                  )}
-                                  {segment.plan?.status === 'tight' && (
-                                    <span
-                                      className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning"
-                                      title={t('segment.plan_tight_title', {
-                                        est: segment.plan.est_dur_s.toFixed(1),
-                                        avail: segment.plan.available_s.toFixed(1),
-                                      })}
-                                    >
-                                      <Clock3Icon className="size-3" />
-                                      {t('segment.plan_tight')}
-                                    </span>
-                                  )}
-                                  {segment.plan?.status === 'impossible' && (
-                                    <span
-                                      className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
-                                      title={t('segment.plan_impossible_title', {
-                                        est: segment.plan.est_dur_s.toFixed(1),
-                                        avail: segment.plan.available_s.toFixed(1),
-                                        seconds: segment.plan.est_overrun_s.toFixed(1),
-                                      })}
-                                    >
-                                      <AlertCircleIcon className="size-3" />
-                                      {t('segment.plan_impossible', {
-                                        seconds: segment.plan.est_overrun_s.toFixed(1),
-                                      })}
-                                    </span>
-                                  )}
-                                  {segment.fit_status?.status === 'overflows' && (
-                                    <span
-                                      className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
-                                      title={t('segment.fit_overflows_title', {
-                                        seconds: (segment.fit_status.overflow_s || 0).toFixed(1),
-                                      })}
-                                    >
-                                      <ScissorsIcon className="size-3" />
-                                      {t('segment.fit_overflows', {
-                                        seconds: (segment.fit_status.overflow_s || 0).toFixed(1),
-                                      })}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              {segment.qc_flagged && (
-                                <span
-                                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning"
-                                  title={segment.qc_recognized || t('dub.qc_btn')}
-                                >
-                                  <AlertCircleIcon className="size-3" />
-                                  {t('dub.verify')}
-                                </span>
-                              )}
-                              <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/segment:opacity-100 group-focus-within/segment:opacity-100">
-                                <Button
-                                  size="icon-xs"
-                                  variant="ghost"
-                                  disabled={
-                                    busy ||
-                                    Boolean(session.recovery) ||
-                                    (!livePreviewEnabled && Boolean(previewingSegmentId))
-                                  }
-                                  aria-label={t('dub.live_preview')}
-                                  aria-busy={
-                                    previewingSegmentId === segment.id ||
-                                    livePreview.liveSegmentId === segment.id
-                                  }
-                                  aria-pressed={livePreview.liveSegmentId === segment.id}
-                                  className={cn(
-                                    livePreview.liveSegmentId === segment.id &&
-                                      'bg-primary/10 text-primary',
-                                  )}
-                                  onClick={() =>
-                                    livePreviewEnabled
-                                      ? livePreview.onToggle(segment)
-                                      : void previewDubSegment(segment)
-                                  }
-                                >
-                                  {previewingSegmentId === segment.id ||
-                                  livePreview.liveSegmentId === segment.id ? (
-                                    <LoaderCircleIcon className="animate-spin" />
-                                  ) : (
-                                    <HeadphonesIcon />
-                                  )}
-                                </Button>
-                                <Menu.Root>
-                                  <Menu.Trigger
-                                    disabled={busy || Boolean(session.recovery)}
-                                    aria-label={t('segmentEditing.more')}
-                                    className={buttonVariants({
-                                      variant: 'ghost',
-                                      size: 'icon-xs',
-                                    })}
-                                  >
-                                    <MoreHorizontalIcon />
-                                  </Menu.Trigger>
-                                  <Menu.Portal>
-                                    <Menu.Positioner sideOffset={6} align="end" className="z-50">
-                                      <Menu.Popup className="min-w-52 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
-                                        <Menu.Item
-                                          disabled={segment.text.trim().length < 2}
-                                          onClick={() => splitAtCursor(segment.id, segment.text)}
-                                          className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
-                                        >
-                                          <ScissorsIcon className="size-4" />
-                                          {t('segmentEditing.split')}
-                                        </Menu.Item>
-                                        <Menu.Item
-                                          disabled={index === 0}
-                                          onClick={() => mergeDubSegment(segment.id, 'prev')}
-                                          className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
-                                        >
-                                          <MergeIcon className="size-4" />
-                                          {t('segmentEditing.mergePrevious')}
-                                        </Menu.Item>
-                                        <Menu.Item
-                                          disabled={index === session.segments.length - 1}
-                                          onClick={() => mergeDubSegment(segment.id)}
-                                          className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
-                                        >
-                                          <MergeIcon className="size-4" />
-                                          {t('segmentEditing.mergeNext')}
-                                        </Menu.Item>
-                                        <Menu.Item
-                                          onClick={() => insertDubSegment(segment.id)}
-                                          className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
-                                        >
-                                          <PlusIcon className="size-4" />
-                                          {t('segmentEditing.insert')}
-                                        </Menu.Item>
-                                      </Menu.Popup>
-                                    </Menu.Positioner>
-                                  </Menu.Portal>
-                                </Menu.Root>
-                                <Button
-                                  size="icon-xs"
-                                  variant="ghost"
-                                  disabled={busy || Boolean(session.recovery)}
-                                  aria-label={t('common.delete')}
-                                  onClick={() => deleteDubSegment(segment.id)}
-                                >
-                                  <Trash2Icon />
-                                </Button>
-                              </div>
-                            </div>
-                            {editingSegmentId === segment.id ? (
-                              <textarea
-                                dir="auto"
-                                data-segment-id={segment.id}
-                                aria-label={t('clone.text_label') + ' ' + (index + 1)}
-                                rows={1}
-                                autoFocus
-                                className="min-h-8 max-h-32 w-full resize-y overflow-y-auto rounded-md border border-input bg-background/35 px-2 py-1 text-sm leading-5 outline-none transition-[background-color,border-color,box-shadow] [field-sizing:content] focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedSegmentIds.has(segment.id)}
                                 disabled={busy || Boolean(session.recovery)}
-                                value={segment.text}
-                                onBlur={() => setEditingSegmentId(null)}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Escape') event.currentTarget.blur();
-                                }}
-                                onSelect={(event) =>
-                                  cursors.current.set(
-                                    segment.id,
-                                    event.currentTarget.selectionStart,
-                                  )
+                                aria-label={`${t('modelSettings.select')} ${index + 1}`}
+                                className="mt-0.5 size-4 accent-primary"
+                                onChange={() =>
+                                  setSelectedSegmentIds((current) => {
+                                    const next = new Set(current);
+                                    if (next.has(segment.id)) next.delete(segment.id);
+                                    else next.add(segment.id);
+                                    return next;
+                                  })
                                 }
-                                onChange={(event) => {
-                                  const text = event.target.value;
-                                  if (code && typeof segment.translations?.[code] === 'string')
-                                    editDubSegment(
-                                      segment.id,
-                                      {
-                                        text,
-                                        translations: {
-                                          ...segment.translations,
-                                          [code]: text,
-                                        },
-                                      },
-                                      { historyGroup: `text:${segment.id}` },
-                                    );
-                                  else
-                                    editDubSegment(
-                                      segment.id,
-                                      {
-                                        text,
-                                        text_original: text,
-                                        translations: undefined,
-                                      },
-                                      { historyGroup: `text:${segment.id}` },
-                                    );
-                                  livePreview.onEdit(segment, text);
-                                }}
                               />
-                            ) : (
-                              <button
-                                type="button"
-                                data-segment-id={segment.id}
-                                disabled={busy || Boolean(session.recovery)}
-                                className={cn(
-                                  'block min-h-10 w-full rounded-lg bg-transparent px-2.5 py-1.5 text-left text-[15px] leading-6 text-foreground/90 outline-none transition-[color,background-color,box-shadow] hover:bg-background/25 hover:text-foreground focus-visible:bg-background/35 focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60',
-                                  selectedSegmentId === segment.id &&
-                                    'bg-background/25 text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--border)_45%,transparent)]',
-                                )}
-                                onClick={() => {
-                                  setSelectedSegmentId(segment.id);
-                                  setEditingSegmentId(segment.id);
-                                }}
-                              >
-                                <HighlightedText
-                                  className={
-                                    find.holdsActive(segment.id, 'text')
-                                      ? undefined
-                                      : 'line-clamp-2'
-                                  }
-                                  dir="auto"
-                                  text={segment.text}
-                                  query={find.query}
-                                  {...find.activeRange(segment.id, 'text')}
-                                />
-                              </button>
-                            )}
-                            {segment.plan?.suggested_text && (
-                              <div className="flex items-center gap-2 rounded-md border border-warning/20 bg-warning/5 p-1.5 text-xs">
-                                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                                  {segment.plan.suggested_text}
-                                </span>
+                              <span>{segmentTimeLabel(segment.start)}</span>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex min-h-6 min-w-0 items-center gap-1">
                                 <Button
-                                  size="xs"
-                                  variant="outline"
-                                  disabled={busy || Boolean(session.recovery)}
-                                  title={t('segment.plan_apply_title', {
-                                    text: segment.plan.suggested_text,
-                                  })}
+                                  data-segment-options-trigger
+                                  size="sm"
+                                  variant="ghost"
+                                  className={cn(
+                                    'h-6 min-w-0 max-w-[14rem] justify-start px-1 text-[11px] font-medium tracking-[0.01em] text-muted-foreground/55 hover:text-foreground group-hover/segment:text-muted-foreground/75 group-focus-within/segment:text-foreground/85',
+                                    selectedSegmentId === segment.id && 'text-foreground/85',
+                                  )}
+                                  aria-expanded={expandedSegmentId === segment.id}
+                                  aria-controls={`dub-segment-options-${index}`}
                                   onClick={() => {
-                                    const text = segment.plan?.suggested_text;
-                                    if (!text) return;
-                                    editDubSegment(segment.id, {
-                                      text,
-                                      translations: code
-                                        ? {
-                                            ...segment.translations,
-                                            [code]: text,
-                                          }
-                                        : segment.translations,
-                                    });
+                                    setExpandedSegmentId((current) =>
+                                      current === segment.id ? null : segment.id,
+                                    );
+                                    requestAnimationFrame(() => segmentVirtualizer.measure());
                                   }}
                                 >
-                                  {t('segment.plan_apply')}
+                                  <ChevronDownIcon
+                                    className={cn(
+                                      'size-3.5 transition-transform',
+                                      expandedSegmentId === segment.id && 'rotate-180',
+                                    )}
+                                  />
+                                  <span className="truncate">
+                                    {segment.speaker_id || t('clone.voice_source')} &middot;{' '}
+                                    {profiles.data?.find(
+                                      (profile) => profile.id === segment.profile_id,
+                                    )?.name ||
+                                      (segment.profile_id?.startsWith('auto:')
+                                        ? t('clone.auto')
+                                        : segment.profile_id) ||
+                                      t('clone.auto')}
+                                  </span>
                                 </Button>
-                              </div>
-                            )}
-                            <div className="text-xs">
-                              {expandedSegmentId === segment.id && (
-                                <div
-                                  id={`dub-segment-options-${index}`}
-                                  className="mt-1.5 rounded-lg border border-border/50 bg-muted/20 p-2.5"
-                                >
-                                  <div className="mt-2 flex flex-wrap gap-1">
-                                    {profiles.data?.map((profile) => (
-                                      <Button
-                                        key={profile.id}
-                                        size="xs"
-                                        variant={
-                                          segment.profile_id === profile.id ? 'secondary' : 'ghost'
-                                        }
-                                        disabled={busy || Boolean(session.recovery)}
-                                        onClick={() =>
-                                          editDubSegment(segment.id, {
-                                            profile_id: profile.id,
-                                          })
-                                        }
+                                {segment.text_original && segment.text_original !== segment.text ? (
+                                  <p
+                                    className={cn(
+                                      'min-w-0 flex-1 px-1 text-xs text-muted-foreground/50 transition-colors group-hover/segment:text-muted-foreground/70 group-focus-within/segment:text-foreground/70',
+                                      selectedSegmentId === segment.id && 'text-foreground/72',
+                                      // Show the whole line while it holds the active find hit.
+                                      find.holdsActive(segment.id, 'text_original')
+                                        ? 'break-words'
+                                        : 'truncate',
+                                    )}
+                                    title={segment.text_original}
+                                    dir="auto"
+                                  >
+                                    <HighlightedText
+                                      text={segment.text_original}
+                                      query={find.query}
+                                      {...find.activeRange(segment.id, 'text_original')}
+                                    />
+                                  </p>
+                                ) : (
+                                  <span className="min-w-0 flex-1" />
+                                )}
+                                {(translationError ||
+                                  segment.translate_degraded ||
+                                  segment.plan?.status === 'tight' ||
+                                  segment.plan?.status === 'impossible' ||
+                                  segment.fit_status?.status === 'overflows') && (
+                                  <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
+                                    {translationError && (
+                                      <span
+                                        className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+                                        title={t('segment.translate_error_title', {
+                                          error: translationError,
+                                        })}
                                       >
-                                        {profile.name}
-                                      </Button>
-                                    ))}
+                                        <AlertCircleIcon className="size-3" />
+                                        {t('common.error')}
+                                      </span>
+                                    )}
+                                    {segment.translate_degraded && (
+                                      <span
+                                        className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+                                        title={t('segment.translate_degraded_title', {
+                                          reason: segment.translate_degraded,
+                                        })}
+                                      >
+                                        <AlertCircleIcon className="size-3" />
+                                        {t('dub.fast_quality')}
+                                      </span>
+                                    )}
+                                    {segment.plan?.status === 'tight' && (
+                                      <span
+                                        className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+                                        title={t('segment.plan_tight_title', {
+                                          est: segment.plan.est_dur_s.toFixed(1),
+                                          avail: segment.plan.available_s.toFixed(1),
+                                        })}
+                                      >
+                                        <Clock3Icon className="size-3" />
+                                        {t('segment.plan_tight')}
+                                      </span>
+                                    )}
+                                    {segment.plan?.status === 'impossible' && (
+                                      <span
+                                        className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+                                        title={t('segment.plan_impossible_title', {
+                                          est: segment.plan.est_dur_s.toFixed(1),
+                                          avail: segment.plan.available_s.toFixed(1),
+                                          seconds: segment.plan.est_overrun_s.toFixed(1),
+                                        })}
+                                      >
+                                        <AlertCircleIcon className="size-3" />
+                                        {t('segment.plan_impossible', {
+                                          seconds: segment.plan.est_overrun_s.toFixed(1),
+                                        })}
+                                      </span>
+                                    )}
+                                    {segment.fit_status?.status === 'overflows' && (
+                                      <span
+                                        className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+                                        title={t('segment.fit_overflows_title', {
+                                          seconds: (segment.fit_status.overflow_s || 0).toFixed(1),
+                                        })}
+                                      >
+                                        <ScissorsIcon className="size-3" />
+                                        {t('segment.fit_overflows', {
+                                          seconds: (segment.fit_status.overflow_s || 0).toFixed(1),
+                                        })}
+                                      </span>
+                                    )}
                                   </div>
-                                  <div className="mt-3 grid grid-cols-2 gap-2">
-                                    <label className="space-y-1">
-                                      <span>{t('player.volume')}</span>
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        max={2}
-                                        step={0.1}
-                                        value={segment.gain ?? 1}
-                                        disabled={busy || Boolean(session.recovery)}
-                                        onChange={(event) => {
-                                          const gain = Number(event.target.value);
-                                          if (Number.isFinite(gain) && gain >= 0 && gain <= 2)
-                                            editDubSegment(segment.id, {
-                                              gain,
-                                            });
-                                        }}
-                                      />
-                                    </label>
-                                    <label className="space-y-1">
-                                      <span>{t('clone.speed')}</span>
-                                      <Input
-                                        type="number"
-                                        min={0.5}
-                                        max={2}
-                                        step={0.05}
-                                        placeholder={String(session.speed ?? 1)}
-                                        value={segment.speed ?? ''}
-                                        disabled={busy || Boolean(session.recovery)}
-                                        onChange={(event) => {
-                                          const raw = event.target.value;
-                                          const speed = Number(raw);
-                                          if (
-                                            raw === '' ||
-                                            (Number.isFinite(speed) && speed >= 0.5 && speed <= 2)
-                                          )
-                                            editDubSegment(segment.id, {
-                                              speed: raw === '' ? undefined : speed,
-                                            });
-                                        }}
-                                      />
-                                    </label>
-                                    <label className="col-span-2 space-y-1">
-                                      <span>{t('tools.direction')}</span>
-                                      <Input
-                                        value={segment.direction || ''}
-                                        disabled={busy || Boolean(session.recovery)}
-                                        onChange={(event) =>
-                                          editDubSegment(segment.id, {
-                                            direction: event.target.value,
-                                          })
-                                        }
-                                      />
-                                    </label>
-                                  </div>
-                                  <div className="mt-3 flex gap-2">
-                                    <Input
-                                      key={`start:${segment.start}`}
-                                      type="number"
-                                      step="0.01"
-                                      min={0}
-                                      aria-label={t('dubWorkspace.start')}
-                                      defaultValue={segment.start.toFixed(2)}
+                                )}
+                                {segment.qc_flagged && (
+                                  <span
+                                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+                                    title={segment.qc_recognized || t('dub.qc_btn')}
+                                  >
+                                    <AlertCircleIcon className="size-3" />
+                                    {t('dub.verify')}
+                                  </span>
+                                )}
+                                <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/segment:opacity-100 group-focus-within/segment:opacity-100">
+                                  <Button
+                                    size="icon-xs"
+                                    variant="ghost"
+                                    disabled={
+                                      busy ||
+                                      Boolean(session.recovery) ||
+                                      (!livePreviewEnabled && Boolean(previewingSegmentId))
+                                    }
+                                    aria-label={t('dub.live_preview')}
+                                    aria-busy={
+                                      previewingSegmentId === segment.id ||
+                                      livePreview.liveSegmentId === segment.id
+                                    }
+                                    aria-pressed={livePreview.liveSegmentId === segment.id}
+                                    className={cn(
+                                      livePreview.liveSegmentId === segment.id &&
+                                        'bg-primary/10 text-primary',
+                                    )}
+                                    onClick={() =>
+                                      livePreviewEnabled
+                                        ? livePreview.onToggle(segment)
+                                        : void previewDubSegment(segment)
+                                    }
+                                  >
+                                    {previewingSegmentId === segment.id ||
+                                    livePreview.liveSegmentId === segment.id ? (
+                                      <LoaderCircleIcon className="animate-spin" />
+                                    ) : (
+                                      <HeadphonesIcon />
+                                    )}
+                                  </Button>
+                                  <Menu.Root>
+                                    <Menu.Trigger
                                       disabled={busy || Boolean(session.recovery)}
-                                      onKeyDown={(event) => {
-                                        if (event.key === 'Enter') event.currentTarget.blur();
-                                        if (event.key === 'Escape') {
-                                          event.currentTarget.value = segment.start.toFixed(2);
-                                          event.currentTarget.blur();
-                                        }
-                                      }}
-                                      onBlur={(event) => {
-                                        const start = Number(event.target.value);
-                                        if (!Number.isFinite(start)) {
-                                          event.currentTarget.value = segment.start.toFixed(2);
-                                          return;
-                                        }
-                                        const timing = clampSegmentEdit(
-                                          session.segments,
-                                          index,
-                                          'start',
-                                          { start, end: segment.end },
-                                          {
-                                            duration: session.duration || undefined,
+                                      aria-label={t('segmentEditing.more')}
+                                      className={buttonVariants({
+                                        variant: 'ghost',
+                                        size: 'icon-xs',
+                                      })}
+                                    >
+                                      <MoreHorizontalIcon />
+                                    </Menu.Trigger>
+                                    <Menu.Portal>
+                                      <Menu.Positioner sideOffset={6} align="end" className="z-50">
+                                        <Menu.Popup className="min-w-52 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
+                                          <Menu.Item
+                                            disabled={segment.text.trim().length < 2}
+                                            onClick={() => splitAtCursor(segment.id, segment.text)}
+                                            className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
+                                          >
+                                            <ScissorsIcon className="size-4" />
+                                            {t('segmentEditing.split')}
+                                          </Menu.Item>
+                                          <Menu.Item
+                                            disabled={index === 0}
+                                            onClick={() => mergeDubSegment(segment.id, 'prev')}
+                                            className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
+                                          >
+                                            <MergeIcon className="size-4" />
+                                            {t('segmentEditing.mergePrevious')}
+                                          </Menu.Item>
+                                          <Menu.Item
+                                            disabled={index === session.segments.length - 1}
+                                            onClick={() => mergeDubSegment(segment.id)}
+                                            className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
+                                          >
+                                            <MergeIcon className="size-4" />
+                                            {t('segmentEditing.mergeNext')}
+                                          </Menu.Item>
+                                          <Menu.Item
+                                            onClick={() => insertDubSegment(segment.id)}
+                                            className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent"
+                                          >
+                                            <PlusIcon className="size-4" />
+                                            {t('segmentEditing.insert')}
+                                          </Menu.Item>
+                                        </Menu.Popup>
+                                      </Menu.Positioner>
+                                    </Menu.Portal>
+                                  </Menu.Root>
+                                  <Button
+                                    size="icon-xs"
+                                    variant="ghost"
+                                    disabled={busy || Boolean(session.recovery)}
+                                    aria-label={t('common.delete')}
+                                    onClick={() => deleteDubSegment(segment.id)}
+                                  >
+                                    <Trash2Icon />
+                                  </Button>
+                                </div>
+                              </div>
+                              {editingSegmentId === segment.id ? (
+                                <textarea
+                                  dir="auto"
+                                  data-segment-id={segment.id}
+                                  aria-label={t('clone.text_label') + ' ' + (index + 1)}
+                                  rows={1}
+                                  autoFocus
+                                  className="min-h-8 max-h-32 w-full resize-y overflow-y-auto rounded-md border border-input bg-background/35 px-2 py-1 text-sm leading-5 outline-none transition-[background-color,border-color,box-shadow] [field-sizing:content] focus-visible:ring-2 focus-visible:ring-ring"
+                                  disabled={busy || Boolean(session.recovery)}
+                                  value={segment.text}
+                                  onBlur={() => setEditingSegmentId(null)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Escape') event.currentTarget.blur();
+                                  }}
+                                  onSelect={(event) =>
+                                    cursors.current.set(
+                                      segment.id,
+                                      event.currentTarget.selectionStart,
+                                    )
+                                  }
+                                  onChange={(event) => {
+                                    const text = event.target.value;
+                                    if (code && typeof segment.translations?.[code] === 'string')
+                                      editDubSegment(
+                                        segment.id,
+                                        {
+                                          text,
+                                          translations: {
+                                            ...segment.translations,
+                                            [code]: text,
                                           },
-                                        );
-                                        event.currentTarget.value = timing.start.toFixed(2);
-                                        moveResizeDubSegment(segment.id, timing);
-                                      }}
-                                    />
-                                    <Input
-                                      key={`end:${segment.end}`}
-                                      type="number"
-                                      step="0.01"
-                                      min={segment.start}
-                                      aria-label={t('dubWorkspace.end')}
-                                      defaultValue={segment.end.toFixed(2)}
-                                      disabled={busy || Boolean(session.recovery)}
-                                      onKeyDown={(event) => {
-                                        if (event.key === 'Enter') event.currentTarget.blur();
-                                        if (event.key === 'Escape') {
-                                          event.currentTarget.value = segment.end.toFixed(2);
-                                          event.currentTarget.blur();
-                                        }
-                                      }}
-                                      onBlur={(event) => {
-                                        const end = Number(event.target.value);
-                                        if (!Number.isFinite(end)) {
-                                          event.currentTarget.value = segment.end.toFixed(2);
-                                          return;
-                                        }
-                                        const timing = clampSegmentEdit(
-                                          session.segments,
-                                          index,
-                                          'end',
-                                          { start: segment.start, end },
-                                          {
-                                            duration: session.duration || undefined,
-                                          },
-                                        );
-                                        event.currentTarget.value = timing.end.toFixed(2);
-                                        moveResizeDubSegment(segment.id, timing);
-                                      }}
-                                    />
-                                  </div>
+                                        },
+                                        { historyGroup: `text:${segment.id}` },
+                                      );
+                                    else
+                                      editDubSegment(
+                                        segment.id,
+                                        {
+                                          text,
+                                          text_original: text,
+                                          translations: undefined,
+                                        },
+                                        { historyGroup: `text:${segment.id}` },
+                                      );
+                                    livePreview.onEdit(segment, text);
+                                  }}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  data-segment-id={segment.id}
+                                  disabled={busy || Boolean(session.recovery)}
+                                  className={cn(
+                                    'block min-h-10 w-full rounded-lg bg-transparent px-2.5 py-1.5 text-left text-[15px] leading-6 text-foreground/90 outline-none transition-[color,background-color,box-shadow] hover:bg-background/25 hover:text-foreground focus-visible:bg-background/35 focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60',
+                                    selectedSegmentId === segment.id &&
+                                      'bg-background/25 text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--border)_45%,transparent)]',
+                                  )}
+                                  onClick={() => {
+                                    setSelectedSegmentId(segment.id);
+                                    setEditingSegmentId(segment.id);
+                                  }}
+                                >
+                                  <HighlightedText
+                                    className={
+                                      find.holdsActive(segment.id, 'text')
+                                        ? undefined
+                                        : 'line-clamp-2'
+                                    }
+                                    dir="auto"
+                                    text={segment.text}
+                                    query={find.query}
+                                    {...find.activeRange(segment.id, 'text')}
+                                  />
+                                </button>
+                              )}
+                              {segment.plan?.suggested_text && (
+                                <div className="flex items-center gap-2 rounded-md border border-warning/20 bg-warning/5 p-1.5 text-xs">
+                                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                                    {segment.plan.suggested_text}
+                                  </span>
+                                  <Button
+                                    size="xs"
+                                    variant="outline"
+                                    disabled={busy || Boolean(session.recovery)}
+                                    title={t('segment.plan_apply_title', {
+                                      text: segment.plan.suggested_text,
+                                    })}
+                                    onClick={() => {
+                                      const text = segment.plan?.suggested_text;
+                                      if (!text) return;
+                                      editDubSegment(segment.id, {
+                                        text,
+                                        translations: code
+                                          ? {
+                                              ...segment.translations,
+                                              [code]: text,
+                                            }
+                                          : segment.translations,
+                                      });
+                                    }}
+                                  >
+                                    {t('segment.plan_apply')}
+                                  </Button>
                                 </div>
                               )}
+                              <div className="text-xs">
+                                {expandedSegmentId === segment.id && (
+                                  <div
+                                    id={`dub-segment-options-${index}`}
+                                    className="mt-1.5 rounded-lg border border-border/50 bg-muted/20 p-2.5"
+                                  >
+                                    <div
+                                      role="group"
+                                      aria-label={t('dub.speaker_label')}
+                                      className="flex flex-wrap items-center gap-1"
+                                    >
+                                      <span className="mr-1 text-muted-foreground">
+                                        {t('dub.speaker_label')}
+                                      </span>
+                                      {speakers.map((speaker) => (
+                                        <Button
+                                          key={speaker}
+                                          size="xs"
+                                          variant={
+                                            segment.speaker_id === speaker ? 'secondary' : 'ghost'
+                                          }
+                                          aria-pressed={segment.speaker_id === speaker}
+                                          disabled={busy || Boolean(session.recovery)}
+                                          onClick={() =>
+                                            setDubSegmentsSpeaker(new Set([segment.id]), speaker)
+                                          }
+                                        >
+                                          {speaker}
+                                        </Button>
+                                      ))}
+                                      <Button
+                                        size="xs"
+                                        variant="ghost"
+                                        disabled={busy || Boolean(session.recovery)}
+                                        onClick={() =>
+                                          setDubSegmentsSpeaker(
+                                            new Set([segment.id]),
+                                            nextDubSpeakerId(session.segments),
+                                          )
+                                        }
+                                      >
+                                        <PlusIcon />
+                                        {t('dub.new_speaker')}
+                                      </Button>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                      {profiles.data?.map((profile) => (
+                                        <Button
+                                          key={profile.id}
+                                          size="xs"
+                                          variant={
+                                            segment.profile_id === profile.id
+                                              ? 'secondary'
+                                              : 'ghost'
+                                          }
+                                          disabled={busy || Boolean(session.recovery)}
+                                          onClick={() =>
+                                            editDubSegment(segment.id, {
+                                              profile_id: profile.id,
+                                            })
+                                          }
+                                        >
+                                          {profile.name}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                      <label className="space-y-1">
+                                        <span>{t('player.volume')}</span>
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          max={2}
+                                          step={0.1}
+                                          value={segment.gain ?? 1}
+                                          disabled={busy || Boolean(session.recovery)}
+                                          onChange={(event) => {
+                                            const gain = Number(event.target.value);
+                                            if (Number.isFinite(gain) && gain >= 0 && gain <= 2)
+                                              editDubSegment(segment.id, {
+                                                gain,
+                                              });
+                                          }}
+                                        />
+                                      </label>
+                                      <label className="space-y-1">
+                                        <span>{t('clone.speed')}</span>
+                                        <Input
+                                          type="number"
+                                          min={0.5}
+                                          max={2}
+                                          step={0.05}
+                                          placeholder={String(session.speed ?? 1)}
+                                          value={segment.speed ?? ''}
+                                          disabled={busy || Boolean(session.recovery)}
+                                          onChange={(event) => {
+                                            const raw = event.target.value;
+                                            const speed = Number(raw);
+                                            if (
+                                              raw === '' ||
+                                              (Number.isFinite(speed) && speed >= 0.5 && speed <= 2)
+                                            )
+                                              editDubSegment(segment.id, {
+                                                speed: raw === '' ? undefined : speed,
+                                              });
+                                          }}
+                                        />
+                                      </label>
+                                      <label className="col-span-2 space-y-1">
+                                        <span>{t('tools.direction')}</span>
+                                        <Input
+                                          value={segment.direction || ''}
+                                          disabled={busy || Boolean(session.recovery)}
+                                          onChange={(event) =>
+                                            editDubSegment(segment.id, {
+                                              direction: event.target.value,
+                                            })
+                                          }
+                                        />
+                                      </label>
+                                    </div>
+                                    <div className="mt-3 flex gap-2">
+                                      <Input
+                                        key={`start:${segment.start}`}
+                                        type="number"
+                                        step="0.01"
+                                        min={0}
+                                        aria-label={t('dubWorkspace.start')}
+                                        defaultValue={formatSegmentTime(segment.start)}
+                                        disabled={busy || Boolean(session.recovery)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter') event.currentTarget.blur();
+                                          if (event.key === 'Escape') {
+                                            event.currentTarget.value = formatSegmentTime(segment.start);
+                                            event.currentTarget.blur();
+                                          }
+                                        }}
+                                        onBlur={(event) => {
+                                          const start = parseSegmentTimeField(
+                                            event.target.value,
+                                            segment.start,
+                                          );
+                                          if (start === null) {
+                                            event.currentTarget.value = formatSegmentTime(segment.start);
+                                            return;
+                                          }
+                                          const timing = clampSegmentEdit(
+                                            session.segments,
+                                            index,
+                                            'start',
+                                            { start, end: segment.end },
+                                            {
+                                              duration: session.duration || undefined,
+                                            },
+                                          );
+                                          event.currentTarget.value = formatSegmentTime(timing.start);
+                                          moveResizeDubSegment(segment.id, timing);
+                                        }}
+                                      />
+                                      <Input
+                                        key={`end:${segment.end}`}
+                                        type="number"
+                                        step="0.01"
+                                        min={segment.start}
+                                        aria-label={t('dubWorkspace.end')}
+                                        defaultValue={formatSegmentTime(segment.end)}
+                                        disabled={busy || Boolean(session.recovery)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter') event.currentTarget.blur();
+                                          if (event.key === 'Escape') {
+                                            event.currentTarget.value = formatSegmentTime(segment.end);
+                                            event.currentTarget.blur();
+                                          }
+                                        }}
+                                        onBlur={(event) => {
+                                          const end = parseSegmentTimeField(
+                                            event.target.value,
+                                            segment.end,
+                                          );
+                                          if (end === null) {
+                                            event.currentTarget.value = formatSegmentTime(segment.end);
+                                            return;
+                                          }
+                                          const timing = clampSegmentEdit(
+                                            session.segments,
+                                            index,
+                                            'end',
+                                            { start: segment.start, end },
+                                            {
+                                              duration: session.duration || undefined,
+                                            },
+                                          );
+                                          event.currentTarget.value = formatSegmentTime(timing.end);
+                                          moveResizeDubSegment(segment.id, timing);
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </article>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                          </article>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <EngineNotice operation="dub" />
           {(busy || session.segments.length > 0) && (
             <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border/50 px-6 py-4">
               {busy ? (
@@ -2353,19 +2490,31 @@ export function DubPage() {
                     </span>
                   )}
                   {session.quality !== 'agent' && (
-                    <Button
-                      variant="outline"
-                      disabled={
-                        Boolean(session.recovery) ||
-                        !session.segments.length ||
-                        !code ||
-                        !translationReady
-                      }
-                      onClick={() => void translateTargets()}
+                    <DisabledReason
+                      reason={firstReason([
+                        [Boolean(session.recovery), t('disabledReason.recovery_pending')],
+                        [!session.segments.length, t('disabledReason.segments_required')],
+                        [!code, t('disabledReason.language_required')],
+                        [!translationReady, t('disabledReason.translation_not_ready')],
+                      ])}
                     >
-                      <LanguagesIcon />
-                      {t('dub.translate_all')}
-                    </Button>
+                      {(describedBy) => (
+                        <Button
+                          variant="outline"
+                          disabled={
+                            Boolean(session.recovery) ||
+                            !session.segments.length ||
+                            !code ||
+                            !translationReady
+                          }
+                          aria-describedby={describedBy}
+                          onClick={() => void translateTargets()}
+                        >
+                          <LanguagesIcon />
+                          {t('dub.translate_all')}
+                        </Button>
+                      )}
+                    </DisabledReason>
                   )}
                   {selectedTranslationAgent ? (
                     <div className="flex items-center">

@@ -740,6 +740,11 @@
       "title": "Audio",
       "type": "string"
      },
+     "language": {
+      "default": "",
+      "title": "Language",
+      "type": "string"
+     },
      "match_duration": {
       "default": true,
       "title": "Match Duration",
@@ -759,6 +764,28 @@
    },
    "Body_create_profile_profiles_post": {
     "properties": {
+     "design_recipe": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Design Recipe"
+     },
+     "engine": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine"
+     },
      "image": {
       "anyOf": [
        {
@@ -1624,6 +1651,17 @@
       "title": "Audio",
       "type": "string"
      },
+     "diarize": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Diarize"
+     },
      "dictation": {
       "anyOf": [
        {
@@ -1667,6 +1705,17 @@
        }
       ],
       "title": "Model"
+     },
+     "num_speakers": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Num Speakers"
      },
      "refine": {
       "anyOf": [
@@ -1796,7 +1845,7 @@
     "type": "object"
    },
    "CleanupSegmentsRequest": {
-    "description": "The editor's current segments; without them the job's stored copy is\ncleaned, which misses every edit made since transcription.",
+    "description": "The editor's current segments; without them the stored copy is cleaned.",
     "properties": {
      "segments": {
       "items": {
@@ -3477,7 +3526,6 @@
     "type": "object"
    },
    "ProsodyMirrorRequest": {
-    "description": "Segments as the editor currently holds them: splits, merges and timing\nedits are client-side until generation, so the job's stored copy is stale.",
     "properties": {
      "segments": {
       "items": {
@@ -4030,7 +4078,7 @@
         "type": "null"
        }
       ],
-      "description": "OmniVoice GGUF extension: long-form internal chunk duration.",
+      "description": "Seconds of speech per internal chunk for long texts; read by the OmniVoice GGUF engine only. Outside the OpenAI spec.",
       "title": "Chunk Duration"
      },
      "chunk_threshold": {
@@ -4043,12 +4091,12 @@
         "type": "null"
        }
       ],
-      "description": "OmniVoice GGUF extension: long-form internal chunk threshold.",
+      "description": "Length above which the OmniVoice GGUF engine starts splitting long texts into chunks. Outside the OpenAI spec.",
       "title": "Chunk Threshold"
      },
      "denoise": {
       "default": true,
-      "description": "VoiceStudio extension: prepend denoise control when supported.",
+      "description": "Set false to skip the denoise step on engines that offer one. Outside the OpenAI spec; VoiceStudio only.",
       "title": "Denoise",
       "type": "boolean"
      },
@@ -4074,7 +4122,7 @@
         "type": "null"
        }
       ],
-      "description": "VoiceStudio extension: target output duration in seconds.",
+      "description": "Aim for this many seconds of audio (seconds, must be positive). Outside the OpenAI spec; used by VoiceStudio engines that can honour it.",
       "title": "Duration"
      },
      "guidance_scale": {
@@ -4156,7 +4204,7 @@
      },
      "preprocess_prompt": {
       "default": true,
-      "description": "VoiceStudio extension: trim/preprocess reference prompt when supported.",
+      "description": "Set false to use the reference clip untouched instead of preprocessing it, where the engine supports that. Outside the OpenAI spec; VoiceStudio only.",
       "title": "Preprocess Prompt",
       "type": "boolean"
      },
@@ -4183,7 +4231,7 @@
         "type": "null"
        }
       ],
-      "description": "VoiceStudio extension: deterministic sampling seed.",
+      "description": "Fixes the random seed so the same request can be reproduced. Outside the OpenAI spec; VoiceStudio only.",
       "title": "Seed"
      },
      "speed": {
@@ -4610,6 +4658,87 @@
      "idle_timeout_seconds"
     ],
     "title": "SystemInfoResponse",
+    "type": "object"
+   },
+   "TranscriptSegment": {
+    "properties": {
+     "cue_source_id": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cue Source Id"
+     },
+     "end": {
+      "minimum": 0.0,
+      "title": "End",
+      "type": "number"
+     },
+     "id": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Id"
+     },
+     "start": {
+      "minimum": 0.0,
+      "title": "Start",
+      "type": "number"
+     },
+     "text": {
+      "maxLength": 20000,
+      "title": "Text",
+      "type": "string"
+     },
+     "text_original": {
+      "anyOf": [
+       {
+        "maxLength": 20000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Text Original"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "text"
+    ],
+    "title": "TranscriptSegment",
+    "type": "object"
+   },
+   "TranscriptSyncRequest": {
+    "description": "The editor's transcript, stored before any dub exists so exports of\nthe original audio with subtitles use the edited lines (#3393).",
+    "properties": {
+     "segments": {
+      "items": {
+       "$ref": "#/components/schemas/TranscriptSegment"
+      },
+      "maxItems": 20000,
+      "minItems": 1,
+      "title": "Segments",
+      "type": "array"
+     }
+    },
+    "required": [
+     "segments"
+    ],
+    "title": "TranscriptSyncRequest",
     "type": "object"
    },
    "TranslateRequest": {
@@ -5723,7 +5852,7 @@
    "_TorchCompileBody": {
     "properties": {
      "enabled": {
-      "description": "True to disable torch.compile (eager mode) for the engine",
+      "description": "True disables torch.compile and selects eager execution",
       "title": "Enabled",
       "type": "boolean"
      }
@@ -7861,7 +7990,7 @@
   },
   "/api/settings/perf/torch-compile-disabled": {
    "get": {
-    "description": "Return the current torch.compile-disabled toggle + the runtime platform.\n\n`platform` is still reported (clients may show it), but since #2135 the\ntoggle is live on every host: it used to be rendered disabled off Windows\non the assumption that only #65's Windows OOM needed it, which left the\nLinux/CUDA reporter of #2135 with no way to switch off the compile that\nwas killing their backend.",
+    "description": "Return the cross-platform compile-disable toggle and runtime platform.",
     "operationId": "get_torch_compile_disabled_api_settings_perf_torch_compile_disabled_get",
     "responses": {
      "200": {
@@ -7879,7 +8008,7 @@
     ]
    },
    "put": {
-    "description": "Persist the toggle. Honoured by `services.engine_env.build_engine_env()`\n(subprocess engines) and `services.engine_env.should_torch_compile()`\n(in-process), on every platform since #2135.",
+    "description": "Persist the toggle used by subprocess environments and in-process compile gates on every host.",
     "operationId": "set_torch_compile_disabled_api_settings_perf_torch_compile_disabled_put",
     "requestBody": {
      "content": {
@@ -10214,7 +10343,7 @@
     "summary": "Get Dictation Prefs"
    },
    "post": {
-    "description": "Persist any subset of the dictation prefs. Validates ``mode``,\n``model_id`` and ``prompt`` so a bad value can't wedge the capture engine.\nAn empty ``prompt`` clears it.",
+    "description": "Persist any subset of the dictation prefs. Validates the values so a\nbad one can't wedge the capture engine.",
     "operationId": "set_dictation_prefs_dictation_prefs_post",
     "requestBody": {
      "content": {
@@ -10524,7 +10653,7 @@
   },
   "/dub/cleanup-segments/{job_id}": {
    "post": {
-    "description": "Re-run merge/stitch passes to drop fragments.\n\nCleans the editor's segments when sent, so unsaved text, timing and\ndirection edits survive; otherwise the job's stored segments. The\neditor's result is returned without being stored: it is an undoable edit\nlike any other, and the job keeps the segments its existing audio and\nsubtitle exports were generated from until the next generation.",
+    "description": "Re-run the merge/stitch passes to drop fragments.\n\nUses the editor's segments when they are sent, so unsaved edits survive;\notherwise the stored ones. The editor's result is returned unsaved (the\nclient applies it as an undoable edit) and the job keeps its stored\nsegments until the next generation.",
     "operationId": "dub_cleanup_segments_dub_cleanup_segments__job_id__post",
     "parameters": [
      {
@@ -11896,7 +12025,7 @@
   },
   "/dub/prosody-mirror/{job_id}": {
    "post": {
-    "description": "Suggest per-segment directions that mirror the source delivery.\n\nMeasures each line on the Demucs vocals track (the mix when separation\ndid not run) against its speaker's baseline and returns taxonomy\ndirections the editor can apply to lines without one. Read-only: nothing\nabout the job changes.",
+    "description": "Suggest delivery directions from how the source actor spoke each line.\n\nRead-only: nothing on the job changes.",
     "operationId": "dub_prosody_mirror_dub_prosody_mirror__job_id__post",
     "parameters": [
      {
@@ -12160,6 +12289,54 @@
      }
     },
     "summary": "Dub Export Srt"
+   }
+  },
+  "/dub/sync-transcript/{job_id}": {
+   "post": {
+    "description": "Store the editor's transcript while the job has no dub yet (#3393).\n\nExporting the original video or audio with subtitles needs no generated\ntrack, but the subtitle writers read ``job[\"segments\"]``, which still\nholds the raw transcription. Once a dub exists its exports must keep the\nsegments that dub was rendered from, so this refuses to overwrite them.\nPer-row metadata (speaker, word timings, cue sources) is carried over by\nstable id; text and timing come from the editor.",
+    "operationId": "dub_sync_transcript_dub_sync_transcript__job_id__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TranscriptSyncRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dub Sync Transcript"
    }
   },
   "/dub/thumb/{job_id}": {
@@ -16491,6 +16668,7 @@
   },
   "/profiles/{profile_id}/audio": {
    "get": {
+    "description": "Serve a saved voice sample or lazily render a pending designed voice.\n\nProfile IDs and stored filenames are confined to VOICES_DIR; concurrent\nsample requests share a single synthesis job and never expose partial WAVs.",
     "operationId": "get_profile_audio_profiles__profile_id__audio_get",
     "parameters": [
      {
@@ -18207,7 +18385,7 @@
   },
   "/system/set-env": {
    "post": {
-    "description": "Set an environment variable at runtime, persisted across restarts.\n\nPersistent keys (proxy, FFMPEG_PATH, translation provider keys, \u2026) are\nsaved to ``prefs.json`` so they survive backend restarts (restored at\nstartup in ``main.py``). HF_TOKEN is persisted via\n``token_resolver.persist_hub_token()`` (and cleared with the shared token-file helper). Other keys\nare set on ``os.environ`` for the running process.\n\nThe loopback-origin gate that previously lived inline here is now applied\nat the router level via `dependencies=[Depends(require_admin)]` on\n`router` \u2014 see the top of this file. Every route on this router is\ngated, including this one. The 403 body and behavior are unchanged.",
+    "description": "Set an environment variable for the running backend.\n\nKeys in ``PERSISTENT_KEYS`` are saved in prefs.json and restored during\nstartup in main.py. HF_TOKEN is saved by\n``token_resolver.persist_hub_token()`` and cleared through the shared\ntoken-file helper. Other accepted keys affect only this process.\n\nThe loopback-origin gate that previously lived inline here is now applied at the router level via `dependencies=[Depends(require_admin)]` on `router` \u2014 see the top of this file. Every route on this router is gated, including this one. The 403 body and behavior are unchanged.",
     "operationId": "set_env_var_system_set_env_post",
     "requestBody": {
      "content": {
@@ -18633,7 +18811,7 @@
   },
   "/transcribe": {
    "post": {
-    "description": "Transcribe an audio file to text.\n\nArgs:\n    audio: The audio file to transcribe.\n    language: Optional language hint (not currently used; auto-detected).\n    model: Whisper model size (legacy; ignored in dual-mode architecture).\n    mode: 'fast' (default) uses MLX Turbo for speed; 'accurate' uses\n          the selected ASR engine with word-level timing. 'reference' uses\n          the selected ASR engine without word-level timing.\n    refine: Opt-in local-LLM cleanup of the final text (disfluencies,\n          self-corrections, punctuation) \u2014 same pipeline the live\n          dictation socket uses. Off by default so MCP/CLI callers don't\n          pay LLM latency unless they ask; honours the user's\n          Settings \u2192 Dictation-refinement config and silently passes\n          through when no LLM backend is configured. The raw ``text``\n          is always returned; ``refined_text`` is added only when the\n          LLM actually changed something.\n    dictation: Opt-in flag for hotkey-dictation callers: applies the\n          saved dictation vocabulary hint (``dictation.prompt``) to\n          engines that accept a prompt. Off by default so file\n          transcription and MCP/CLI callers are never biased by it;\n          ignored in 'reference' mode.\n\nReturns:\n    {\n        \"text\": \"full transcription\",\n        \"refined_text\": \"cleaned text\",   # only when refine=true changed it\n        \"segments\": [ {\"start\": 0.0, \"end\": 1.5, \"text\": \"...\"}, ... ],\n        \"language\": \"en\",\n        \"duration_s\": 4.2,\n        \"transcription_time_s\": 0.8,\n        \"engine\": \"mlx-whisper\"\n    }",
+    "description": "Transcribe an audio file to text.\n\nArgs:\n    audio: The audio file to transcribe.\n    language: Optional language hint (not currently used; auto-detected).\n    model: Whisper model size (legacy; ignored in dual-mode architecture).\n    mode: 'fast' (default) uses MLX Turbo for speed; 'accurate' uses\n          the selected ASR engine with word-level timing. 'reference' uses\n          the selected ASR engine without word-level timing.\n    refine: Opt-in local-LLM cleanup of the final text (disfluencies,\n          self-corrections, punctuation) \u2014 same pipeline the live\n          dictation socket uses. Off by default so MCP/CLI callers don't\n          pay LLM latency unless they ask; honours the user's\n          Settings \u2192 Dictation-refinement config and silently passes\n          through when no LLM backend is configured. The raw ``text``\n          is always returned; ``refined_text`` is added only when the\n          LLM actually changed something.\n    dictation: Opt-in flag for hotkey-dictation callers. When true, the\n          saved vocabulary hint is passed to engines that accept a\n          prompt. Off by default (file transcription, MCP/CLI stay\n          unbiased) and ignored in 'reference' mode.\n\n    diarize: Opt-in speaker identification ('accurate' mode only, which\n          is the mode with segment timings). Each segment gains a\n          ``speaker`` label and the response a ``speakers`` list. If the\n          diarization model is missing or fails, the transcript is still\n          returned with a ``diarization_error`` code and no labels.\n    num_speakers: Optional exact speaker count hint for diarization.\n\nReturns:\n    {\n        \"text\": \"full transcription\",\n        \"refined_text\": \"cleaned text\",   # only when refine=true changed it\n        \"segments\": [ {\"start\": 0.0, \"end\": 1.5, \"text\": \"...\"}, ... ],\n        \"language\": \"en\",\n        \"duration_s\": 4.2,\n        \"transcription_time_s\": 0.8,\n        \"engine\": \"mlx-whisper\"\n    }",
     "operationId": "transcribe_audio_transcribe_post",
     "requestBody": {
      "content": {

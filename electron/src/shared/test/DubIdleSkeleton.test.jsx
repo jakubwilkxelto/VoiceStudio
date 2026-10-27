@@ -21,8 +21,8 @@ import {
 // dropzone + paste-URL input + "Pull YouTube captions" checkbox. The main
 // view must instead reflect the pipeline stage on every ingest path.
 
-const DROP_HINT = 'Drop video or audio here';
-const URL_PLACEHOLDER = '…or paste YouTube / video URL';
+const DROP_HINT = 'Drop an audio or video file here';
+const URL_PLACEHOLDER = '…or paste a video URL';
 const TRANSCRIBING = 'Transcribing audio…';
 
 function baseProps(overrides = {}) {

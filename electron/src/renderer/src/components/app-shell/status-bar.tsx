@@ -36,7 +36,11 @@ import { useDeviceUsage } from '@/hooks/use-device-usage';
 import { useDictationSelection } from '@/hooks/use-dictation-selection';
 import { cn } from '@/lib/utils';
 import { useAppActivities } from '@/lib/app-activity';
-import { resolveRuntimeHealth, type SidebarModelStatus } from './status-runtime';
+import {
+  isResidentAsrModel,
+  resolveRuntimeHealth,
+  type SidebarModelStatus,
+} from './status-runtime';
 import { PerformanceProfile } from '@/components/performance-profile';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
 import type { BatchJob } from '@shared/api/batch-types';
@@ -248,10 +252,7 @@ export function StatusBar({
         return (
           (entry.id === 'tts' && selected?.id === 'omnivoice') || entry.is_active_engine === true
         );
-      if (family === 'asr')
-        return (
-          (entry.id === 'asr' || entry.id === 'capture-asr') && entry.checkpoint === activeModel
-        );
+      if (family === 'asr') return isResidentAsrModel(entry.id) && entry.checkpoint === activeModel;
       return entry.id === family;
     });
     return {

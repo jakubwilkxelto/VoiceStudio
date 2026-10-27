@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InstallProgress } from '@/components/model-install-progress';
-import { fmtBytes } from '@shared/components/settings/models/format';
+import { fmtBytes, fmtGb } from '@shared/components/settings/models/format';
 import type { CatalogueModel } from '../model-catalogue-query';
 import type { ModelOps } from './model-ops';
 import type { JobInfo } from './model-job';
@@ -21,7 +21,7 @@ export function ModelSize({ model }: { model: CatalogueModel }) {
     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
       {model.incomplete && model.size_on_disk_bytes
         ? fmtBytes(model.size_on_disk_bytes)
-        : `${model.size_gb} GB`}
+        : fmtGb(model.size_gb)}
     </span>
   );
 }

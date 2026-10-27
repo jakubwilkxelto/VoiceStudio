@@ -47,7 +47,7 @@ registerAppScheme();
 
 const mainErrors = new MainErrorJournal(
   join(app.getPath('userData'), 'main-process-errors.json'),
-  app.getVersion(),
+  __APP_VERSION__,
 );
 installMainProcessErrorHandlers(mainErrors);
 
@@ -129,7 +129,10 @@ function brandIconPath(file: string): string {
     : join(backendRoot(), 'electron', 'build', 'icons', file);
 }
 
-ipcMain.handle('app:is-fullscreen', (event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false);
+ipcMain.handle(
+  'app:is-fullscreen',
+  (event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
+);
 
 function createWindow(): BrowserWindow {
   const appUrl =
@@ -329,7 +332,7 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
         () => backend.baseUrl,
         () => backend.requestHeaders(),
       );
-      const icon = nativeImage.createFromPath(brandIconPath('icon.png'));
+      const icon = nativeImage.createFromPath(brandIconPath('icon-macos.png'));
       if (process.platform === 'darwin') app.dock?.setIcon(icon);
       tray = new Tray(createTrayIcon(brandIconPath('32x32.png')));
       tray.setToolTip(PRODUCT_NAME);

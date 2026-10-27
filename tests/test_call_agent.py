@@ -921,12 +921,13 @@ def _alembic_upgrade(db_path):
     command.upgrade(cfg, "head")
 
 
-def _alembic_head():
+def _head_revision() -> str:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
-    root = os.path.dirname(os.path.dirname(__file__))
-    return ScriptDirectory.from_config(Config(os.path.join(root, "alembic.ini"))).get_current_head()
+    ini = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini")
+    (head,) = ScriptDirectory.from_config(Config(ini)).get_heads()
+    return head
 
 
 def test_migration_adds_call_sessions_and_matches_the_base_schema(tmp_path, monkeypatch):
@@ -946,8 +947,8 @@ def test_migration_adds_call_sessions_and_matches_the_base_schema(tmp_path, monk
     with sqlite3.connect(db_path) as conn:
         migrated = [(r[1], r[2].upper(), r[3], r[5]) for r in conn.execute("PRAGMA table_info(call_sessions)")]
         assert conn.execute("SELECT id, name FROM voice_profiles").fetchall() == [("keep", "Mine")]
-        # The newest revision, not a literal: later migrations must not break this test.
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == _alembic_head()
+        stamped = [r[0] for r in conn.execute("SELECT version_num FROM alembic_version")]
+        assert stamped == [_head_revision()]
     fresh = [(r[1], r[2].upper(), r[3], r[5]) for r in canon.execute("PRAGMA table_info(call_sessions)")]
     norm = lambda cols: [(n, {"FLOAT": "REAL"}.get(t, t), nn, pk) for n, t, nn, pk in cols]  # noqa: E731
     assert norm(migrated) == norm(fresh)

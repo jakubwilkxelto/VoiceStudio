@@ -17,6 +17,7 @@ import { TERMINAL_MODEL_INSTALL_STATES, useModelInstallJobs } from '@/hooks/use-
 import { SettingsSection } from './settings-layout';
 import { useModelCatalogue } from './model-catalogue-query';
 import { modelDiskShortfall } from './model-disk-space';
+import { fmtGb } from '@shared/components/settings/models/format';
 import type { ModelRecommendations, RecommendedModel } from './model-library';
 
 export function SystemRecommendations() {
@@ -205,7 +206,7 @@ export function SystemRecommendations() {
                     </span>
                   )}
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {model.size_gb} GB
+                    {fmtGb(model.size_gb)}
                   </span>
                   {!model.installed && (
                     <Button

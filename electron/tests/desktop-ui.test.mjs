@@ -103,7 +103,7 @@ test('guard: a renderer request leaving the machine fails the run', async (t) =>
 test('first run: setup gate completes to home', async (t) => {
   await withApp(t, { seed: false }, async ({ page }) => {
     await page.getByRole('heading', { name: 'System check', exact: true }).first().waitFor();
-    const next = page.getByRole('button', { name: /All good/ });
+    const next = page.getByRole('button', { name: 'Continue', exact: true });
     // System check -> Model packs -> Privacy -> Enter studio
     for (const heading of ['Model packs', 'Privacy', 'Enter studio']) {
       await next.click();

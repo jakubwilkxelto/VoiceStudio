@@ -1,6 +1,7 @@
 # Electron Workflows
 
-Workflows run one saved pipeline over many inputs. A workflow is a canvas of
+Workflows run one saved pipeline over many inputs. The canvas lives at `#/workflows`; the
+**Calls** view it hands call drafts to lives at `#/calls`, with a button back to the canvas. A workflow is a canvas of
 steps joined by connections; the list it runs over comes from the input step —
 either scripts (one per `---` separator, or imported files) or uploaded audio
 clips. Up to 50 items per run, each script at most 20,000 characters and each

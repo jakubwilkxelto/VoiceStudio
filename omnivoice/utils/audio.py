@@ -200,11 +200,11 @@ def load_audio(audio_path: str, sampling_rate: int):
             audio_path, backend="soundfile"
         )
     except (ImportError, RuntimeError, OSError):
-        # Fallback via pydub+ffmpeg for formats torchaudio can't handle.
-        # ImportError belongs here too: torchaudio >= 2.9 routes load()
-        # through TorchCodec and raises ImportError when its FFmpeg shared
-        # libraries are absent. The ``backend="soundfile"`` argument above
-        # does NOT avoid that — 2.9 accepts and ignores it.
+        # torchaudio >= 2.9 sends load() through TorchCodec, which raises
+        # ImportError when the FFmpeg shared libraries are absent (and ignores
+        # backend="soundfile"). pydub decodes through the ffmpeg binary instead.
+        from pydub import AudioSegment
+
         aseg = AudioSegment.from_file(audio_path)
         waveform = audiosegment_to_tensor(aseg)
         prompt_sampling_rate = aseg.frame_rate

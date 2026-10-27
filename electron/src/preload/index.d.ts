@@ -36,7 +36,9 @@ export interface BackendStatus {
     | 'access'
     | 'unsupported_platform'
     | 'wrong_architecture'
-    | 'missing_system_library';
+    | 'missing_system_library'
+    | 'outdated_system_library'
+    | 'files_locked';
   /** Free disk (GiB) the failed install needed; the CPU-only install needs less than the CUDA one. */
   setupRequiredGib?: number;
   /** A prior explicit install stopped after creating its resumable project/cache. */
@@ -124,6 +126,8 @@ export interface UpdateState {
   currentVersion: string;
   /** Absent when this build cannot switch channels (Store builds, dev runs). */
   channel?: UpdateChannel;
+  /** Set only while status is 'unsupported': why this build cannot update itself. */
+  unsupportedReason?: 'development' | 'store' | 'package-manager';
   availableVersion?: string;
   notes?: string | null;
   progress: number;

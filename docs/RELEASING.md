@@ -134,7 +134,10 @@ targets (a failed experimental Windows ARM64 leg does not block the others, and
 its feed is checked only when it was published), validates packaged startup and updater metadata, creates or
 updates a draft, and uploads:
 
-- Electron installers and platform-specific `electron-stable-*.yml` feeds
+- Electron installers named `VoiceStudio-<version>-<os>-<arch>.<ext>` (releases up to
+  v0.5.7-beta.3 used `VoiceStudio-Electron-*`) and platform-specific
+  `electron-stable-*.yml` feeds; feed file names never change, and each feed names
+  its own installer, so older clients update across the rename
 - per-platform `store-artifact-manifest-*.json` provenance records
 - `SHA256SUMS.txt`
 - authored CHANGELOG release notes
@@ -174,6 +177,7 @@ After publication, verify each maintained channel:
 | Channel             | Workflow                           | Verification                                                                                                                                                 |
 | ------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | GitHub Release      | `electron-release.yml`             | Linux x64, Windows x64 (+ ARM64 when its leg passed), macOS arm64 and x64 installers, updater feeds, checksums, CHANGELOG notes, retained v0.5.3 Tauri feeds |
+| Phone downloads     | `electron-release.yml` → `mobile-release.yml` | Signed Android APK/AAB and unsigned iOS sideload IPA from the same tag |
 | GHCR CUDA           | `docker.yml` (release published)   | `:X.Y.Z`, `:X.Y`, `:stable` manifests                                                                                                                        |
 | GHCR ROCm           | `docker.yml` (release published)   | `:X.Y.Z-rocm`, `:X.Y-rocm`, `:stable-rocm` manifests                                                                                                         |
 | GHCR CUDA arm64     | `docker.yml` (release published)   | `:X.Y.Z-cuda-arm64`, `:X.Y-cuda-arm64`, `:stable-cuda-arm64` manifests (`linux/arm64`)                                                                       |
@@ -199,11 +203,14 @@ It then asks **draft or publish**, prints the plan
 (including switching to `main` and fast-forwarding it), and only proceeds when you
 type the tag name.
 
-- **Draft:** bumps the three version files in lockstep, runs `uv lock`, writes
-  the `CHANGELOG.md` section from `[Unreleased]` (a stable release renames it; a
-  beta copies it), runs the version guards, commits, pushes `main` and the tag.
-  The tag push builds a draft release; nothing is public.
-- **Publish:** the same, then dispatches `electron-release.yml` with
+- **Two runs, because `main` only changes through pull requests.** The first
+  run bumps the three version files in lockstep, runs `uv lock`, writes the
+  `CHANGELOG.md` section from `[Unreleased]` (a stable release renames it; a
+  beta copies it), runs the version guards, commits on `release/vX.Y.Z[-beta.N]`
+  and opens its pull request. Once that merges, run the helper again with the
+  same version: `main` already has it, so it changes nothing and only tags.
+- **Draft:** the tag push builds a draft release; nothing is public.
+- **Publish:** the tag push, then dispatches `electron-release.yml` with
   `publish=true`. It lists which platforms have signing secrets (macOS needs the
   Developer ID and notarization set, Windows needs `ELECTRON_WINDOWS_CSC_LINK` and
   its password) and, for any platform without them, stops unless you explicitly
@@ -219,14 +226,21 @@ It does not replace the post-release verification below; run it every time.
 
 ## Mobile apps
 
-Phone apps ship on their own `mobile-v*` tags through the `mobile-release`
-workflow (a draft GitHub prerelease with the APK, AAB and IPAs; store uploads use
-the TestFlight and Play internal workflows). The version is the root `package.json` version and each run's
-number is the store build number. Setup, secrets and sideloading: `docs/mobile.md`
-→ Releasing. Publishing the draft and promoting the store builds are manual.
-Publish it as a prerelease that is not `latest`; the desktop app's update checks
-and release list read only desktop tags (`vX.Y.Z` and `vX.Y.Z-beta.N`), so
-`mobile-v*` releases never reach them.
+Phone apps build from the same `vX.Y.Z` or `vX.Y.Z-beta.N` tag as desktop.
+`electron-release.yml` calls `mobile-release.yml` and waits for the signed
+Android APK/AAB and unsigned iOS sideload IPA before creating or publishing the
+GitHub Release. All downloads share its version and `SHA256SUMS.txt`. A failed
+phone build blocks publication; do not publish a desktop-only release manually.
+Docker CUDA, ROCm and CUDA arm64 builds are dispatched for that same tag after
+publication; verify their completion before calling the release complete.
+
+App Store signing and store promotion remain separate from GitHub downloads.
+The unsigned IPA requires signing with the user's own Apple ID to sideload; it
+is not a TestFlight build. Apple certificate availability cannot suppress this
+artifact. Manual `mobile-release` runs can set `release_ref` to an existing tag
+and `signed_ios=false` to recover phone artifacts without changing the tag.
+Legacy `mobile-v*` tags remain supported only for historical standalone builds.
+
 
 ## Beta channel
 
@@ -268,12 +282,25 @@ libraries. AppImages use the static runtime, which needs no host libfuse2; test
 the downloaded image on a clean host because build-runner libraries can hide
 relocation errors.
 
+Every direct desktop installer except Intel macOS ships the OmniVoice GGUF
+runtime under `resources/bin/` (#2780). `electron-release.yml` and the
+packaging rehearsal call `build-omnivoice-tts.yml` (`desktop: true`) and stage
+each platform's artifact into `electron/build/omnivoice-tts/`; Windows ARM64
+ships the x64 build. Signing rewrites the binary, so the build refreshes
+`bin/checksums.sha256` after signing (`electron/omnivoice-tts-bundle.mjs`; on
+macOS before the bundle is sealed). `packaging-contract.mjs` fails a release
+whose installer lacks the runtime, whose manifest no longer matches the shipped
+bytes, or (macOS) whose runtime is unsigned. A failed runtime build fails the
+release; there is no fallback that ships without it.
+
 Linux release AppImages include `gh-releases-zsync` update information and a
 versioned `.AppImage.zsync` asset for AppImageUpdate/AppImageLauncher. Release
 images follow the latest stable GitHub release. The build uses `readelf` and
 `zsyncmake` (Ubuntu package `zsync`) to embed this information before
 regenerating electron-updater's blockmap and checksums; the existing in-app
-updater still uses its separate channel manifest. Verify both update paths
+updater still uses its separate channel manifest. Images up to v0.5.7-beta.3 look
+for `VoiceStudio-Electron-*-linux-x64.AppImage.zsync`, so AppImageUpdate cannot
+move them to a renamed release; they update through the in-app updater. Verify both update paths
 against the final downloaded artifact, not the pre-publish build.
 
 Electron update manifests use platform and architecture channels. Confirm every

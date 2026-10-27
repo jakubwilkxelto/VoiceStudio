@@ -415,22 +415,23 @@ def _safe_torchaudio_save(
 
     fmt = (format or "wav").lower()
     if torchaudio is None:
-        # torchaudio never loaded (missing TorchCodec shared libs, broken
-        # wheel). The tensor is fully normalized by this point, so write via
-        # the audited soundfile path instead of failing every generation.
-        _subtype = {
-            "wav": "FLOAT" if bits_per_sample == 32 else "PCM_24" if bits_per_sample == 24 else "PCM_16",
-            "flac": "PCM_24" if bits_per_sample == 24 else "PCM_16",
-            "ogg": "VORBIS",
-            "mp3": "MPEG_LAYER_III",
-        }.get(fmt, "PCM_16")
+        # torchaudio never loaded (missing TorchCodec libraries or a broken
+        # wheel). The tensor is already normalised above, so hand it straight
+        # to libsndfile.
+        if fmt == "wav":
+            subtype = "FLOAT" if bits_per_sample == 32 else ("PCM_24" if bits_per_sample == 24 else "PCM_16")
+        elif fmt == "flac":
+            subtype = "PCM_24" if bits_per_sample == 24 else "PCM_16"
+        elif fmt == "ogg":
+            subtype = "VORBIS"
+        elif fmt == "mp3":
+            subtype = "MPEG_LAYER_III"
+        else:
+            subtype = "PCM_16"
         try:
             _safe_soundfile_write(
-                path_or_buf,
-                tensor.transpose(0, 1).contiguous().numpy(),
-                sample_rate,
-                subtype=_subtype,
-                format=fmt.upper(),
+                path_or_buf, tensor.t().contiguous().numpy(), sample_rate,
+                subtype=subtype, format=fmt.upper(),
             )
         except Exception as e:
             raise _describe_write_failure(e, path_or_buf) from e
@@ -479,38 +480,35 @@ def _safe_torchaudio_save(
                 )
                 torchaudio.save(path_or_buf, tensor, sample_rate, format=fmt)
     except (ImportError, RuntimeError) as e:
+        # Only a TorchCodec loading problem is worth a second route; any other
+        # RuntimeError is a genuine write failure.
         if isinstance(e, RuntimeError) and "could not load libtorchcodec" not in str(e).lower():
             raise _describe_write_failure(e, path_or_buf) from e
-        # torchaudio >= 2.9 routes save() through TorchCodec, which needs
-        # FFmpeg *shared libraries* on the system. Where those are absent the
-        # write raises ImportError and every generation fails. #1931 guarded
-        # set_audio_backend() against that torchaudio but left save() itself
-        # unprotected; arm64 CUDA hosts reach it unavoidably, since torch
-        # 2.8.0 publishes no aarch64 wheel. soundfile is already a locked
-        # dependency and the tensor is normalized by this point, so hand it to
-        # the audited sibling helper rather than failing the request.
+        # torchaudio >= 2.9 sends save() through TorchCodec, which needs the
+        # FFmpeg shared libraries (unavoidable on arm64 CUDA hosts). libsndfile
+        # can write the same containers without them.
         logger.warning(
-            "torchaudio.save needs TorchCodec (%s); writing via soundfile", e
+            "torchaudio.save needs TorchCodec / FFmpeg shared libraries (%s); "
+            "writing through soundfile instead", e,
         )
         if hasattr(path_or_buf, "seek") and hasattr(path_or_buf, "truncate"):
             try:
                 path_or_buf.seek(0)
                 path_or_buf.truncate(0)
             except (OSError, io.UnsupportedOperation):
-                pass  # Non-seekable streams cannot be rewound; preserve fallback behavior.
-        _subtype = {
-            "wav": "FLOAT" if bits_per_sample == 32 else "PCM_16",
-            "flac": "PCM_16",
-            "ogg": "VORBIS",
-            "mp3": "MPEG_LAYER_III",
-        }.get(fmt, "PCM_16")
+                pass  # best effort: a half-written buffer would corrupt the output
+        if fmt == "wav":
+            subtype = "FLOAT" if bits_per_sample == 32 else "PCM_16"
+        elif fmt == "ogg":
+            subtype = "VORBIS"
+        elif fmt == "mp3":
+            subtype = "MPEG_LAYER_III"
+        else:
+            subtype = "PCM_16"
         try:
             _safe_soundfile_write(
-                path_or_buf,
-                tensor.transpose(0, 1).contiguous().numpy(),
-                sample_rate,
-                subtype=_subtype,
-                format=fmt.upper(),
+                path_or_buf, tensor.t().contiguous().numpy(), sample_rate,
+                subtype=subtype, format=fmt.upper(),
             )
         except Exception as e2:
             raise _describe_write_failure(e2, path_or_buf) from e2
@@ -573,68 +571,35 @@ def _describe_write_failure(e: Exception, path_or_buf: PathOrBuf) -> Exception:
 
 def _safe_soundfile_write(
     path: PathOrBuf,
-    samples: np.ndarray,
+    samples: Any,
     sample_rate: int,
     *,
     subtype: str = "PCM_16",
     format: str | None = None,
 ) -> None:
-    """Sibling helper for the one in-tree ``sf.write`` site.
+    """Audited ``soundfile.write``: refuses empty input, sanitises dtype and range.
 
-    ``soundfile`` is a different library than ``torchaudio`` — numpy
-    arrays instead of tensors, ``subtype`` instead of
-    ``encoding`` + ``bits_per_sample`` — so it gets its own entry point.
-    The correctness invariants are the same: contiguous, finite, in
-    range, non-empty.
-
-    Args:
-        path: Filesystem path or file-like object.
-        samples: 1D ``(samples,)`` or 2D ``(samples, channels)`` numpy
-            array — soundfile's native shape, opposite of torchaudio's.
-        sample_rate: WAV sample rate in Hz.
-        subtype: Soundfile subtype string. ``"PCM_16"`` (default) for
-            standard 16-bit PCM WAV; ``"PCM_24"``, ``"FLOAT"`` etc.
-            also work.
-        format: Container format (``"WAV"``, ``"FLAC"``, ``"OGG"``,
-            ``"MP3"``). ``None`` lets soundfile infer it from the path's
-            extension — which it cannot do for a file-like object, so
-            callers passing a buffer must name it.
-
-    Raises:
-        ValueError: if the array is empty.
+    ``samples`` is soundfile-shaped: ``(samples,)`` or ``(samples, channels)``
+    (the transpose of torchaudio's layout). ``format`` names the container
+    (``"WAV"``, ``"FLAC"``, ``"OGG"``, ``"MP3"``); ``None`` infers it from the
+    file extension, which only works for paths, so buffers must pass it.
     """
-    # Import here so this module doesn't fail to import when soundfile
-    # is somehow absent (it's a transitive dep but we don't want a hard
-    # import-time coupling).
     import soundfile as sf
 
     if not isinstance(samples, np.ndarray):
-        # Accept memoryview / list / torch tensor inputs by coercing.
         samples = np.asarray(samples)
-
     if samples.size == 0:
         raise ValueError(
-            "_safe_soundfile_write refuses to write an empty array — "
-            "a zero-length WAV is exactly the #48 silent-corruption mode."
+            "_safe_soundfile_write refuses to write an empty array — a "
+            "zero-length file is the silent-corruption mode of #48."
         )
-
-    # Coerce to a soundfile-friendly dtype. soundfile accepts
-    # float32 / float64 / int16 / int32; we normalize anything else to
-    # float32 so the clamp below is well-defined.
     if samples.dtype not in (np.float32, np.float64, np.int16, np.int32):
         samples = samples.astype(np.float32)
-
-    # Out-of-range protection for float inputs.
-    if samples.dtype in (np.float32, np.float64):
-        # ``np.clip`` with ``out=`` requires the out array to be
-        # writable + same dtype. ``np.ascontiguousarray`` may return
-        # the original array (writable) or a copy (also writable), so
-        # clipping in place is safe after it.
-        samples = np.ascontiguousarray(samples)
+    samples = np.ascontiguousarray(samples)
+    if not samples.flags.writeable:
+        samples = samples.copy()
+    if samples.dtype.kind == "f":
         np.clip(samples, -1.0, 1.0, out=samples)
-    else:
-        samples = np.ascontiguousarray(samples)
-
     _ensure_audio_parent(path)
     sf.write(path, samples, sample_rate, subtype=subtype, format=format)
 

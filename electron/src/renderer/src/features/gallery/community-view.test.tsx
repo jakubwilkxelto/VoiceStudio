@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CommunityItem } from '@shared/api/community-types';
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   navigate: vi.fn(),
@@ -18,7 +19,14 @@ vi.mock('@/components/bridge', () => ({
 }));
 vi.mock('@/lib/store/clone-settings', () => ({ patchCloneSettings: mocks.patch }));
 vi.mock('@/components/audio-preview-button', () => ({ AudioPreviewButton: () => null }));
-import { CommunityView, authorProfileUrl, communityKey, isNewItem } from './community-view';
+import {
+  CommunityView,
+  authorProfileUrl,
+  communityKey,
+  isNewItem,
+  matchesCommunitySearch,
+  uniqueCommunityItems,
+} from './community-view';
 const item = {
   id: 'voice/1',
   type: 'voice' as const,
@@ -131,4 +139,37 @@ it('opens the submission form only after an explicit click', async () => {
   await waitFor(() =>
     expect(mocks.external).toHaveBeenCalledWith('https://github.com/example/repo/issues/new'),
   );
+});
+
+describe('community catalogue hygiene', () => {
+  const voice = (id: string, name: string, extra: Partial<CommunityItem> = {}): CommunityItem => ({
+    id,
+    type: 'preset',
+    name,
+    icon: '',
+    use_case: '',
+    facets: {},
+    language: 'English',
+    instruct: 'warm narrator',
+    ...extra,
+  });
+
+  it('lists a voice once even when two sources or pages carry it', () => {
+    const items = uniqueCommunityItems([
+      voice('a', 'Ava'),
+      voice('a', 'Ava'),
+      voice('b', 'Ava', { _source_repo: 'mirror' }),
+      voice('c', 'Ben', { instruct: 'bright' }),
+    ]);
+    expect(items.map((item) => item.id)).toEqual(['a', 'c']);
+  });
+
+  it('searches names, descriptions, authors and languages like the Archetypes list', () => {
+    const item = voice('a', 'Ava', { author: 'maria', language: 'Spanish' });
+    expect(matchesCommunitySearch(item, 'ava')).toBe(true);
+    expect(matchesCommunitySearch(item, 'NARRATOR')).toBe(true);
+    expect(matchesCommunitySearch(item, 'maria')).toBe(true);
+    expect(matchesCommunitySearch(item, 'spanish')).toBe(true);
+    expect(matchesCommunitySearch(item, 'robot')).toBe(false);
+  });
 });

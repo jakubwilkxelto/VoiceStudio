@@ -68,7 +68,12 @@ export PATH="$PWD/fake-bin:/usr/bin:/bin"
 export CMAKE_LOG="$PWD/cmake.log" VULKAN_ATTEMPT="$PWD/vulkan-attempt" FAILED="$PWD/failed"
 bash scripts/build-omnivoice-tts.sh --platform "$PLATFORM" --commit-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ''')
-    env = {**os.environ, "MODE": mode, "PLATFORM": platform}
+    msvc = tmp_path / "msvc"
+    msvc.mkdir()
+    for dll in ("msvcp140.dll", "vcruntime140.dll"):
+        (msvc / dll).write_text("crt")
+    env = {**os.environ, "MODE": mode, "PLATFORM": platform,
+           "OMNIVOICE_MSVC_RUNTIME_DIR": msvc.as_posix()}
     result = subprocess.run([BASH, launcher.as_posix()], env=env,
                             capture_output=True, text=True, timeout=30,
                             check=False)

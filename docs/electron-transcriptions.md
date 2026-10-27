@@ -27,7 +27,16 @@ search/export/clear controls stay hidden until a transcription exists, and backe
 failures appear once with direct Retry and Dismiss actions.
 
 Recordings use the existing capture/cleanup helpers. Playback uses Vidstack.
-Pending HTTP requests abort when leaving the workspace. Refinement settings,
+A file transcription keeps running when you leave the workspace: only Cancel
+aborts it, the result is always saved to History, and a toast links back when it
+finishes or fails while you are on another page. A renderer reload still ends it.
+
+In accurate mode, **Identify speakers** (off by default) asks `/transcribe` to
+label who spoke each segment (API callers can also pass `num_speakers`). It uses
+the same speaker model as dubbing. Labels appear in the segment list and in exports;
+an export with cleaned-up text keeps that text and adds the labelled segments
+below it. If the speaker model is missing or fails, the transcript is still
+saved without labels and a warning explains why. Refinement settings,
 native dictation and target-app delivery are described below. Cross-application
 history migration remains separate parity work.
 

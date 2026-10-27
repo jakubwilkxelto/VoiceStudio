@@ -53,7 +53,7 @@ try {
         0,
       );
       const openMain = compactMain.getByRole("button", {
-        name: "Toggle Sidebar",
+        name: "Toggle sidebar",
       });
       await openMain.click();
       await compactMain.waitFor({ state: "detached" });

@@ -27,6 +27,8 @@ vi.mock('./runtime-project', () => ({
   stageRuntimeSources: mocks.stage,
   runtimePython: (root: string) => root + '/.venv/bin/python',
   MISSING_SYSTEM_LIBRARY_CODE: 'MISSING_SYSTEM_LIBRARY',
+  OUTDATED_SYSTEM_LIBRARY_CODE: 'OUTDATED_SYSTEM_LIBRARY',
+  RUNTIME_FILES_LOCKED_CODE: 'RUNTIME_FILES_LOCKED',
 }));
 
 import { BackendSupervisor } from './backend';
@@ -67,7 +69,26 @@ function launch(supervisor: BackendSupervisor) {
   return { child, internal };
 }
 
+/** Run as if on `platform`/`arch`, restoring the real host afterwards. */
+function pinHost(platform: NodeJS.Platform, arch: NodeJS.Architecture) {
+  const real = {
+    platform: Object.getOwnPropertyDescriptor(process, 'platform')!,
+    arch: Object.getOwnPropertyDescriptor(process, 'arch')!,
+  };
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+  Object.defineProperty(process, 'arch', { value: arch, configurable: true });
+  return () => {
+    Object.defineProperty(process, 'platform', real.platform);
+    Object.defineProperty(process, 'arch', real.arch);
+  };
+}
+let restoreHost: () => void;
+
 beforeEach(() => {
+  // Intel Macs never install the local runtime (isUnsupportedPlatform), so a
+  // repair test run on the macOS x64 release runner saw no repair. Pin a host
+  // that supports it; the Intel case has its own test below.
+  restoreHost = pinHost('linux', 'x64');
   vi.useFakeTimers();
   vi.stubGlobal(
     'fetch',
@@ -80,6 +101,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  restoreHost();
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -87,7 +109,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it('quotes the backend\'s own startup verdict instead of the last access-log line', async () => {
+it("quotes the backend's own startup verdict instead of the last access-log line", async () => {
   const supervisor = new BackendSupervisor();
   const { child, internal } = launch(supervisor);
   // uvicorn's access log goes to stdout; the verdict goes to stderr.
@@ -131,6 +153,21 @@ it('repairs the managed runtime when the backend died importing its dependencies
   // running repair instead of a dead end (#3058).
   expect(mocks.install).toHaveBeenCalled();
   expect(supervisor.status.stage).not.toBe('crashed');
+  await supervisor.shutdown();
+});
+
+it('never starts a runtime repair on an Intel Mac, which cannot install one', async () => {
+  restoreHost();
+  restoreHost = pinHost('darwin', 'x64');
+  const supervisor = new BackendSupervisor();
+  const { child, internal } = launch(supervisor);
+  internal.runtimeProject = OWN_PROJECT;
+  internal.pushLog('err', ['    import torchaudio', FATAL_STARTUP].join('\n'), true);
+
+  child.emit('exit', 1, null);
+  await vi.advanceTimersByTimeAsync(11_000);
+
+  expect(mocks.install).not.toHaveBeenCalled();
   await supervisor.shutdown();
 });
 
@@ -180,5 +217,32 @@ it('forgets import errors once the backend has been healthy', async () => {
   await vi.advanceTimersByTimeAsync(11_000);
 
   expect(mocks.install).not.toHaveBeenCalled();
+  await supervisor.shutdown();
+});
+
+it('names a Windows load block instead of rebuilding a runtime that cannot help (#3209)', async () => {
+  const supervisor = new BackendSupervisor();
+  const { child, internal } = launch(supervisor);
+  internal.runtimeProject = OWN_PROJECT;
+  internal.pushLog(
+    'err',
+    [
+      'Traceback (most recent call last):',
+      '  File "backend/main.py", line 365, in <module>',
+      '    import torch',
+      'ImportError: DLL load failed while importing _C: An Application Control policy has blocked this file.',
+    ].join('\n'),
+    true,
+  );
+
+  child.emit('exit', 1, null);
+  await vi.advanceTimersByTimeAsync(11_000);
+
+  // torch is a core dependency, so this used to read as a broken environment
+  // and download the whole runtime again, only to be blocked again.
+  expect(mocks.install).not.toHaveBeenCalled();
+  expect(supervisor.status.stage).toBe('crashed');
+  expect(supervisor.status.message).toContain("Windows refused to load one of the engine's files");
+  expect(supervisor.status.message).toContain('application control policy');
   await supervisor.shutdown();
 });

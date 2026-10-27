@@ -31,15 +31,26 @@ export function inSyncedFolder(text: string): boolean {
 }
 
 /**
+ * The OS refused to run the engine or to load one of its files: libuv reports a
+ * blocked executable on Windows as the bare `spawn UNKNOWN` (EPERM/EACCES
+ * elsewhere), and the main process words a refused DLL load as "Windows refused
+ * to load one of the engine's files" (#3209).
+ */
+function osRefused(message: string): boolean {
+  return (
+    /\bCould not start\b.*\b(spawn UNKNOWN|UNKNOWN|EPERM|EACCES)\b/s.test(message) ||
+    /Windows refused to load one of the engine's files/.test(message)
+  );
+}
+
+/**
  * The hints that apply to a failed-backend message, most specific first.
  * Never throws; an empty list means "show the message alone".
  */
 export function backendFailureHints(message: string | undefined): BackendHintKey[] {
   if (!message) return [];
   const hints: BackendHintKey[] = [];
-  // The OS refused to run the program: libuv reports a blocked executable on
-  // Windows as the bare `spawn UNKNOWN`, and EPERM/EACCES elsewhere.
-  if (/\bCould not start\b.*\b(spawn UNKNOWN|UNKNOWN|EPERM|EACCES)\b/s.test(message)) {
+  if (osRefused(message)) {
     // Smart App Control has no exclusions, so the antivirus advice would send the user nowhere.
     hints.push(
       /Smart App Control/.test(message)
@@ -79,6 +90,22 @@ export const BACKEND_CAUSE_ACTION: Record<BackendCause, BackendCauseAction> = {
 };
 
 /**
+ * The primary action for a cause on this install. Moving the environment only
+ * exists for the app-managed runtime of an installed app: a source checkout's
+ * `.venv` lives in the repository, the folder picker refuses it, and a
+ * "Choose another folder" button there did nothing (#3480). Retry re-checks the
+ * environment instead, which is what a source user needs after running setup.
+ */
+export function backendCauseAction(
+  cause: BackendCause | null,
+  { managedRuntime }: { managedRuntime: boolean },
+): BackendCauseAction {
+  if (!cause) return 'retry';
+  const action = BACKEND_CAUSE_ACTION[cause];
+  return action === 'choose_folder' && !managedRuntime ? 'retry' : action;
+}
+
+/**
  * Collapses a failed-backend message into ONE named cause, most specific
  * first, or null when nothing is recognised (the raw message is then shown
  * alone with Retry). Covers `spawn UNKNOWN`, a missing Python environment, a
@@ -86,7 +113,7 @@ export const BACKEND_CAUSE_ACTION: Record<BackendCause, BackendCauseAction> = {
  */
 export function backendFailureCause(message: string | undefined): BackendCause | null {
   if (!message) return null;
-  if (/\bCould not start\b.*\b(spawn UNKNOWN|UNKNOWN|EPERM|EACCES)\b/s.test(message)) {
+  if (osRefused(message)) {
     return /Smart App Control/.test(message) ? 'smart_app_control' : 'spawn_blocked';
   }
   if (inSyncedFolder(message)) return 'synced_folder';

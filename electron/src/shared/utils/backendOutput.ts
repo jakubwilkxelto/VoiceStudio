@@ -96,6 +96,9 @@ export const RECENT_OUTPUT_LINES = 20;
 export function isBrokenEnvironmentOutput(lines: readonly string[]): boolean {
   const text = lines.join('\n').trim();
   if (!text) return false;
+  // A file Windows refused to load is intact on disk: reinstalling the
+  // runtime downloads gigabytes and is blocked again (#3209).
+  if (windowsLoadBlock(lines)) return false;
   const tail = text
     .split('\n')
     .slice(-RECENT_OUTPUT_LINES)
@@ -103,4 +106,26 @@ export function isBrokenEnvironmentOutput(lines: readonly string[]): boolean {
     .toLowerCase();
   if (!IMPORT_FAILURE_MARKERS.some((marker) => tail.includes(marker))) return false;
   return CORE_DEPENDENCIES.some((dependency) => tail.includes(dependency));
+}
+
+/** Who refused to load a runtime file, by the Windows error text Python quotes. */
+export type WindowsLoadBlock = 'application_control' | 'group_policy' | 'antivirus';
+
+/**
+ * Windows refused to load one of the runtime's files (#3209, #3224).
+ *
+ * Python quotes the Windows error verbatim: `ImportError: DLL load failed
+ * while importing _sqlite3: An Application Control policy has blocked this
+ * file.` (ERROR 4551, Smart App Control or an organization's App Control /
+ * AppLocker policy), `This program is blocked by group policy` (ERROR 1260)
+ * and `…contains a virus or potentially unwanted software` (ERROR 225, an
+ * antivirus blocking the load). None is a damaged environment.
+ */
+export function windowsLoadBlock(lines: readonly string[]): WindowsLoadBlock | null {
+  const tail = lines.slice(-RECENT_OUTPUT_LINES).join('\n');
+  if (/an application control policy has blocked this file/i.test(tail)) return 'application_control';
+  // ERROR 1260 is AppLocker / Software Restriction Policies, never Smart App Control.
+  if (/this program is blocked by group policy/i.test(tail)) return 'group_policy';
+  if (/contains a virus or potentially unwanted software/i.test(tail)) return 'antivirus';
+  return null;
 }

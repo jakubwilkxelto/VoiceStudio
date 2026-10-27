@@ -55,7 +55,7 @@ Fun fact discovered en route: **pyvideotrans already integrates VoiceStudio as
 a first-class TTS/clone backend** (`videotrans/tts/_omnivoice.py`, via our Gradio
 API). We are upstream for 17.9k-star project users. **Second-pass update: the
 integration is verified broken** — it speaks Gradio to an endpoint we never exposed.
-Details in the [pyvideotrans deep dive](#7-fact-check-the-pyvideotrans--omnivoice-integration);
+Details in the [pyvideotrans deep dive](#7-fact-check-the-pyvideotrans--voicestudio-integration);
 the action item is now "ship a compat shim or upstream a REST integration", not
 "verify".
 
@@ -1296,7 +1296,7 @@ DirectML; Linux support.
 | Subtitle/audio sync drift, silence-removal eating final words, merged batch translations | ~10 open + the most-reacted closed bugs | [#923](https://github.com/jianchang512/pyvideotrans/issues/923) (22 comments), [#1012](https://github.com/jianchang512/pyvideotrans/issues/1012) | **Warning (endemic to dubbing).** Speech-rate mismatch is the hardest unsolved problem in the category — anyone evaluating our dub pipeline judges us on exactly this. Specs 1 + 5 are the answer |
 | External TTS engine integration breakage (GPT-SoVITS, F5-TTS, index-tts break at the API seam) | ~10 open | [#636](https://github.com/jianchang512/pyvideotrans/issues/636) (26 comments), [#954](https://github.com/jianchang512/pyvideotrans/issues/954) | **Opportunity.** They delegate TTS to a zoo of self-hosted side-servers; every seam is a support ticket. Our bundled-engine model removes this entire class — a concrete pitch. (Their broken `_omnivoice.py` is this same theme pointed at us — Spec 11) |
 | Install failures, especially macOS (source-only; Windows gets a praised .exe) | ~6 recent cluster; all-time #2 most-commented issue is literally "Installation tutorial" ([#193](https://github.com/jianchang512/pyvideotrans/issues/193), 67 comments) | [#950](https://github.com/jianchang512/pyvideotrans/issues/950), [#952](https://github.com/jianchang512/pyvideotrans/issues/952) | **Opportunity.** macOS/Linux users are second-class there; a signed mac installer with a working first run is a direct wedge |
-| CUDA errors (GPU fails, silently falls back to CPU) | steady trickle; [#287](https://github.com/jianchang512/pyvideotrans/issues/287) 22 comments | [#177](https://github.com/jianchang512/pyvideotrans/issues/177), [#980](https://github.com/jianchang512/pyvideotrans/issues/980) | **Warning** — though notably smaller than voicebox's, because they treat CPU as the default path and GPU as opt-in |
+| CUDA errors (GPU fails, silently falls back to CPU) | steady trickle; [#287](https://github.com/jianchang512/pyvideotrans/issues/287) 22 comments | [#177](https://github.com/jianchang512/pyvideotrans/issues/177), #980 (since removed) | **Warning** — though notably smaller than voicebox's, because they treat CPU as the default path and GPU as opt-in |
 | LLM translation plumbing (thinking-tags leaking into subtitles, stripped punctuation, merged lines) | ~8 | [#921](https://github.com/jianchang512/pyvideotrans/issues/921), [#979](https://github.com/jianchang512/pyvideotrans/issues/979) | **Opportunity (partial).** LLM-output sanitization is cheap, testable hygiene that visibly differentiates output quality |
 | **Their VoiceStudio integration is reported broken by users** | open | [#1124](https://github.com/jianchang512/pyvideotrans/issues/1124) | Confirms the Spec 11 finding from their side of the bridge |
 
@@ -1342,7 +1342,7 @@ clones) · Business $990 (10 pro clones). The complaints that push users local:
   compelling — and our 50-video batch users' workload.
 - **Editing a dub costs credits** — regenerating a clip bills each time; the credit
   rebate covers roughly one full re-dub
-  ([dubbing studio docs](https://elevenlabs.io/docs/dubbing/studio)). They built
+  ([dubbing studio docs](https://elevenlabs.io/docs/product-guides/products/dubbing/dubbing-studio)). They built
   per-segment regeneration *and had to bolt a rebate scheme onto it* — direct
   evidence the incremental-re-dub pain is real and monetized against.
 - **Cloning is paywalled** at every tier boundary; commercial use paywalled on Free.

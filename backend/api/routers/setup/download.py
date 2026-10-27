@@ -278,18 +278,11 @@ def _segmented_snapshot(repo_id: str, *, endpoint: "str | None", revision: str) 
     from services.segmented_download import DownloadCancelled, segmented_download
     from services.token_resolver import resolve as _resolve_token
 
-    # `resolve()` returns a ResolvedToken record, not the bearer string, and
-    # every consumer below is typed `token: str | None`. Handing over the
-    # record fails silently rather than loudly (#2163): huggingface_hub's
-    # build_hf_headers ignores a non-str token and falls back to its own
-    # ambient discovery, so a token held only in VoiceStudio's settings sends
-    # NO Authorization header at all and every gated file 401s; our own
-    # segmented_download interpolates it into `f"Bearer {token}"` and sends a
-    # malformed header carrying the raw secret. Unwrap once, here.
-    _resolved = _resolve_token()
-    # Mirrors never receive the token; False also stops huggingface_hub from
-    # sending one it finds on its own.
-    hub_token = token_for_endpoint(endpoint, _resolved.token if _resolved else None)
+    # resolve() yields a record, not a string: unwrap it so every consumer
+    # below sees a bearer string or a real None. Mirrors get False, never a token.
+    _record = _resolve_token()
+    _bearer = getattr(_record, "token", None) if _record else None
+    hub_token = token_for_endpoint(endpoint, _bearer)
     token = hub_token or None
     api = HfApi(endpoint=endpoint, token=hub_token)
     info = api.repo_info(repo_id, repo_type="model", revision=revision)
@@ -563,49 +556,26 @@ def _is_retryable_download_error(exc: BaseException) -> bool:
     return is_hf_connectivity_error(str(exc))
 
 
-def _segmented_retry_plan(
-    exc: BaseException, attempt: int, max_attempts: int
-) -> tuple[bool, bool]:
-    """What to do after the segmented accelerator failed on ``attempt``.
+def _segmented_retry_plan(exc: Exception, attempt: int, max_attempts: int) -> tuple[bool, bool]:
+    """Return ``(disable, retry)`` for a segmented-transfer failure.
 
-    Returns ``(disable_accelerator, reraise)``.
-
-    A dropped connection is not the accelerator's fault, so the error is
-    re-raised for the outer retry: the next attempt re-enters
-    :func:`_segmented_snapshot`, which resumes from the ``.part`` manifest.
-    Falling straight through to ``snapshot_download`` instead would finish the
-    install from a separate ``.incomplete`` file and strand that manifest — the
-    restart-from-zero this exists to prevent.
-
-    The final attempt is always reserved for the plain path, so the accelerator
-    can never be the reason an install fails outright. The two flags are
-    decoupled for that handover: the attempt that exhausts the accelerator still
-    re-raises, so the plain path starts on the LAST attempt rather than the
-    second-to-last. Disabling and falling through in the same attempt would
-    abandon the resumable manifest one attempt early and restart through a
-    separate file — which is the failure this whole helper exists to avoid.
+    Transient disconnects re-enter the accelerator so its range manifest can
+    resume; falling through immediately would use a separate incomplete file.
+    The penultimate attempt disables and retries, reserving the last attempt
+    for the plain downloader. A terminal or non-transient failure hands over
+    immediately because no useful accelerator retry remains.
     """
-    if not _is_retryable_download_error(exc):
-        return True, False  # the accelerator cannot work here at all
-    if attempt >= max_attempts:
-        # Nothing left to hand over to: take the plain path now rather than
-        # re-raising out of the loop with no fallback ever tried.
+    if not _is_retryable_download_error(exc) or attempt >= max_attempts:
         return True, False
     return attempt >= max_attempts - 1, True
 
 
-def _segmented_retry_note(disable: bool, reraise: bool) -> str:
-    """How to describe the outcome of :func:`_segmented_retry_plan` in the log.
-
-    Three distinct states, and reading only ``disable`` conflates two of them:
-    the attempt that exhausts the accelerator is disabled AND re-raises, so the
-    fallback starts on the NEXT attempt, not this one.
-    """
-    if not disable:
-        return "kept for the next attempt (resumes from its manifest)"
-    if reraise:
-        return "exhausted — retrying once more, then snapshot_download takes over"
-    return "disabled for this install — falling back to snapshot_download now"
+def _segmented_retry_log_phrase(disable: bool, retry: bool) -> str:
+    if not disable and retry:
+        return "accelerator retained; the next attempt resumes its range manifest"
+    if disable and retry:
+        return "accelerator exhausted; retrying once more before the plain downloader takes over"
+    return "accelerator disabled; falling back to the plain downloader now"
 
 
 @router.post("/models/install")
@@ -836,11 +806,7 @@ async def install_model(req: InstallModelRequest):
 
             _max_attempts = 5
             _attempt = 0
-            # The accelerator is retried across attempts so its manifest-based
-            # resume actually gets used; it is disabled for the rest of the
-            # install only when it fails for a reason that is NOT transient
-            # network trouble (i.e. the accelerator itself is unusable here).
-            _segmented_off = False
+            _segmented_disabled = False
             while True:
                 if req.repo_id in _cancelled:
                     raise _InstallCancelled()
@@ -854,7 +820,7 @@ async def install_model(req: InstallModelRequest):
                     # compromise a correct install (see _segmented_retry_plan).
                     _snapshot_path = None
                     if (
-                        not _segmented_off
+                        not _segmented_disabled
                         and not allow_patterns
                         and _segmented_enabled()
                         and not _xet_active()
@@ -872,15 +838,16 @@ async def install_model(req: InstallModelRequest):
                                 raise _InstallCancelled() from _seg_err
                             if is_disk_full_error(_seg_err):
                                 raise  # the plain path would hit the same wall
-                            _segmented_off, _seg_reraise = _segmented_retry_plan(
-                                _seg_err, _attempt, _max_attempts
+                            _disable, _retry = _segmented_retry_plan(
+                                _seg_err, _attempt, _max_attempts,
                             )
+                            _segmented_disabled = _segmented_disabled or _disable
                             logger.info(
-                                "segmented download for %s failed (%s); accelerator %s",
+                                "segmented download for %s failed (%s); %s",
                                 req.repo_id, _seg_err,
-                                _segmented_retry_note(_segmented_off, _seg_reraise),
+                                _segmented_retry_log_phrase(_disable, _retry),
                             )
-                            if _seg_reraise:
+                            if _retry:
                                 raise
                             _snapshot_path = None
                     if _snapshot_path is None:

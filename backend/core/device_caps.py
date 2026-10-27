@@ -57,6 +57,21 @@ DIRECTML_MARKER = "DirectML device present"
 # their machine simply has no GPU.
 UNUSABLE_GPU_MARKER = "present but PyTorch cannot use it"
 
+
+def cuda_forced() -> bool:
+    """``OMNIVOICE_FORCE_CUDA`` asks for CUDA even when the installed wheel has
+    no kernels for the card (#3067).
+
+    Shared by the routing badge (``services.engine_routing``) and the GPU
+    report. ``services.model_manager.get_best_device`` reads the same flag
+    with the same truthy values through its ``_env_flag`` helper (kept
+    separate to avoid an import cycle); tests/test_engine_routing.py checks
+    the two agree."""
+    return os.environ.get("OMNIVOICE_FORCE_CUDA", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 # NOTE: the NVIDIA driver-version check (CUDA 12.x minor-compat floor: R525.60.13 Linux / R528.33 Windows)
 # is intentionally NOT done here — it requires shelling to ``nvidia-smi``, which
 # would put a subprocess on the cold-start probe path. That check stays in
@@ -85,7 +100,40 @@ ROCM_GFX_OVERRIDES = {
     "gfx1031": "gfx1030", "gfx1032": "gfx1030", "gfx1034": "gfx1030",
     # Vega (RX Vega / Radeon VII) — override to gfx900 / gfx906
     "gfx902": "gfx900", "gfx906": "gfx906",
+    # RDNA 4 (RX 9060 / 9070, gfx1200 / gfx1201) deliberately has NO entry: no
+    # other architecture's kernels run on it, so a remap onto gfx1100 only
+    # crashes. It needs a build that lists it natively — the pinned Linux ROCm
+    # torch 2.8.0 (rocm6.4 index) and the Windows ROCm 7.2.1 recipe both do
+    # (#3418). Remaps never cross a generation; tests/test_rocm_arch_gate.py
+    # enforces that for every entry.
 }
+
+
+def gfx_generation(gfx: str) -> str:
+    """``"gfx1201"`` → ``"12"``, ``"gfx1030"`` → ``"10"``, ``"gfx906"`` → ``"9"``.
+
+    The major ISA family. ``HSA_OVERRIDE_GFX_VERSION`` can only ever make a card
+    run kernels built for a sibling in the same family; across families the
+    instruction set differs. Empty string for anything that isn't a gfx name.
+    """
+    digits = _normalize_arch(gfx).removeprefix("gfx")
+    if len(digits) < 3 or not digits[:-2].isdigit():
+        return ""
+    return digits[:-2]
+
+
+def same_generation_targets(gfx: str, arch_list) -> tuple[str, ...]:
+    """Architectures in ``arch_list`` that share ``gfx``'s ISA family, i.e. the
+    only targets an ``HSA_OVERRIDE_GFX_VERSION`` remap could plausibly use.
+    Empty for an RDNA4 card on a build that predates gfx12."""
+    family = gfx_generation(gfx)
+    if not family:
+        return ()
+    native = _normalize_arch(gfx)
+    return tuple(dict.fromkeys(
+        a for a in (_normalize_arch(x) for x in arch_list or ())
+        if a != native and gfx_generation(a) == family
+    ))
 
 
 def hsa_override_for(target_gfx: str) -> str:
@@ -805,10 +853,13 @@ __all__ = [
     "is_windows_on_arm",
     "arch_unsupported",
     "gfx_for_hsa_override",
+    "gfx_generation",
     "hsa_override_for",
+    "same_generation_targets",
     "build_arch_list",
     "ROCM_GFX_OVERRIDES",
     "KERNEL_RISK_MARKER",
     "DIRECTML_MARKER",
     "UNUSABLE_GPU_MARKER",
+    "cuda_forced",
 ]

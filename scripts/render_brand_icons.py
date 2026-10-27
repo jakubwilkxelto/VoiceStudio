@@ -34,6 +34,19 @@ def scaled(master, size):
     return master.resize((size, size), Image.LANCZOS)
 
 
+def macos_master(master):
+    # Apple's icon grid: the tile spans the centred 824 px of a 1024 px canvas,
+    # so the icon matches other apps in the Dock, Launchpad and Finder (#2744).
+    # The logo carries its own margin, so fit its visible tile, not the canvas.
+    tile = master.crop(master.getchannel("A").point(lambda a: 255 if a > 20 else 0).getbbox())
+    canvas = Image.new("RGBA", master.size, (0, 0, 0, 0))
+    body = round(master.width * 824 / 1024)
+    tile = tile.resize((body, body), Image.LANCZOS)
+    offset = (master.width - body) // 2
+    canvas.paste(tile, (offset, offset))
+    return canvas
+
+
 def recording(master):
     # The tray shows capture state with a red dot over the mark's lower right.
     icon = scaled(master, 128)
@@ -56,11 +69,13 @@ def main():
     scaled(master, 256).save(ROOT / "docs/logo-256.png")
     scaled(master, 512).save(ICONS / "icon.png")
     scaled(master, 32).save(ICONS / "32x32.png")
+    mac = macos_master(master)
+    scaled(mac, 512).save(ICONS / "icon-macos.png")
     recording(master).save(ICONS / "tray-recording.png")
     master.save(ICONS / "icon.ico", sizes=[(size, size) for size in ICO_SIZES])
     if sys.platform == "darwin" and shutil.which("iconutil"):
         with tempfile.TemporaryDirectory() as tmp:
-            icns(master, pathlib.Path(tmp), ICONS / "icon.icns")
+            icns(mac, pathlib.Path(tmp), ICONS / "icon.icns")
     else:
         print("Skipped icon.icns: rebuild it on macOS (iconutil)")
 

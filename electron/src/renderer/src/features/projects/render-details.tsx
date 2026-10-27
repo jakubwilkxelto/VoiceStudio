@@ -23,40 +23,6 @@ export interface RenderRecord {
   summary?: RenderSummary;
 }
 
-export function clock(seconds: number | undefined): string {
-  const total = Math.max(0, Math.round(seconds || 0));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = String(total % 60).padStart(2, '0');
-  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
-}
-
-export function speedLabel(speeds: number[] | undefined): string {
-  const values = (Array.isArray(speeds) ? speeds : []).filter((value) => Number.isFinite(value));
-  if (!values.length) return '';
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  return low === high ? `${low.toFixed(2)}×` : `${low.toFixed(2)}–${high.toFixed(2)}×`;
-}
-
-export const voiceLabel = (summary: RenderSummary | undefined) =>
-  (Array.isArray(summary?.voices) ? summary.voices : [])
-    .map((voice) => voice?.name || voice?.id)
-    .filter(Boolean)
-    .join(', ');
-
-/** One language-neutral line that tells two renders apart in a list. */
-export function renderRecipe(render: RenderRecord): string {
-  return [
-    voiceLabel(render.summary),
-    speedLabel(render.summary?.speeds),
-    render.summary?.engine,
-    render.duration_s ? clock(render.duration_s) : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
-
 const OPTION_LABELS: Record<string, string> = {
   num_step: 'clone.steps',
   guidance_scale: 'clone.cfg',
@@ -73,15 +39,61 @@ const OPTION_LABELS: Record<string, string> = {
   trim_edges: 'audiobook.trim_edges',
 };
 
-/** "How it was made" for one finished render; older renders have no summary. */
+/** Seconds as `m:ss`, or `h:mm:ss` from one hour up. */
+export function clock(seconds?: number): string {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
+
+/** `1.00×` for one speed, `0.90–1.25×` for a range, nothing without usable values. */
+export function speedLabel(speeds: unknown): string {
+  if (!Array.isArray(speeds)) return '';
+  const finite = speeds.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (!finite.length) return '';
+  const low = Math.min(...finite).toFixed(2);
+  const high = Math.max(...finite).toFixed(2);
+  return low === high ? `${low}×` : `${low}–${high}×`;
+}
+
+/** Voice names (id when a name is blank) joined by commas. */
+export function voiceLabel(summary?: RenderSummary): string {
+  const voices: unknown = summary?.voices;
+  if (!Array.isArray(voices)) return '';
+  return voices
+    .map((voice: { id?: string; name?: string } | null) =>
+      voice && typeof voice === 'object' ? voice.name || voice.id || '' : '',
+    )
+    .filter(Boolean)
+    .join(', ');
+}
+
+/** One-line recipe: voice · speed · engine · length. */
+export function renderRecipe(render: RenderRecord): string {
+  const summary = render.summary;
+  return [
+    voiceLabel(summary),
+    speedLabel(summary?.speeds),
+    summary?.engine,
+    render.duration_s ? clock(render.duration_s) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 export function RenderDetails({ render }: { render: RenderRecord }) {
   const { t } = useTranslation();
   const summary = render.summary;
-  if (!summary)
-    return <p className="text-xs text-muted-foreground">{t('projects.render_no_details')}</p>;
-  const options = Object.entries(
-    summary.options && typeof summary.options === 'object' ? summary.options : {},
-  )
+  if (!summary) {
+    return <p className="mt-2 text-xs text-muted-foreground">{t('projects.render_no_details')}</p>;
+  }
+  const options =
+    summary.options && typeof summary.options === 'object' && !Array.isArray(summary.options)
+      ? summary.options
+      : {};
+  const settings = Object.entries(options)
     .filter(([key]) => Object.hasOwn(OPTION_LABELS, key))
     .map(([key, value]) => {
       const display =
@@ -105,10 +117,10 @@ export function RenderDetails({ render }: { render: RenderRecord }) {
         words: summary.words ?? 0,
       }),
     ],
-    [t('projects.render_settings'), options],
+    [t('projects.render_settings'), settings],
   ];
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs">
+    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
       {rows
         .filter(([, value]) => value)
         .map(([label, value]) => (
@@ -118,5 +130,18 @@ export function RenderDetails({ render }: { render: RenderRecord }) {
           </div>
         ))}
     </dl>
+  );
+}
+
+/** Collapsible "how it was made" block for a Projects row. */
+export function RenderDisclosure({ render }: { render: RenderRecord }) {
+  const { t } = useTranslation();
+  return (
+    <details className="group mt-1.5">
+      <summary className="w-fit cursor-pointer select-none text-xs text-muted-foreground underline-offset-2 hover:underline">
+        {t('projects.render_details')}
+      </summary>
+      <RenderDetails render={render} />
+    </details>
   );
 }

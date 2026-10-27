@@ -2110,7 +2110,8 @@ export default function CaptureWidget({ onDismiss }) {
       const formData = new FormData();
       formData.append('audio', blob, `capture.${extension}`);
       formData.append('mode', captureMode);
-      // Hotkey dictation: apply the saved vocabulary hint (file transcription doesn't).
+      // Marks this upload as hotkey dictation so the server may apply the saved
+      // vocabulary hint; file transcription never sets it.
       formData.append('dictation', 'true');
 
       try {
@@ -2347,7 +2348,7 @@ export default function CaptureWidget({ onDismiss }) {
       <div className="capture-pill__preview">
         <span
           className="block text-[14px] leading-[1.5] font-medium"
-          title={state === 'error' ? errorInfo?.message || label || undefined : label || undefined}
+          title={(state === 'error' ? errorInfo?.message || label : label) || undefined}
         >
           {emoji} {label}
         </span>

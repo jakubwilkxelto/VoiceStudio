@@ -17,11 +17,16 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from services.segmentation import label_segments_by_diarization, Word
+from services.segmentation import (
+    label_segments_by_diarization,
+    resplit_segments_by_turns,
+    Word,
+)
 from services.speaker_clone import (
     ADJACENT_TURN_GUARD_S,
     MIN_SLICE_DURATION_S,
     build_cast_sources,
+    extract_segment_refs,
     extract_speaker_clones,
 )
 
@@ -219,3 +224,94 @@ def test_trimmed_reference_without_word_timestamps_has_empty_text(tmp_path):
     clones = extract_speaker_clones(vocals, segments, str(tmp_path / "refs"),
                                     labels_source="pyannote")
     assert clones["Speaker 2"]["ref_text"] == ""
+
+
+# ── Follow-up: one-word replies, uncovered lines, overlapping per-line refs ──
+
+def _turns(*spans):
+    return [{"start": s, "end": e, "speaker": spk} for s, e, spk in spans]
+
+
+REPLY_WORDS = [
+    ("How", 0.0, 0.2), ("are", 0.2, 0.4), ("you?", 0.4, 0.8),
+    ("Fine.", 1.0, 1.4),
+    ("Good", 1.6, 1.8), ("to", 1.8, 1.9), ("hear.", 1.9, 2.6),
+]
+
+
+def _reply_segment(text="How are you? Fine. Good to hear."):
+    return {"id": "s1", "start": 0.0, "end": 2.6, "speaker_id": "Speaker 1", "text": text}
+
+
+def test_one_word_reply_is_split_off_not_smoothed_away():
+    # B's whole reply is one word; single-word smoothing folded it into A.
+    words = [Word(s, e, t) for t, s, e in REPLY_WORDS]
+    turns = _turns((0.0, 0.9, "Speaker 1"), (0.9, 1.5, "Speaker 2"), (1.5, 2.6, "Speaker 1"))
+    out = resplit_segments_by_turns([_reply_segment()], words, turns)
+    assert _speakers(out) == [
+        ("How are you?", "Speaker 1"),
+        ("Fine.", "Speaker 2"),
+        ("Good to hear.", "Speaker 1"),
+    ]
+    assert len({s["id"] for s in out}) == 3
+
+
+def test_mid_sentence_one_word_blip_is_still_smoothed():
+    # Same coverage, but the flipped word sits inside a sentence: noise.
+    seg = _reply_segment("I think fine things happen.")
+    words = [Word(s, e, t) for t, s, e in [
+        ("I", 0.0, 0.2), ("think", 0.2, 0.8), ("fine", 1.0, 1.4),
+        ("things", 1.6, 2.0), ("happen.", 2.0, 2.6),
+    ]]
+    turns = _turns((0.0, 0.9, "Speaker 1"), (0.9, 1.5, "Speaker 2"), (1.5, 2.6, "Speaker 1"))
+    assert resplit_segments_by_turns([seg], words, turns) == [seg]
+
+
+def test_one_word_inside_overlapping_speech_is_still_smoothed():
+    # Both speakers' turns cover the word: overlapped speech, not a reply.
+    words = [Word(s, e, t) for t, s, e in REPLY_WORDS]
+    turns = _turns((0.0, 2.6, "Speaker 1"), (0.9, 1.5, "Speaker 2"))
+    seg = _reply_segment()
+    assert resplit_segments_by_turns([seg], words, turns) == [seg]
+
+
+def test_reply_word_in_a_diarization_gap_takes_the_nearest_turn():
+    # The diarizer left a gap where "Good," sits: filling from the left
+    # neighbour handed it to Speaker 1 and split the reply mid-sentence.
+    seg = {"id": "s1", "start": 0.0, "end": 2.4, "speaker_id": "Speaker 1",
+           "text": "Hello, how are you? Good, and you?"}
+    words = [Word(start=s, end=e, text=w) for w, s, e in WORDS]
+    turns = _turns((0.0, 1.1, "Speaker 1"), (1.9, 2.5, "Speaker 2"))
+    out = resplit_segments_by_turns([seg], words, turns)
+    assert _speakers(out) == [
+        ("Hello, how are you?", "Speaker 1"),
+        ("Good, and you?", "Speaker 2"),
+    ]
+
+
+def test_line_outside_every_turn_drops_its_pre_diarization_label():
+    # The streaming pass labels lines by silence gaps first. A short line the
+    # diarizer did not cover kept that estimate ("Speaker 3" of a 3-speaker
+    # rotation) and showed up as a speaker diarization never found.
+    segs = [
+        {"id": "a", "start": 0.0, "end": 3.0, "speaker_id": "Speaker 1", "text": "a"},
+        {"id": "b", "start": 3.4, "end": 3.8, "speaker_id": "Speaker 3", "text": "Yes."},
+        {"id": "c", "start": 4.5, "end": 8.0, "speaker_id": "Speaker 2", "text": "c"},
+    ]
+    diar = _FakeDiar([(0.0, 3.0, "SPEAKER_00"), (4.4, 8.0, "SPEAKER_01")])
+    out = label_segments_by_diarization(segs, [], diar)
+    assert [s["speaker_id"] for s in out] == ["Speaker 1", "Speaker 1", "Speaker 2"]
+
+
+def test_per_line_reference_skips_lines_with_overlapping_speech(tmp_path):
+    vocals = tmp_path / "vocals.wav"
+    sf.write(vocals, np.zeros(SR * 12, dtype=np.float32), SR)
+    segs = [
+        {"id": "a", "start": 0.0, "end": 5.0, "speaker_id": "Speaker 1", "text": "a"},
+        {"id": "b", "start": 4.0, "end": 8.0, "speaker_id": "Speaker 2", "text": "b"},
+        {"id": "c", "start": 8.0, "end": 12.0, "speaker_id": "Speaker 1", "text": "c"},
+    ]
+    refs = extract_segment_refs(str(vocals), segs, str(tmp_path / "refs"),
+                                seg_ids=[s["id"] for s in segs])
+    # a and b overlap, so each clip holds two voices; c only touches b's end.
+    assert sorted(refs) == ["c"]

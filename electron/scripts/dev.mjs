@@ -357,6 +357,17 @@ export async function stopLeftoverDevApps({
   signal(pids, 'SIGKILL');
 }
 
+/**
+ * electron-vite arguments for this launcher. `bun run dev` watches sources;
+ * `bun run start` / `bun run preview` (`dev.mjs preview`) run the built app.
+ * Both need the Electron binary resolved first, so neither may call
+ * electron-vite directly (package-scripts test).
+ */
+export function electronViteArgs(args) {
+  if (args[0] === 'preview') return ['preview', ...args.slice(1)];
+  return ['dev', '--watch', ...args];
+}
+
 export function launchElectronVite(
   args = process.argv.slice(2),
   spawnProcess = spawn,
@@ -369,6 +380,10 @@ export function launchElectronVite(
   // Electron 42+ downloads lazily through its public entry point. electron-vite
   // reads path.txt directly, so resolve the binary before it starts on every OS.
   env.ELECTRON_EXEC_PATH ||= resolveElectronExecutable();
+  // Inherited from editors/tools that run Electron as Node (VS Code's extension
+  // host exports it); left set, the app's Electron starts as plain Node and
+  // fails on its first `electron` import.
+  delete env.ELECTRON_RUN_AS_NODE;
 
   let bundleSession;
   if (process.platform === 'darwin') {
@@ -388,7 +403,7 @@ export function launchElectronVite(
 
   let child;
   try {
-    child = spawnProcess(process.execPath, [electronViteBin, 'dev', '--watch', ...args], {
+    child = spawnProcess(process.execPath, [electronViteBin, ...electronViteArgs(args)], {
       cwd: electronRoot,
       env,
       // Vite holds this kernel lease across Electron main-process restarts,

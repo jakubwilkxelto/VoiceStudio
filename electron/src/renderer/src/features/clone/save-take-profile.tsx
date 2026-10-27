@@ -1,3 +1,4 @@
+import { DisabledReason } from '@/components/disabled-reason';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SaveIcon } from 'lucide-react';
@@ -52,16 +53,24 @@ export function SaveTakeProfile({ item }: { item: HistoryItem }) {
           />
         </>
       ) : (
-        <Button
-          type="button"
-          size="sm"
+        <DisabledReason
           className={failed ? undefined : 'min-w-0 flex-1'}
-          disabled={busy || !item.audio_path}
-          onClick={() => void start()}
+          reason={item.audio_path ? null : t('disabledReason.audio_missing')}
         >
-          <SaveIcon />
-          {t(busy ? 'preferences.loading' : 'clone.save_as_profile')}
-        </Button>
+          {(describedBy) => (
+            <Button
+              type="button"
+              size="sm"
+              className={failed ? undefined : 'min-w-0 flex-1'}
+              disabled={busy || !item.audio_path}
+              aria-describedby={describedBy}
+              onClick={() => void start()}
+            >
+              <SaveIcon />
+              {t(busy ? 'preferences.loading' : 'clone.save_as_profile')}
+            </Button>
+          )}
+        </DisabledReason>
       )}
       {failed && (
         <p role="alert" className="text-xs text-destructive">

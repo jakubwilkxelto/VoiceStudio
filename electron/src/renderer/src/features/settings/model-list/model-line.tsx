@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CatalogueModel } from '../model-catalogue-query';
 import { ModelLicense } from '../model-license';
@@ -16,7 +15,10 @@ export function modelAnchor(repoId: string) {
   return 'model-' + repoId.replaceAll('/', '-');
 }
 
-/** Select / Selected toggle shared by engines and models. */
+/**
+ * Select button shared by engines and models. The selected row already shows
+ * a "Selected" badge, so the active state renders no second, disabled button.
+ */
 export function SelectButton({
   active,
   disabled,
@@ -29,17 +31,11 @@ export function SelectButton({
   loading?: ReactNode;
 }) {
   const { t } = useTranslation();
+  if (active) return null;
   return (
-    <Button
-      size="sm"
-      className="min-w-20"
-      variant={active ? 'secondary' : 'outline'}
-      disabled={disabled || active}
-      aria-pressed={active}
-      onClick={onSelect}
-    >
-      {loading ?? (active ? <CheckIcon /> : null)}
-      {t(active ? 'modelSettings.selected' : 'modelSettings.select')}
+    <Button size="sm" className="min-w-20" variant="outline" disabled={disabled} onClick={onSelect}>
+      {loading}
+      {t('modelSettings.select')}
     </Button>
   );
 }

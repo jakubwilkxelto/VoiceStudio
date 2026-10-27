@@ -17,7 +17,10 @@ export function AppShell() {
     select: (state) => state.location.pathname,
   });
   const shellOnly = pathname.startsWith('/settings') || pathname === '/pro';
-  const macWorkspace = isMac() && !shellOnly;
+  // Settings pads its own header (account-corner-safe); every other page, /pro
+  // included, gets the shared clearance so its search button never sits under
+  // the account corner and notifications bell.
+  const macWorkspace = isMac() && !pathname.startsWith('/settings');
   const SettingsWorkspace = pathname === '/settings/openapi' ? 'div' : 'main';
   return (
     <div
@@ -30,8 +33,6 @@ export function AppShell() {
         {shellOnly ? (
           <>
             <CommandPalette />
-            {/* The main sidebar (navigation, library, status) stays where it is
-                on Settings too, so the app never swaps its left column. */}
             <WorkspaceSidebar />
             <SettingsWorkspace
               data-slot="workspace-content"

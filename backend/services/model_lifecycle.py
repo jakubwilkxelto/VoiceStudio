@@ -245,6 +245,27 @@ def list_loaded() -> dict:
         logger.warning("Loaded-model inventory unavailable for dictation")
         degraded_sources.append("dictation")
 
+    # 6b. The warm transcription ASR (accurate / reference / OpenAI route /
+    #     voice convert), released after the idle timeout or before TTS loads.
+    try:
+        import services.asr_backend as ab
+
+        warm = ab.warm_transcription_backend()
+        if warm is not None:
+            name = getattr(warm, "_model_name", None)
+            models.append({
+                "id": "transcription-asr",
+                "name": f"{getattr(warm, 'display_name', type(warm).__name__)} (transcription)",
+                "checkpoint": name if isinstance(name, str) and name else getattr(warm, "id", type(warm).__name__),
+                "device": _backend_device(warm),
+                "vram_mb": 0,
+                "unloadable": True,
+                "note": "released after the idle timeout",
+            })
+    except Exception:
+        logger.warning("Loaded-model inventory unavailable for transcription")
+        degraded_sources.append("transcription")
+
     # 7. Offline translation can remain resident when the user opts out of the
     # default post-job release. Keep it visible and manually unloadable.
     try:
@@ -322,6 +343,14 @@ async def unload(model_id: str) -> dict:
             return {"unloaded": model_id, "success": True}
         return {"unloaded": model_id, "success": False, "reason": "in use by dictation"}
 
+    if model_id == "transcription-asr":
+        import services.asr_backend as ab
+
+        if not ab.release_transcription_backend(0.0):
+            return {"unloaded": model_id, "success": False, "reason": "not loaded"}
+        mm.free_vram()
+        return {"unloaded": model_id, "success": True}
+
     if model_id == "translation:nllb":
         from api.routers import dub_translate as dt
 
@@ -371,7 +400,9 @@ async def unload(model_id: str) -> dict:
 async def unload_all() -> dict:
     """Release shared/alternate TTS, diarisation, sidecars, dictation and translation."""
     results = {}
-    model_ids = ["tts", "diarization", "sidecars", "capture-asr", "translation:nllb"]
+    model_ids = [
+        "tts", "diarization", "sidecars", "capture-asr", "transcription-asr", "translation:nllb",
+    ]
     try:
         model_ids.extend(
             entry["id"]

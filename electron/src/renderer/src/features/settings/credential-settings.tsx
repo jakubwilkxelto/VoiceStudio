@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { apiJson } from '@/lib/api/client';
 import { SettingsSection, SettingsRow } from './settings-layout';
 import { useSettingsAction } from './use-settings-action';
-import { PROVIDER_FIELDS } from '@shared/utils/translationProviderFields';
+import { PROVIDER_GROUPS, type ProviderGroup } from '@shared/utils/translationProviderFields';
 interface TokenState {
   active: string | null;
   sources: {
@@ -96,9 +96,14 @@ export function HuggingFaceToken() {
           {source.set && source.masked && <code className="text-xs">{source.masked}</code>}
           {source.set &&
             (source.whoami_ok == null ? (
-              <span className="text-xs text-muted-foreground">{t('settings.hf_token_not_checked')}</span>
+              <span className="text-xs text-muted-foreground">
+                {t('settings.hf_token_not_checked')}
+              </span>
             ) : source.whoami_ok ? (
-              <Badge variant="outline" className="border-success/40 bg-success/15 text-success-foreground">
+              <Badge
+                variant="outline"
+                className="border-success/40 bg-success/15 text-success-foreground"
+              >
                 <CircleCheckIcon />
                 {source.whoami_user || t('settings.hf_token_verified')}
               </Badge>
@@ -124,34 +129,34 @@ export function HuggingFaceToken() {
       >
         <Label htmlFor="hf-token-input">{t('settings.hf_token_input')}</Label>
         <div className="flex flex-wrap gap-2">
-        <Input
-          id="hf-token-input"
-          className="min-w-48 flex-1"
-          type="password"
-          placeholder="hf_…"
-          value={token}
-          autoComplete="new-password"
-          spellCheck={false}
-          disabled={busy}
-          onChange={(event) => {
-            setToken(event.target.value);
-            action.reset();
-          }}
-        />
-        <Button type="submit" size="sm" disabled={busy || !token.trim()}>
-          {t('common.save')}
-        </Button>
-        {query.data?.sources.some((source) => source.source !== 'env' && source.set) && (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
+          <Input
+            id="hf-token-input"
+            className="min-w-48 flex-1"
+            type="password"
+            placeholder="hf_…"
+            value={token}
+            autoComplete="new-password"
+            spellCheck={false}
             disabled={busy}
-            onClick={() => setClearOpen(true)}
-          >
-            {t('settings.hf_token_clear_btn')}
+            onChange={(event) => {
+              setToken(event.target.value);
+              action.reset();
+            }}
+          />
+          <Button type="submit" size="sm" disabled={busy || !token.trim()}>
+            {t('common.save')}
           </Button>
-        )}
+          {query.data?.sources.some((source) => source.source !== 'env' && source.set) && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => setClearOpen(true)}
+            >
+              {t('settings.hf_token_clear_btn')}
+            </Button>
+          )}
         </div>
       </form>
       {clearOpen && (
@@ -202,59 +207,65 @@ function TranslationCredentials() {
       <p className="p-4 text-sm text-muted-foreground">
         {t('settings.translation_providers_desc')}
       </p>
-      {PROVIDER_FIELDS.map((field) => (
-        <ProviderCredential key={field.key} field={field} />
+      {PROVIDER_GROUPS.map((group) => (
+        <ProviderCredentials key={group.id} group={group} />
       ))}
     </SettingsSection>
   );
 }
-function ProviderCredential({ field }: { field: (typeof PROVIDER_FIELDS)[number] }) {
+/** One provider: its fields and a single Save, enabled once something was typed. */
+function ProviderCredentials({ group }: { group: ProviderGroup }) {
   const { t } = useTranslation();
-  const label = (field.labelPrefix ? field.labelPrefix + ' · ' : '') + t(field.labelKey);
   const client = useQueryClient();
-  const [value, setValue] = useState('');
+  const [values, setValues] = useState<Record<string, string>>({});
   const action = useSettingsAction();
+  const entered = group.fields.filter((field) => values[field.key]?.trim());
   const save = () =>
     action.run(async () => {
-      await apiJson('/system/set-env', {
-        method: 'POST',
-        body: JSON.stringify({ key: field.key, value: value.trim() }),
-      });
-      setValue('');
+      for (const field of entered)
+        await apiJson('/system/set-env', {
+          method: 'POST',
+          body: JSON.stringify({ key: field.key, value: values[field.key].trim() }),
+        });
+      setValues({});
       await client.invalidateQueries({ queryKey: ['translation-engines'] });
     });
   return (
     <div>
-      <SettingsRow
-        id={'credential-' + field.key}
-        title={label}
-        description={<span className="text-muted-foreground">{t(field.helpKey)}</span>}
-      >
+      <SettingsRow id={'credential-' + group.id} title={group.name}>
         <form
-          className="flex flex-wrap gap-2"
+          className="flex w-full flex-wrap items-end gap-2 @2xl:justify-end"
           onSubmit={(event) => {
             event.preventDefault();
-            if (value.trim()) void save();
+            if (entered.length) void save();
           }}
         >
-          <Input
-            type={field.isPassword ? 'password' : 'text'}
-            autoComplete="new-password"
-            spellCheck={false}
-            aria-label={label}
-            placeholder={
-              field.placeholderKey
-                ? t(field.placeholderKey)
-                : (field.placeholder ?? (field.isPassword ? '••••••••••••' : undefined))
-            }
-            value={value}
-            disabled={action.busy}
-            onChange={(event) => {
-              setValue(event.target.value);
-              action.reset();
-            }}
-          />
-          <Button size="sm" type="submit" disabled={action.busy || !value.trim()}>
+          {group.fields.map((field) => (
+            <label
+              key={field.key}
+              className="flex min-w-40 flex-1 flex-col gap-1 text-xs text-muted-foreground @2xl:max-w-64"
+            >
+              {t(field.labelKey)}
+              <Input
+                type={field.isPassword ? 'password' : 'text'}
+                autoComplete="new-password"
+                spellCheck={false}
+                aria-label={`${group.name} · ${t(field.labelKey)}`}
+                placeholder={
+                  field.placeholderKey
+                    ? t(field.placeholderKey)
+                    : (field.placeholder ?? (field.isPassword ? '••••••••••••' : undefined))
+                }
+                value={values[field.key] ?? ''}
+                disabled={action.busy}
+                onChange={(event) => {
+                  setValues((current) => ({ ...current, [field.key]: event.target.value }));
+                  action.reset();
+                }}
+              />
+            </label>
+          ))}
+          <Button size="sm" type="submit" disabled={action.busy || entered.length === 0}>
             {t('common.save')}
           </Button>
         </form>

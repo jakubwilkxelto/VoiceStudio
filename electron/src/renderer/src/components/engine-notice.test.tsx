@@ -75,7 +75,7 @@ it('installs the required TTS model without sending the user through Settings', 
   mockMissingRecommendedModel();
   renderNotice();
 
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
 
   await waitFor(() =>
     expect(mock.api).toHaveBeenLastCalledWith('/models/install', {
@@ -103,7 +103,7 @@ it('hands an unexplained readiness failure to the default repair agent', async (
   window.addEventListener('voicestudio:repair-agent-open', listener);
   renderNotice();
 
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
 
   await waitFor(() => expect(listener).toHaveBeenCalledOnce());
   const event = listener.mock.calls[0]?.[0] as CustomEvent<{
@@ -141,7 +141,7 @@ it('selects an installed compatible engine without opening Settings or an agent'
   window.addEventListener('voicestudio:repair-agent-open', listener);
   renderNotice();
 
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
 
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/engines/select', {
@@ -172,7 +172,7 @@ it('joins an existing install instead of submitting the model twice', async () =
   });
   renderNotice();
 
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
 
   // The shared progress block replaces the Fix button: one status line and
   // a Cancel, not a second "downloading" button.
@@ -187,7 +187,7 @@ it('offers the same automatic recovery on compact synthesis surfaces', async () 
   renderCompactNotice();
 
   expect(screen.getByText('engines.none_ready_body')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
 
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/models/install', {
@@ -221,7 +221,7 @@ it('downloads the model chosen for an available engine instead of reporting succ
   });
   renderNotice();
 
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
 
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/models/install', {
@@ -257,7 +257,7 @@ it('downloads the selected model before a missing recommended model', async () =
   });
   renderNotice();
 
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
 
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/models/install', {
@@ -296,7 +296,7 @@ it('switches engines instead of downloading the model of an unavailable engine',
   });
   renderNotice();
 
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
 
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/engines/select', {
@@ -312,7 +312,7 @@ it('shows a full disk with its next step instead of opening the repair agent', a
   const listener = vi.fn();
   window.addEventListener('voicestudio:repair-agent-open', listener);
   const view = renderNotice();
-  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
+  fireEvent.click(screen.getByRole('button', { name: 'engines.set_up' }));
   await waitFor(() => expect(mock.toast).toHaveBeenCalled());
   mock.jobs.data.jobs = [
     { repo_id: 'k2-fsa/OmniVoice', state: 'downloading', bytes_done: 1, total_bytes: 8 },

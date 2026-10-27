@@ -1,3 +1,5 @@
+import importlib
+import importlib.util
 import os
 import sys
 import platform
@@ -7,7 +9,7 @@ import psutil
 import asyncio
 import logging
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query, Request
-from core.prefs import set_ as prefs_set, delete as prefs_delete
+from core.prefs import delete as prefs_delete, set_ as prefs_set
 from services import network_share
 from services import tailscale as _tailscale
 from api.schemas import SysinfoResponse, SystemInfoResponse, ModelStatusResponse
@@ -47,6 +49,14 @@ try:
     _is_xpu = hasattr(torch, "xpu") and torch.xpu.is_available()
 except Exception:
     _is_xpu = False
+try:
+    # torch.npu exists only once the Ascend extension registers it; torch_npu
+    # releases before 2.5.1 do not autoload, so import it where installed.
+    if not hasattr(torch, "npu") and importlib.util.find_spec("torch_npu"):
+        importlib.import_module("torch_npu")
+    _is_npu = hasattr(torch, "npu") and torch.npu.is_available()
+except Exception:
+    _is_npu = False
 # Prime psutil's internal CPU counter so the first non-blocking call returns useful data
 psutil.cpu_percent(interval=None)
 
@@ -149,20 +159,37 @@ def _detect_os_gpu_name() -> str:
     return ""
 
 
+def _active_accelerator():
+    """(module, name) of the accelerator this host runs on, or (None, "").
+
+    One resolution shared by device detection, ``/sysinfo`` and the post-flush
+    snapshot, so a host's backend is decided in a single place. CUDA, Intel XPU
+    and Ascend NPU all expose ``get_device_name`` / ``get_device_properties`` /
+    ``memory_allocated`` / ``memory_reserved`` through the same shape, so the
+    same code covers them. MPS is unified-memory and keeps its own branch (it
+    reports no device-side total).
+    """
+    if _is_cuda:
+        return torch.cuda, "cuda"
+    if _is_xpu:
+        return torch.xpu, "xpu"
+    if _is_npu:
+        return torch.npu, "npu"
+    return None, ""
+
+
 def _detect_gpu() -> tuple[str, float]:
     """(gpu_name, vram_total_gb) — static for the process lifetime.
 
     MPS has unified memory, so there's no separate VRAM figure to report;
     the name alone tells a bug-report reader what hardware this is.
     """
+    backend, _ = _active_accelerator()
     try:
-        if _is_cuda:
-            props = torch.cuda.get_device_properties(0)
-            return torch.cuda.get_device_name(0), round(props.total_memory / (1024 ** 3), 1)
-        if _is_xpu:
-            props = torch.xpu.get_device_properties(0)
+        if backend is not None:
+            props = backend.get_device_properties(0)
             total_memory = float(getattr(props, "total_memory", 0.0))
-            return torch.xpu.get_device_name(0), round(total_memory / (1024 ** 3), 1)
+            return backend.get_device_name(0), round(total_memory / (1024 ** 3), 1)
         if _is_mac:
             return "Apple Silicon (MPS)", 0.0
     except Exception:
@@ -339,7 +366,7 @@ def system_info():
     and a 500 here blocks the entire UI from rendering system details.
     """
     try:
-        _ffmpeg = find_ffmpeg()
+        _ffmpeg_path = find_ffmpeg()
         from services import model_manager as _mm
         from services import asr_backend as _asr_backend
         from core import prefs as _prefs_mod
@@ -388,8 +415,8 @@ def system_info():
             "gpu_name": _GPU_NAME,
             "vram_total_gb": _VRAM_TOTAL_GB,
             "disk_free_gb": _disk_free_gb(),
-            "ffmpeg_ok": bool(_ffmpeg),
-            "ffmpeg_path": _ffmpeg or "",
+            "ffmpeg_ok": bool(_ffmpeg_path),
+            "ffmpeg_path": _ffmpeg_path or "",
             "proxy_url": os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or "",
             "share_enabled": network_share.get_state().enabled,
             "share_port": network_share.get_state().share_port,
@@ -822,6 +849,7 @@ def get_sys_info():
     total_vram = 0.0
     gpu_active = False
 
+    backend, _ = _active_accelerator()
     try:
         if _is_mac:
             alloc = getattr(torch.mps, "current_allocated_memory", None)
@@ -830,13 +858,10 @@ def get_sys_info():
                 vram = driver() / (1024**3)
             elif alloc:
                 vram = alloc() / (1024**3)
-        elif _is_cuda:
-            vram = torch.cuda.memory_allocated() / (1024**3)
-            total_vram = torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory / (1024**3)
-        elif _is_xpu:
-            vram = torch.xpu.memory_allocated() / (1024**3)
+        elif backend is not None:
+            vram = backend.memory_allocated() / (1024**3)
             total_vram = float(
-                getattr(torch.xpu.get_device_properties(0), "total_memory", 0.0)
+                getattr(backend.get_device_properties(backend.current_device()), "total_memory", 0.0)
             ) / (1024**3)
     except Exception:
         pass
@@ -908,6 +933,7 @@ async def flush_memory(unload_model: bool = False):
     # CUDA context plus kernel workspaces, which no in-process call can return.
     vram_after = 0.0
     vram_reserved = 0.0
+    backend, _ = _active_accelerator()
     try:
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             driver = getattr(torch.mps, "driver_allocated_memory", None)
@@ -915,9 +941,9 @@ async def flush_memory(unload_model: bool = False):
                 vram_after = driver() / (1024**3)
             current = getattr(torch.mps, "current_allocated_memory", None)
             vram_reserved = (current() / (1024**3)) if current else vram_after
-        elif torch.cuda.is_available():
-            vram_after = torch.cuda.memory_allocated() / (1024**3)
-            vram_reserved = torch.cuda.memory_reserved() / (1024**3)
+        elif backend is not None:
+            vram_after = backend.memory_allocated() / (1024**3)
+            vram_reserved = backend.memory_reserved() / (1024**3)
     except Exception:
         pass
 
@@ -1263,18 +1289,14 @@ def _authorized_sidecar_dir(value, authorization) -> str:
 
 @router.post("/system/set-env")
 async def set_env_var(body: dict):
-    """Set an environment variable at runtime, persisted across restarts.
+    """Set an environment variable for the running backend.
 
-    Persistent keys (proxy, FFMPEG_PATH, translation provider keys, …) are
-    saved to ``prefs.json`` so they survive backend restarts (restored at
-    startup in ``main.py``). HF_TOKEN is persisted via
-    ``token_resolver.persist_hub_token()`` (and cleared with the shared token-file helper). Other keys
-    are set on ``os.environ`` for the running process.
+    Keys in ``PERSISTENT_KEYS`` are saved in prefs.json and restored during
+    startup in main.py. HF_TOKEN is saved by
+    ``token_resolver.persist_hub_token()`` and cleared through the shared
+    token-file helper. Other accepted keys affect only this process.
 
-    The loopback-origin gate that previously lived inline here is now applied
-    at the router level via `dependencies=[Depends(require_admin)]` on
-    `router` — see the top of this file. Every route on this router is
-    gated, including this one. The 403 body and behavior are unchanged.
+    The loopback-origin gate that previously lived inline here is now applied at the router level via `dependencies=[Depends(require_admin)]` on `router` — see the top of this file. Every route on this router is gated, including this one. The 403 body and behavior are unchanged.
     """
     ALLOWED_KEYS = PERSISTENT_KEYS | {"HF_TOKEN", "TRANSLATE_API_KEY"}
     key = body.get("key", "")
@@ -1354,11 +1376,9 @@ async def set_env_var(body: dict):
 
     # HF_TOKEN persistence is handled above via persist_hub_token()/
     # clear_hf_cli_tokens() — it never touches prefs.json. Everything else in
-    # PERSISTENT_KEYS (proxy, FFMPEG_PATH, translation provider keys, …) is
-    # saved to prefs.json so it survives backend restarts (restored at
-    # startup in main.py). Non-persistent keys stay process-local.
+    # the persistent set is stored after the process environment is updated.
     if key != "HF_TOKEN" and key in PERSISTENT_KEYS:
-        prefs_key = f"env.{key}"
+        prefs_key = "env." + key
         from services.translation_apis import SECRET_ENV_KEYS
         if key in SECRET_ENV_KEYS:
             from services import settings_store

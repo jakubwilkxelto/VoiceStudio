@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 import asyncio
 import logging
@@ -38,13 +39,15 @@ TRANSLATE_CODES = {
     "en": "en", "es": "es", "fr": "fr", "de": "de", "it": "it", "pt": "pt",
     "ru": "ru", "ja": "ja", "ko": "ko", "zh": "zh-CN", "cmn-Hans": "zh-CN",
     "ar": "ar", "hi": "hi", "tr": "tr", "pl": "pl", "nl": "nl", "sv": "sv",
-    "th": "th", "vi": "vi", "id": "id", "uk": "uk", "ml": "ml",
+    "th": "th", "vi": "vi", "id": "id", "uk": "uk",
+    "ml": "ml",
 }
 
 FLORES_CODES = {
     "en": "eng_Latn", "es": "spa_Latn", "fr": "fra_Latn", "de": "deu_Latn",
     "it": "ita_Latn", "pt": "por_Latn", "ru": "rus_Cyrl", "ja": "jpn_Jpan",
-    "ko": "kor_Hang", "zh": "zho_Hans", "zh-CN": "zho_Hans", "cmn-Hans": "zho_Hans", "ar": "arb_Arab",
+    "ko": "kor_Hang", "zh": "zho_Hans", "zh-CN": "zho_Hans",
+    "cmn-Hans": "zho_Hans", "ar": "arb_Arab",
     "hi": "hin_Deva", "tr": "tur_Latn", "pl": "pol_Latn", "nl": "nld_Latn",
     "sv": "swe_Latn", "th": "tha_Thai", "vi": "vie_Latn", "id": "ind_Latn",
     "uk": "ukr_Cyrl",
@@ -106,7 +109,8 @@ def _nllb_language(code: str) -> str | None:
 LANG_NAMES = {
     "en": "English", "es": "Spanish", "fr": "French", "de": "German",
     "it": "Italian", "pt": "Portuguese", "ru": "Russian", "ja": "Japanese",
-    "ko": "Korean", "zh": "Chinese (Simplified)", "zh-CN": "Chinese (Simplified)", "cmn-Hans": "Chinese (Simplified)",
+    "ko": "Korean", "zh": "Chinese (Simplified)",
+    "zh-CN": "Chinese (Simplified)", "cmn-Hans": "Chinese (Simplified)",
     "ar": "Arabic", "hi": "Hindi", "tr": "Turkish", "pl": "Polish",
     "nl": "Dutch", "sv": "Swedish", "th": "Thai", "vi": "Vietnamese",
     "id": "Indonesian", "uk": "Ukrainian", "ug": "Uyghur",
@@ -347,43 +351,38 @@ def _dialect_flags(req, applied: bool) -> dict:
 
 
 def _guess_lang_from_text(segments) -> str | None:
-    """Best-effort source language from segment text, by script.
-
-    Used only as a last resort when neither the request nor the job carries a
-    detected language. Without this, the bare "en" fallback below forces
-    en -> en on non-English audio (e.g. Korean), which has no Argos package and
-    fails every segment even though ASR detected the language correctly.
-    """
-    text = " ".join((getattr(s, "text", "") or "") for s in (segments or [])[:8])
-    has = lambda lo, hi: any(lo <= ord(c) <= hi for c in text)
-    if has(0x3040, 0x30FF):
-        return "ja"  # Hiragana/Katakana — check before CJK (Japanese uses Kanji too)
-    if has(0xAC00, 0xD7A3) or has(0x1100, 0x11FF):
-        return "ko"  # Hangul
-    if has(0x4E00, 0x9FFF):
-        return "zh"  # CJK ideographs
-    if has(0x0400, 0x04FF):
-        return "ru"  # Cyrillic
-    if has(0x0600, 0x06FF):
-        return "ar"  # Arabic
+    """Infer a likely source language from scripts in the first few captions."""
+    text = " ".join(str(getattr(segment, "text", "") or "") for segment in (segments or ())[:8])
+    script_codes = (
+        (r"[\u3040-\u30ff]", "ja"),
+        (r"[\uac00-\ud7a3\u1100-\u11ff]", "ko"),
+        (r"[\u4e00-\u9fff]", "zh"),
+        (r"[\u0400-\u04ff]", "ru"),
+        (r"[\u0600-\u06ff]", "ar"),
+    )
+    for pattern, code in script_codes:
+        if re.search(pattern, text):
+            return code
     return None
 
 
 def _resolve_source_lang(req: TranslateRequest) -> str | None:
-    """Prefer explicit or job source; unknown ASR needs user selection.
+    """Choose an explicit, job-derived, or text-inferred source language."""
+    requested = getattr(req, "source_lang", None)
+    if requested:
+        return requested
 
-    Text-only calls retain their legacy script guess / English fallback.
-    """
-    if getattr(req, "source_lang", None):
-        return req.source_lang
-    if getattr(req, "job_id", None):
-        job = _get_job(req.job_id)
+    job_id = getattr(req, "job_id", None)
+    if job_id:
+        job = _get_job(job_id)
         if job:
-            source = job.get("source_lang_override") or job.get("source_lang")
-            if source:
-                return source
+            if job.get("source_lang_override"):
+                return job["source_lang_override"]
+            if job.get("source_lang"):
+                return job["source_lang"]
             if job.get("source_lang_detection_missing"):
                 return None
+
     return _guess_lang_from_text(getattr(req, "segments", None)) or "en"
 
 
@@ -867,40 +866,38 @@ async def dub_translate(req: TranslateRequest):
             try:
                 import argostranslate  # noqa: F401
             except ImportError:
-                # Single-source the install command from the engine registry so
-                # this 400 and the proactive Install button in the Engine
-                # selector can never drift (see translation_engines.install_command).
                 from services.translation_engines import install_command
                 cmd = install_command("argos") or "uv pip install argostranslate"
-                friendly = (
-                    f"The '{provider}' translation engine needs the optional "
-                    f"`argostranslate` Python package, which isn't installed in "
-                    f"this backend. Install it with `{cmd}` "
-                    f"and restart the server, or "
-                    f"switch the Engine dropdown to another provider."
+                message = (
+                    f"The selected '{provider}' engine requires the optional "
+                    f"`argostranslate` Python package, but this backend does not have it. "
+                    f"Run `{cmd}` and restart the server, or choose another provider "
+                    f"from the Engine dropdown."
                 )
-                return JSONResponse(status_code=400, content={"error": friendly})
-            # The package imports without its native dep; the *translator*
-            # needs CTranslate2, whose library is rejected outright by kernels
-            # that refuse an executable stack (#692). Repair it (a one-bit ELF
-            # patch), and if that is impossible say so in one actionable 400
-            # instead of the opaque 500 every segment used to produce.
+                return JSONResponse(status_code=400, content={"error": message})
+            # Importing argostranslate.translate loads CTranslate2's native
+            # library, which hardened kernels may reject (#692). Try an
+            # in-place repair, then verify the import so the user gets an
+            # actionable 400 instead of an opaque failure mid-translate.
             try:
                 from core.execstack import ensure_ctranslate2_loadable
 
                 ensure_ctranslate2_loadable()
-            except Exception as e:  # noqa: BLE001 — repair must not block translation
-                logger.debug("exec-stack repair unavailable (%s) — continuing", e)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("CTranslate2 repair before Argos failed: %s", exc)
             try:
                 import argostranslate.translate  # noqa: F401
-            except Exception as e:  # noqa: BLE001 — OSError here, not ImportError
+            except Exception:  # noqa: BLE001
                 friendly = (
-                    f"The '{provider}' engine's CTranslate2 runtime could not be "
-                    "loaded in this backend."
-                    + " Switch the Engine dropdown to NLLB (local) or an online "
-                    "provider, or reinstall the backend, then retry."
+                    f"Offline translation with '{provider}' is unavailable: its "
+                    f"CTranslate2 backend failed to start on this machine. Pick "
+                    f"NLLB (local) or an online provider in the Engine dropdown, "
+                    f"or reinstall the backend, and try again."
                 )
-                return JSONResponse(status_code=400, content={"error": friendly, "detail": {"code": "argos_runtime_unavailable", "message": friendly}})
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": friendly, "detail": {"code": "argos_runtime_unavailable", "message": friendly}},
+                )
 
             target_codes = list(dict.fromkeys(
                 seg.target_lang if seg.target_lang else req.target_lang
@@ -990,7 +987,7 @@ async def dub_translate(req: TranslateRequest):
 
         src_arg = TRANSLATE_CODES.get(src_lang, src_lang) or "auto"
 
-        _proxies = {"http": None, "https": None}
+        direct_proxies = {"http": None, "https": None}
         _deepl_key = os.environ.get("DEEPL_API_KEY") or api_key
         _msft_key = os.environ.get("MICROSOFT_API_KEY") or api_key
 
@@ -999,9 +996,9 @@ async def dub_translate(req: TranslateRequest):
                 return ApiTranslator(provider, src, tgt, api_key=api_key)
             if provider == "mymemory":
                 from deep_translator import MyMemoryTranslator
-                return MyMemoryTranslator(source=src, target=tgt, proxies=_proxies)
+                return MyMemoryTranslator(source=src, target=tgt, proxies=direct_proxies)
             from deep_translator import GoogleTranslator
-            return GoogleTranslator(source=src, target=tgt, proxies=_proxies)
+            return GoogleTranslator(source=src, target=tgt, proxies=direct_proxies)
 
         def _translate_single(seg):
             seg_lc = (

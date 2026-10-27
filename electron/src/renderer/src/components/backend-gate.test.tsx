@@ -120,6 +120,69 @@ it('shows package installation after the last large download instead of a stale 
   expect(screen.queryByText('Downloaded scipy')).not.toBeInTheDocument();
 });
 
+it('lists install steps with the active package on the current step and the log in the card', async () => {
+  const restart = vi.fn().mockResolvedValue(undefined);
+  bridgeStub.current = { backend: { restart } };
+  backendStatus.stage = 'installing';
+  backendStatus.setupPhase = 'installing_deps';
+  backendStatus.logTail = ['Downloading torch (848.0MiB)'];
+  backendStatus.setupProgress = {
+    completedDownloads: 3,
+    downloadedBytes: 1024 ** 3,
+    totalBytes: 4 * 1024 ** 3,
+    activePackage: 'nvidia-cudnn-cu12',
+  };
+
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+
+  const steps = screen.getAllByRole('listitem');
+  expect(steps).toHaveLength(4);
+  expect(steps[2]).toHaveAttribute('aria-current', 'step');
+  expect(steps[2]).toHaveTextContent('nvidia-cudnn-cu12');
+  // Settled steps drop the running ellipsis; the current one keeps it.
+  expect(steps[0].textContent).toBe(i18n.t('bootstrap.checking').replace(/…$/, ''));
+  expect(steps[2]).toHaveTextContent(i18n.t('bootstrap.installing_deps'));
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
+  expect(screen.getByText(i18n.t('backend.first_run_hint'))).toBeVisible();
+
+  fireEvent.click(screen.getByRole('button', { name: i18n.t('backend.details') }));
+  expect(screen.getByLabelText(i18n.t('backend.log_label'))).toHaveTextContent('Downloading torch');
+  expect(screen.getAllByRole('button', { name: i18n.t('backend.details') })).toHaveLength(1);
+
+  const cancel = screen.getByRole('button', { name: i18n.t('common.cancel') });
+  fireEvent.click(cancel);
+  await waitFor(() => expect(cancel).toBeDisabled());
+  fireEvent.click(cancel);
+  expect(restart).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the download bar live when a new download follows a prepared batch', () => {
+  backendStatus.stage = 'installing';
+  backendStatus.setupPhase = 'installing_deps';
+  backendStatus.setupProgress = {
+    preparedPackages: 120,
+    completedDownloads: 3,
+    downloadedBytes: 1024 ** 3,
+    totalBytes: 2 * 1024 ** 3,
+    downloadsComplete: false,
+    activePackage: 'torch',
+  };
+
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+  expect(screen.getByText('torch')).toBeInTheDocument();
+  expect(screen.queryByText(i18n.t('bootstrap.downloads_complete'))).not.toBeInTheDocument();
+});
+
 // #2430 — a live-but-busy backend is not a failure.
 //
 // A heavy job blocks the Python event loop past the health-probe deadline. The
@@ -310,27 +373,18 @@ it('shows a populated, usable reconnect form for an expired remote session while
   }
 });
 
-it('offers a remote backend instead of a doomed local install on Intel Macs', () => {
+it('replaces Intel-Mac installation controls with the connection editor', () => {
   backendStatus.setupIssue = 'unsupported_platform';
-  render(
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      <BackendGate>
-        <div>workspace</div>
-      </BackendGate>
-    </QueryClientProvider>,
-  );
+  renderGate('setup_required');
 
-  expect(screen.getByText(i18n.t('backend.setup_unsupported_platform'))).toBeVisible();
+  const remoteAddress = screen.getByRole('textbox', {
+    name: i18n.t('settings.remote_backend_url'),
+  });
+  expect(remoteAddress).toBeVisible();
+  expect(screen.getByText(i18n.t('backend.setup_unsupported_platform'))).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: i18n.t('backend.setup_required') }),
   ).not.toBeInTheDocument();
-  expect(
-    screen.getByRole('textbox', {
-      name: i18n.t('settings.remote_backend_url'),
-    }),
-  ).toBeVisible();
 });
 
 it.each([
@@ -350,8 +404,8 @@ it.each([
     renderGate('failed');
 
     // The raw message moves under Details once a cause is named.
-  fireEvent.click(screen.getByRole('button', { name: i18n.t('backend.details') }));
-  expect(screen.getByLabelText(i18n.t('backend.log_label'))).toHaveTextContent(message);
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('backend.details') }));
+    expect(screen.getByLabelText(i18n.t('backend.log_label'))).toHaveTextContent(message);
     expect(screen.getByTestId('backend-hint')).toHaveTextContent(i18n.t(key));
   },
 );
@@ -411,6 +465,27 @@ it('offers Choose another folder for a missing Python environment', async () => 
   expect(chooseRuntimeLocation).toHaveBeenCalled();
 });
 
+it('gives a source checkout Retry, not a folder picker it cannot use (#3480)', () => {
+  const runtimePath = backendStatus.runtimePath;
+  delete backendStatus.runtimePath;
+  try {
+    backendStatus.message =
+      "The Python environment in C:\\Users\\me\\VoiceStudio is incomplete: ModuleNotFoundError: No module named 'fastapi'.";
+
+    renderGate('failed');
+
+    expect(screen.getByTestId('backend-cause')).toHaveTextContent(
+      i18n.t('backend.cause_missing_env'),
+    );
+    expect(
+      screen.queryByRole('button', { name: i18n.t('backend.choose_folder') }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeEnabled();
+  } finally {
+    backendStatus.runtimePath = runtimePath;
+  }
+});
+
 it('names no cause for an unrecognised failure', () => {
   backendStatus.message = 'Backend exited unexpectedly (exit code 1).';
 
@@ -448,9 +523,21 @@ it('collapses repeated identical failures into one pill counter', () => {
   expect(screen.getByTestId('backend-status-pill')).not.toHaveTextContent(/2/);
 
   backendStatus.stage = 'starting';
-  view.rerender(<QueryClientProvider client={new QueryClient()}><BackendGate><div>workspace</div></BackendGate></QueryClientProvider>);
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>
+    </QueryClientProvider>,
+  );
   backendStatus.stage = 'failed';
-  view.rerender(<QueryClientProvider client={new QueryClient()}><BackendGate><div>workspace</div></BackendGate></QueryClientProvider>);
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>
+    </QueryClientProvider>,
+  );
 
   expect(screen.getByTestId('backend-status-pill')).toHaveTextContent(
     i18n.t('backend.pill_repeats', { count: 2 }),
@@ -462,7 +549,9 @@ it('shows a non-blocking offline bar while a live engine is busy', () => {
 
   renderGate('unresponsive');
 
-  expect(screen.getByTestId('backend-offline-bar')).toHaveTextContent(i18n.t('backend.offline_bar'));
+  expect(screen.getByTestId('backend-offline-bar')).toHaveTextContent(
+    i18n.t('backend.offline_bar'),
+  );
   expect(screen.queryByTestId('backend-gate-scroll')).not.toBeInTheDocument();
 });
 

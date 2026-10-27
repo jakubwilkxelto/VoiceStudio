@@ -7,9 +7,10 @@
 
 Asks first (channel, version, draft/publish), shows the new tag next to the last
 release, and only then switches to an up-to-date `main` if needed. Bumps the three version files in lockstep,
-refreshes uv.lock, writes the CHANGELOG section, runs the version guards,
-commits, pushes, tags, and either leaves the build as a draft (tag push) or
-dispatches `electron-release.yml` with `publish`. Nothing leaves the machine
+refreshes uv.lock, writes the CHANGELOG section, runs the version guards and
+opens the release pull request. Run it again once that merges: main then has
+the version, so it only tags and either leaves the build as a draft (tag push)
+or dispatches `electron-release.yml` with `publish`. Nothing leaves the machine
 until you type the tag name to confirm. See docs/RELEASING.md.
 """
 from __future__ import annotations
@@ -334,21 +335,64 @@ def release(args: argparse.Namespace) -> None:
     switch = (
         f"switch from {branch} to main, " if branch != "main" else ""
     ) + (f"fast-forward main by {behind} commits, " if behind not in ("0", "?") else "")
+    # main only changes through pull requests, so a release takes two runs: the
+    # first opens the release PR, the second (after it merges) tags main.
+    on_main = current == version
+    build = f"tag {tag}, push tag{', publish' if mode == 'publish' else ' (draft; publish later with --publish)'}"
+    steps = (
+        f"{switch}{build}  (main already has {version})" if on_main else
+        f"""{switch}set package.json + pyproject.toml + backend/core/version.py to {version},
+            uv lock, CHANGELOG section, run version guards,
+            commit "chore(release): {tag}" on release/{tag}, push it and open its pull request;
+            after it merges, run this again with {version} to {build}"""
+    )
     print(f"""
 Release plan
   channel   {channel}  ({'GitHub prerelease, never latest; :beta Docker' if channel == 'beta' else 'GitHub latest; :stable Docker'})
   new tag   {tag}   (last release {last})
   mode      {mode}{'  (UNSIGNED: ' + ', '.join(unsigned) + ')' if unsigned else ''}
-  steps     {switch}set package.json + pyproject.toml + backend/core/version.py to {version},
-            uv lock, CHANGELOG section, run version guards,
-            commit "chore(release): {tag}", push main, tag {tag}, push tag{', publish' if mode == 'publish' else ' (draft; publish later with --publish)'}""")
+  steps     {steps}""")
     if args.dry_run:
         print("\n--dry-run: nothing changed.")
         return
-    if input(f"\nThis pushes to main and tags. Type {tag} to confirm: ").strip() != tag:
+    action = "tags main" if on_main else "opens the release pull request"
+    if input(f"\nThis {action}. Type {tag} to confirm: ").strip() != tag:
         raise SystemExit("Cancelled.")
 
     ensure_main()
+    if not on_main:
+        open_release_pr(version, tag)
+        return
+    print(f"main already has {version}; tagging it.")
+    sh("git", "tag", tag)
+    sh("git", "push", "origin", tag)
+    if mode == "publish":
+        # The tag push starts a build-only run; the dispatch builds and publishes.
+        runs = sh("gh", "run", "list", "--workflow", "electron-release.yml", "--branch", tag,
+                  "--event", "push", "--json", "databaseId", "--jq", ".[].databaseId", capture=True)
+        for run_id in runs.split():
+            sh("gh", "run", "cancel", run_id, check=False)
+        dispatch_publish(tag, unsigned)
+        print(f"\nPublishing {tag}. Then verify: docs/RELEASING.md → Beta channel / verification table.")
+    else:
+        print(f"\nDraft build started for {tag}. Publish later: make release-publish TAG={tag}")
+
+
+def open_release_pr(version: str, tag: str) -> None:
+    """Bump, fold the changelog and open the release pull request from release/<tag>."""
+    branch = f"release/{tag}"
+    local = sh("git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}",
+               capture=True, check=False)
+    if local or sh("git", "ls-remote", "--heads", "origin", branch, capture=True):
+        # An earlier run already committed the bump (its push or pull request
+        # step failed): finish that run instead of bumping a second time.
+        if local:
+            sh("git", "switch", branch)
+        else:
+            sh("git", "switch", "-c", branch, "--track", f"origin/{branch}")
+        publish_release_branch(branch, version, tag)
+        return
+    sh("git", "switch", "-c", branch)
     try:
         bump_files(ROOT, version)
         changelog = ROOT / "CHANGELOG.md"
@@ -364,31 +408,29 @@ Release plan
     except (subprocess.CalledProcessError, ValueError) as error:
         # Nothing is committed or pushed yet: put the working tree back.
         sh("git", "checkout", "--", *RELEASE_FILES)
+        sh("git", "switch", "main")
+        sh("git", "branch", "-D", branch)
         raise SystemExit(
             f"\nRelease aborted before committing: {error}\n"
             "The version files, uv.lock and CHANGELOG.md were restored; nothing was pushed."
         )
     sh("git", "add", *RELEASE_FILES)
-    # Version-bump commits stay on main when a tag is deleted or a build fails, so
-    # main may already hold this version; then there is nothing to commit and the
-    # release only needs the tag.
-    if sh("git", "status", "--porcelain", "--untracked-files=no", capture=True):
-        sh("git", "commit", "-m", f"chore(release): {tag}")
-        sh("git", "push", "origin", "main")
-    else:
-        print(f"main already has {version} and its changelog; tagging it as is.")
-    sh("git", "tag", tag)
-    sh("git", "push", "origin", tag)
-    if mode == "publish":
-        # The tag push starts a build-only run; the dispatch builds and publishes.
-        runs = sh("gh", "run", "list", "--workflow", "electron-release.yml", "--branch", tag,
-                  "--event", "push", "--json", "databaseId", "--jq", ".[].databaseId", capture=True)
-        for run_id in runs.split():
-            sh("gh", "run", "cancel", run_id, check=False)
-        dispatch_publish(tag, unsigned)
-        print(f"\nPublishing {tag}. Then verify: docs/RELEASING.md → Beta channel / verification table.")
-    else:
-        print(f"\nDraft build started for {tag}. Publish later: make release-publish TAG={tag}")
+    sh("git", "commit", "-m", f"chore(release): {tag}")
+    publish_release_branch(branch, version, tag)
+
+
+def publish_release_branch(branch: str, version: str, tag: str) -> None:
+    """Push the release branch and open its pull request unless one is open already."""
+    sh("git", "push", "-u", "origin", branch)
+    if not sh("gh", "pr", "list", "--head", branch, "--state", "open",
+              "--json", "number", "--jq", ".[].number", capture=True):
+        sh("gh", "pr", "create", "--base", "main", "--head", branch,
+           "--title", f"chore(release): {tag}",
+           "--body", f"Release commit from `scripts/release.py`: {version} in the three version "
+                     "files, uv.lock, and the CHANGELOG section folded from changelog.d.")
+    sh("git", "switch", "main")
+    print(f"\nOpened the release pull request from {branch}. Once it merges, run "
+          f"`make release` again with {version}: it tags main and starts the build.")
 
 
 def main() -> None:

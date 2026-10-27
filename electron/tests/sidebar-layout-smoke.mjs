@@ -128,7 +128,7 @@ try {
     } else {
       await compactMain.waitFor();
       assert.equal(Math.round((await compactMain.boundingBox()).width), 48);
-      const openMain = compactMain.getByRole('button', { name: 'Toggle Sidebar' });
+      const openMain = compactMain.getByRole('button', { name: 'Toggle sidebar' });
       assert.equal(await openMain.locator('img').count(), 1);
     }
   }
@@ -281,7 +281,7 @@ try {
       'macOS compact-sidebar divider must begin below the titlebar',
     );
     const compactToggleBounds = await compactMacSidebar
-      .getByRole('button', { name: 'Toggle Sidebar', exact: true })
+      .getByRole('button', { name: 'Toggle sidebar', exact: true })
       .boundingBox();
     assert.ok(
       compactToggleBounds && compactToggleBounds.y >= 32,

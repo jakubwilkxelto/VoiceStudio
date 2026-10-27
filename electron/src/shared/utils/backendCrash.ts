@@ -1,8 +1,8 @@
 import { abortableDelay } from './abortableDelay.ts';
 import { DEFAULT_BACKEND_PORT } from '../app-config.ts';
 import { deploymentMode, type DeploymentMode } from './deploymentMode.ts';
-import { isNativeFaultExit } from './nativeExit.ts';
 import { isBrokenEnvironmentOutput } from './backendOutput.ts';
+import { isNativeFaultExit } from './nativeExit.ts';
 /**
  * backendCrash — frontend bridge to the desktop shell's crash forensics
  * (#941, src-tauri/src/crash.rs).
@@ -293,18 +293,6 @@ export function describeCrashExit(
  * misattributed). Everything else keeps the small-GPU VRAM guidance, which is
  * the dominant cause for real GPU aborts.
  */
-/**
- * True when the process died of a NATIVE fault — a segfault/illegal
- * instruction/abort — rather than memory pressure or an orderly exit.
- *
- * POSIX reports these as signals. Windows has no signals here: the shell sees
- * the raw NTSTATUS as an exit code, and the two shells disagree on how to read
- * it — Rust as a negative i32, Node as the unsigned DWORD. The table used to
- * live here in Rust's representation, so the same access violation was a fault
- * from Tauri and an ordinary non-zero exit from Electron (#2250). It now lives
- * in `utils/nativeExit`, which normalises before matching, and both shells ask
- * the same question of the same table.
- */
 export function isNativeFault(marker: Pick<BackendCrashMarker, 'exit_code' | 'signal'>): boolean {
   return isNativeFaultExit({ exitCode: marker.exit_code, signal: marker.signal });
 }
@@ -468,6 +456,7 @@ export async function streamDropError(
     intervalMs?: number;
     sleep?: (ms: number) => Promise<void>;
     probeAlive?: () => Promise<boolean>;
+    // Overrides the detected deployment mode (tests).
     mode?: DeploymentMode;
   } = {},
 ): Promise<Error> {
@@ -496,21 +485,18 @@ export async function streamDropError(
     // out the SSE connection.
     const probeAlive = opts.probeAlive ?? _probeBackendAlive;
     if (await probeAlive()) {
-      // #2108: the proxy diagnosis below is only possible where a proxy can
-      // exist. The desktop webview and `bun run dev` talk to 127.0.0.1
-      // directly; a drop there is the local connection dying under a step
-      // that went byte-silent for minutes — and the backend kept going (the
-      // reporter's transcript was saved 20 min after the UI gave up). Say
-      // that, and where to look, instead of handing out nginx advice.
+      // A reverse proxy can only sit in front of a served page. The desktop
+      // webview and `bun run dev` talk to 127.0.0.1 directly, so proxy or
+      // buffering advice would send those users after something that does not
+      // exist.
       if ((opts.mode ?? deploymentMode()) !== 'server') {
         return new Error(
           i18next.t('errors.stream_cut_backend_alive_local', {
             defaultValue:
-              'The stream ended early, but the backend is still running — so it did not crash. ' +
-              'The app lost its connection to the backend mid-job; that happens when a long step ' +
-              'goes quiet for minutes, and the backend usually finishes the job anyway. Give it a ' +
-              'few minutes and reopen the job from its history, or check the backend log ' +
-              '(Settings → Logs → Backend) for what it was doing.',
+              'Wait a few minutes, then reopen the job from its history; if it is not there, read the ' +
+              'backend log under Settings → Logs → Backend. The connection dropped mid-job after a long ' +
+              'quiet step, but the backend is still running and normally completes the work, so this ' +
+              'was not a crash.',
           }),
         );
       }

@@ -9,10 +9,14 @@ the same stack the original WhisperX paper used.
 - Multi-speaker dubbing: each detected speaker gets its own voice clone in
   the target language. A line whose words belong to two speakers is split at
   the speaker change, on every transcription path (the app, the CLI and the
-  phone companion). A speaker who only speaks in short turns still gets a
+  phone companion). A one-word reply that is a sentence of its own ("Fine.")
+  is split off too; a single word inside a sentence is treated as diarization
+  noise. Words and lines that fall in a gap between turns take the nearest
+  turn's speaker. A speaker who only speaks in short turns still gets a
   clone, cut from their turns with the edges next to other speakers trimmed
   off; only a speaker with less than about 3 s of clean speech falls back to
-  the default voice.
+  the default voice. A line that overlaps another speaker's line gets no
+  line-specific reference, so its voice is never a blend of the two.
 - Subtitle styling: speaker labels (`SPEAKER_00:`, `SPEAKER_01:`, …) on the
   exported SRT/VTT files.
 - Audio editing: per-speaker tracks in the timeline view.

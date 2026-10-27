@@ -158,6 +158,34 @@ export class SetupProgressTracker {
     }
 
     if (!changed) return null;
+    return this.recompute(now);
+  }
+
+  /**
+   * Byte progress of a download the shell runs itself (the multi-connection
+   * wheel prefetch, #3411). `total <= 0` withdraws the package: its download
+   * failed over to uv, which announces it again.
+   */
+  observeTransfer(name: string, received: number, total: number, now = Date.now()): SetupProgress {
+    const key = normalizePackageName(name);
+    this.progress.activityUpdatedAt = now;
+    if (total <= 0) {
+      this.planned.delete(key);
+      this.received.delete(key);
+      this.completed.delete(key);
+    } else {
+      if (!this.labels.has(key)) this.labels.set(key, name.trim());
+      if (received > (this.received.get(key) ?? 0) || !this.planned.has(key)) this.advancedAt = now;
+      this.planned.set(key, total);
+      this.received.set(key, Math.min(received, total));
+      if (received >= total) this.completed.add(key);
+      else this.completed.delete(key);
+    }
+    this.refreshDownloadState();
+    return this.recompute(now);
+  }
+
+  private recompute(now: number): SetupProgress {
     this.progress.completedDownloads = this.completed.size;
     const totalBytes = [...this.planned.values()].reduce((sum, value) => sum + value, 0);
     const downloadedBytes = [...this.received.values()].reduce((sum, value) => sum + value, 0);

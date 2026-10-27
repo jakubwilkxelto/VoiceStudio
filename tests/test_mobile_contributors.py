@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.skipif(shutil.which("bun") is None, reason="needs bun")
 def test_mobile_maintainer_catalog_matches_desktop():
-    result = subprocess.run(['bun', 'scripts/export-mobile-contributors.ts', '--check'], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    # The resolved path, not 'bun': Windows npm installs only ship bun.cmd.
+    result = subprocess.run([shutil.which('bun'), 'scripts/export-mobile-contributors.ts', '--check'], cwd=ROOT, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
 
 

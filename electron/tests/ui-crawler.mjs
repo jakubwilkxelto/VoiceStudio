@@ -115,8 +115,16 @@ async function openSession(browser, mode) {
     if (isApi(request) && request.resourceType() !== 'eventsource') {
       state.inflight.add(request);
       state.activity += 1;
+      recent.push(request);
+      if (recent.length > 6) recent.shift();
     }
   });
+  // Name what kept the page busy, so an unsettled finding points at its request.
+  const recent = [];
+  const describeTraffic = () => {
+    const names = [...new Set([...state.inflight, ...recent].map((r) => `${r.method()} ${new URL(r.url()).pathname}`))];
+    return names.length ? `: ${names.slice(0, 6).join(', ')}` : '';
+  };
   const finished = (request) => {
     if (state.inflight.delete(request)) state.activity += 1;
   };
@@ -153,6 +161,7 @@ async function openSession(browser, mode) {
     await settle(100);
     state.events.length = 0;
     state.failedWrites = 0;
+    recent.length = 0;
     await page.evaluate((feedback) => {
       window.__crawlErrors.length = 0;
       for (const element of document.querySelectorAll(feedback)) element.dataset.crawlSeen = '1';
@@ -194,7 +203,7 @@ async function openSession(browser, mode) {
         : 'renderer did not answer within 5s' }];
     }
     if (!observation.settled)
-      problems.push({ kind: 'unsettled', detail: `API traffic did not stay quiet within ${REQUEST_BUDGET_MS}ms (${observation.pending} request(s) pending)` });
+      problems.push({ kind: 'unsettled', detail: `API traffic did not stay quiet within ${REQUEST_BUDGET_MS}ms (${observation.pending} request(s) pending${describeTraffic()})` });
     const after = observation.snapshot;
     if (observation.settled && after > before && new URL(page.url()).hash === `#${route}`)
       problems.push({

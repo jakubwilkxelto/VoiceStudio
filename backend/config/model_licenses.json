@@ -295,6 +295,48 @@
       }
     },
     {
+      "id": "mlx-community/whisper-large-v3-turbo-asr-fp16",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/whisper-large-v3-turbo-asr-fp16",
+      "source_url": "https://huggingface.co/mlx-community/whisper-large-v3-turbo-asr-fp16",
+      "evidence_url": "https://huggingface.co/mlx-community/whisper-large-v3-turbo-asr-fp16/blob/624c19c9af5603fa73b83bce14d4aeea96156d18/README.md",
+      "revision": "624c19c9af5603fa73b83bce14d4aeea96156d18",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "624c19c9af5603fa73b83bce14d4aeea96156d18",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
+    },
+    {
       "id": "openai/whisper-large-v3",
       "license": "apache-2.0",
       "commercial_use": false,
@@ -3064,7 +3106,7 @@
       "evidence_url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/blob/2472be3b6436106f15d361747c225daa209d7bd8/LICENSE",
       "revision": "2472be3b6436106f15d361747c225daa209d7bd8",
       "engines": [
-        "sherpa-onnx"
+        "mobile:sherpa-onnx"
       ],
       "configured_at": "mobile/contract/models.source.json",
       "notes": "The selected ONNX repo LICENSE declares Apache-2.0. Required eSpeak NG phonemizer data is GPL-3.0, so the complete offered selection is conditional, not commercial-OK. Only English runtime data is selected; model voices require retained upstream notices.",
@@ -3132,7 +3174,7 @@
       "evidence_url": "https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_1/blob/155831f1b4ba23b1f5c058be6a61df90cefb2a37/LICENSE",
       "revision": "155831f1b4ba23b1f5c058be6a61df90cefb2a37",
       "engines": [
-        "sherpa-onnx"
+        "mobile:sherpa-onnx"
       ],
       "configured_at": "mobile/contract/models.source.json",
       "notes": "The selected repo LICENSE declares Apache-2.0. Required eSpeak NG phonemizer data is GPL-3.0; the offered selection is conditional. Pinned sherpa frontend supports English and Mandarin, with 103 speaker IDs. Lexicons and Chinese normalization FSTs are selected; the unused CppJieba dictionaries and other languages are excluded.",
@@ -3205,7 +3247,7 @@
       "evidence_url": "https://github.com/openai/whisper/blob/31243bad24cc746f07d4c8bfdd2d974872cb1803/LICENSE",
       "revision": "bb53ee204431c90d314c1cc08d28d23e5b7927cc",
       "engines": [
-        "sherpa-onnx"
+        "mobile:sherpa-onnx"
       ],
       "configured_at": "mobile/contract/models.source.json",
       "notes": "The export repo has no model card or LICENSE. OpenAI releases original Whisper code and weights under MIT (linked evidence), but this does not establish governing terms for the converted files. Keep the unidentified category and require acceptance. Only int8 encoder/decoder and tokens are offered.",
@@ -3261,7 +3303,7 @@
       "evidence_url": "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/blob/d7f544eead698dbd1f15126ef60b45a1e1933222/README.md",
       "revision": "d7f544eead698dbd1f15126ef60b45a1e1933222",
       "engines": [
-        "llama.cpp"
+        "mobile:llama.cpp"
       ],
       "configured_at": "mobile/contract/models.source.json",
       "notes": "Pinned Unsloth card declares Apache-2.0 and links Qwen3-1.7B. Q4_K_M is 1,107,409,472 bytes and carries its tokenizer inside the GGUF; no separate tokenizer download is needed. Chosen over the official Q8_0-only GGUF repo to fit the approximately 1.2 GB target. Small multilingual instruction model with non-thinking ChatML and bounded context; translation quality is not guaranteed.",

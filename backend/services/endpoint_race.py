@@ -66,7 +66,8 @@ _MODE_PREF = "hf_endpoint_mode"          # "auto" | "manual"; absent → default
 _DECISION_PREF = "hf_endpoint_auto"      # cached decision dict (see race())
 
 DECISION_MAX_AGE_S = 7 * 24 * 3600.0     # re-race a decision older than 7 days
-PROBE_TIMEOUT_S = 8.0                    # high-latency / China paths often need >3s
+# Generous enough that a slow but working route is not mistaken for a dead one.
+PROBE_TIMEOUT_S = 8.0
 MIRROR_SPEEDUP_FACTOR = 3.0              # mirror must be ≥3× faster to win
 
 # Small, stable, long-lived public file for the optional ranged-GET

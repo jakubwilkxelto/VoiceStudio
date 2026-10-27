@@ -114,7 +114,7 @@ def test_snap_upload_releases_candidate_only_for_the_newest_tag(tmp_path, tag, n
     )
     step = next(s for s in workflow["jobs"]["upload"]["steps"] if s.get("name") == "Upload to candidate")
     (tmp_path / "artifact").mkdir()
-    (tmp_path / "artifact" / "VoiceStudio-Electron-0.5.8-linux-x64.snap").write_text("")
+    (tmp_path / "artifact" / "VoiceStudio-0.5.8-linux-x64.snap").write_text("")
     log = tmp_path / "calls"
     tags = "".join(f"abc\trefs/tags/{t}\n" for t in ["v0.5.7", newest] if t)
     stubs = {
@@ -191,7 +191,7 @@ def test_release_preserves_authored_announcement_and_contributors(monkeypatch, t
     assets = tmp_path / "assets"
     assets.mkdir()
     for suffix in ("mac-arm64.dmg", "mac-x64.dmg", "linux-x64.deb"):
-        (assets / f"VoiceStudio-Electron-1.2.3-{suffix}").write_bytes(b"fixture")
+        (assets / f"VoiceStudio-1.2.3-{suffix}").write_bytes(b"fixture")
     module.prepare(assets, "v1.2.3")
     assert (assets / "RELEASE_NOTES.md").read_text() == notes
 

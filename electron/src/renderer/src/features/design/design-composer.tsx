@@ -1,10 +1,15 @@
-import { Link } from '@tanstack/react-router';
 import { LoaderCircleIcon, PlayIcon, XIcon } from 'lucide-react';
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EngineSetupButton, EngineSetupStatus, useEngineSetup } from '@/components/engine-notice';
+import {
+  EngineSetupButton,
+  EngineSetupStatus,
+  SetUpLink,
+  useEngineSetup,
+} from '@/components/engine-notice';
+import { DisabledReason, firstReason } from '@/components/disabled-reason';
 import { PipelineFailure } from '@/components/pipeline-failure';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { EngineLanguagePicker } from '@/features/clone/engine-language-picker';
 import { QualityControls } from '@/features/clone/quality-controls';
 import { VoiceControls } from '@/features/clone/action-bar';
@@ -62,13 +67,7 @@ export function DesignComposer({
               { engine: engineName },
             )}
           </p>
-          <Link
-            to="/settings/models/$family"
-            params={{ family: 'tts' }}
-            className={buttonVariants({ variant: 'ghost', size: 'xs' })}
-          >
-            {t('engineSidebar.tts')}
-          </Link>
+          <SetUpLink family="tts" />
         </div>
       )}
       {blocker === 'loading' && !isGenerating && (
@@ -80,6 +79,7 @@ export function DesignComposer({
         <PipelineFailure
           className="mb-2.5"
           fallback={generation.error}
+          topic={generation.errorTopic}
           onDismiss={generation.clearError}
         />
       )}
@@ -102,33 +102,57 @@ export function DesignComposer({
               className="h-10 min-w-44 rounded-lg px-4 @max-[28rem]/composer:flex-1"
             />
           ) : (
-            <Button
-              size="lg"
-              className={cn(
-                'h-10 min-w-44 gap-3 overflow-hidden rounded-lg ps-4 pe-3 @max-[28rem]/composer:flex-1',
-                isGenerating ? 'justify-between' : 'justify-center',
-              )}
-              disabled={!ready || isGenerating || blocker !== null}
-              aria-busy={isGenerating}
-              aria-label={label}
-              onClick={onSynthesize}
+            <DisabledReason
+              className="@max-[28rem]/composer:flex-1"
+              reason={
+                isGenerating
+                  ? null
+                  : firstReason([
+                      [
+                        blocker === 'design' || blocker === 'cloning',
+                        t(
+                          blocker === 'cloning'
+                            ? 'designWorkspace.engine_cannot_reuse_sample'
+                            : 'designWorkspace.engine_cannot_design',
+                          { engine: engineName },
+                        ),
+                      ],
+                      [blocker === 'loading', t('preferences.loading')],
+                      [!ready, t('disabledReason.text_required')],
+                    ])
+              }
             >
-              <span className="flex min-w-0 items-center gap-2">
-                {isGenerating ? (
-                  <LoaderCircleIcon className="shrink-0 animate-spin motion-reduce:animate-none" />
-                ) : (
-                  <PlayIcon className="shrink-0" />
-                )}
-                <span className="min-w-0 truncate" role={isGenerating ? 'status' : undefined}>
-                  {label}
-                </span>
-              </span>
-              {isGenerating && (
-                <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
-                  {`${progress == null ? '' : `${Math.round(progress)}% · `}${generation.elapsedSeconds.toFixed(1)}s`}
-                </span>
+              {(describedBy) => (
+                <Button
+                  size="lg"
+                  className={cn(
+                    'h-10 min-w-44 gap-3 overflow-hidden rounded-lg ps-4 pe-3 @max-[28rem]/composer:flex-1',
+                    isGenerating ? 'justify-between' : 'justify-center',
+                  )}
+                  disabled={!ready || isGenerating || blocker !== null}
+                  aria-describedby={describedBy}
+                  aria-busy={isGenerating}
+                  aria-label={label}
+                  onClick={onSynthesize}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    {isGenerating ? (
+                      <LoaderCircleIcon className="shrink-0 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <PlayIcon className="shrink-0" />
+                    )}
+                    <span className="min-w-0 truncate" role={isGenerating ? 'status' : undefined}>
+                      {label}
+                    </span>
+                  </span>
+                  {isGenerating && (
+                    <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
+                      {`${progress == null ? '' : `${Math.round(progress)}% · `}${generation.elapsedSeconds.toFixed(1)}s`}
+                    </span>
+                  )}
+                </Button>
               )}
-            </Button>
+            </DisabledReason>
           )}
           {isGenerating && (
             <Button

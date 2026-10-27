@@ -1,5 +1,10 @@
 import { expect, it } from 'vitest';
-import { dubExportRequest, restoreExportPreferences, type DubExportOptions } from './dub-export';
+import {
+  dubExportRequest,
+  restoreExportPreferences,
+  transcriptSyncBody,
+  type DubExportOptions,
+} from './dub-export';
 const options: DubExportOptions = {
   jobId: 'job',
   format: 'mp4',
@@ -65,4 +70,32 @@ it('targets the selected language for audio, sidecars and production packages', 
       expect(url.searchParams.get('preserve_bg')).toBe('false');
     if (format === 'srt' || format === 'vtt') expect(url.searchParams.get('dual')).toBe('true');
   }
+});
+it('exports the original video with only the original track before any dub (#3393)', () => {
+  const url = new URL(
+    dubExportRequest({ ...options, track: 'original', tracks: ['original'] }).path,
+    'http://localhost',
+  );
+  expect(url.searchParams.get('include_tracks')).toBe('original');
+  expect(url.searchParams.get('default_track')).toBe('original');
+});
+it('sends the edited transcript lines, keeping the source under an unspoken translation', () => {
+  expect(
+    transcriptSyncBody([
+      { id: '0', start: -1, end: 1, text: 'Hola', text_original: 'Hello' },
+      { id: '1', start: 1, end: 2, text: 'Same' },
+    ]),
+  ).toEqual({
+    segments: [
+      { id: '0', start: 0, end: 1, text: 'Hola', text_original: 'Hello', cue_source_id: undefined },
+      {
+        id: '1',
+        start: 1,
+        end: 2,
+        text: 'Same',
+        text_original: undefined,
+        cue_source_id: undefined,
+      },
+    ],
+  });
 });

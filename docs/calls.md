@@ -88,7 +88,8 @@ in [integrations/twilio.md](integrations/twilio.md); the API is described in
 [integrations/calls.md](integrations/calls.md).
 
 Open **Workflows** from the sidebar (or press Ctrl/⌘ K and type
-"Workflows"), then choose **Calls**.
+"Workflows"), then choose **Calls**, or type "Calls" in Ctrl/⌘ K to go there
+directly.
 
 ## Before your first call
 

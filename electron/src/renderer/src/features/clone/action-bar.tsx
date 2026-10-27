@@ -5,7 +5,7 @@ import {
   useEngineSetup,
   type EngineSetup,
 } from '@/components/engine-notice';
-import { InstallSttButton } from './install-stt-button';
+import { AddTranscriptButton } from './add-transcript-button';
 import { Progress as ProgressPrimitive } from '@base-ui/react/progress';
 import {
   AudioLinesIcon,
@@ -373,7 +373,8 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
         <PipelineFailure
           className="mb-3"
           fallback={error}
-          action={errorTopic === 'REFERENCE_STT_MISSING' ? <InstallSttButton /> : undefined}
+          topic={errorTopic}
+          action={errorTopic === 'REFERENCE_STT_MISSING' ? <AddTranscriptButton /> : undefined}
           onDismiss={clearError}
         />
       )}

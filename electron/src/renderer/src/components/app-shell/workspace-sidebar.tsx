@@ -26,8 +26,6 @@ export function WorkspaceSidebar() {
     version: appVersion(),
   });
   const { libraryOpen } = useWorkspace();
-  // One source of truth for "rail or full sidebar": the header toggle and the
-  // sidebar's own buttons used to keep separate copies of this state.
   const { compact, compactViewport, forceExpanded, secondaryWorkspace, setOpen } =
     useWorkspaceSidebarState();
   const sidebarResize = usePaneResize({
@@ -47,7 +45,7 @@ export function WorkspaceSidebar() {
           data-slot="compact-main-sidebar"
           onDoubleClick={() => setOpen(true)}
           className={cn(
-            'brand-sidebar relative isolate grid h-dvh min-h-0 shrink-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden bg-sidebar',
+            'brand-sidebar relative isolate grid h-full min-h-0 shrink-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden bg-sidebar',
             mac ? 'w-16' : 'w-12 border-r border-border/50',
           )}
         >
@@ -64,26 +62,25 @@ export function WorkspaceSidebar() {
             style={trafficLights ? { paddingTop: MAC_TRAFFIC_LIGHTS_BAND } : undefined}
             className="workspace-titlebar box-content flex h-12 shrink-0 items-center justify-center"
           >
-            {/* The brand mark, which turns into the expand icon on hover or
-                focus: the rail can always reopen itself, on every platform. */}
             <Button
+              type="button"
               variant="ghost"
               size="icon-sm"
               aria-label={t('clone.toggle_sidebar')}
               title={t('clone.toggle_sidebar')}
               aria-expanded={false}
               onClick={() => setOpen(true)}
-              className="group/rail-toggle relative shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group/rail relative"
             >
               <img
                 src={brandIcon}
                 alt=""
                 data-slot="rail-brand"
-                className="size-6 shrink-0 transition-opacity duration-150 group-hover/rail-toggle:opacity-0 group-focus-visible/rail-toggle:opacity-0 motion-reduce:transition-none"
+                className="size-5 transition-opacity duration-150 group-hover/rail:opacity-0 group-focus-visible/rail:opacity-0 motion-reduce:transition-none"
               />
               <PanelLeftOpenIcon
                 aria-hidden="true"
-                className="absolute inset-0 m-auto size-5 opacity-0 transition-opacity duration-150 group-hover/rail-toggle:opacity-100 group-focus-visible/rail-toggle:opacity-100 motion-reduce:transition-none"
+                className="absolute size-4 opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-focus-visible/rail:opacity-100 motion-reduce:transition-none"
               />
             </Button>
           </div>
@@ -150,12 +147,14 @@ export function WorkspaceSidebar() {
               </span>
             </Link>
             <Button
+              type="button"
               variant="ghost"
               size="icon-sm"
               aria-label={t('common.close')}
+              title={t('common.close')}
               onClick={() => setOpen(false)}
             >
-              <PanelLeftIcon />
+              <PanelLeftIcon aria-hidden="true" />
             </Button>
           </header>
           <div
@@ -163,9 +162,7 @@ export function WorkspaceSidebar() {
             aria-label={t('app.name')}
             className="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize touch-none outline-none hover:bg-primary/15 focus-visible:bg-primary/30"
           />
-          {/* Navigation first, like the compact rail: it stays at a fixed
-              position under the header instead of riding the library's height. */}
-          <div className="min-h-0 min-w-0 overflow-y-auto">
+          <div className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
             <WorkspaceNavigation />
           </div>
           <div className="flex min-w-0 shrink-0 flex-col border-t border-border/50">

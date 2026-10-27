@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import type { UpdateState } from '../../../../preload/index.d';
 import { DownloadActivityList, useDownloadActivity } from './download-activity';
+import { LongformActivityCard, longformActivityStatus } from '@/components/longform-activity-card';
+import { useLongformActivity } from '@/lib/longform-activity';
 
 interface SystemNotification {
   id: string;
@@ -95,6 +97,8 @@ export function SystemNotifications({
   const [dismissed, setDismissed] = useState(loadDismissed);
   const [update, setUpdate] = useState<UpdateState | null>(null);
   const downloads = useDownloadActivity();
+  // A Stories/Audiobook render keeps running when its page is left.
+  const render = useLongformActivity();
   const downloadFailed = downloads.items.length > downloads.active;
   const query = useQuery({
     queryKey: ['system-notifications'],
@@ -174,9 +178,12 @@ export function SystemNotifications({
     }
   };
 
-  const total = visible.length + downloads.items.length;
+  const total = visible.length + downloads.items.length + (render ? 1 : 0);
   const triggerLabel =
     [
+      render
+        ? `${t(render.mode === 'stories' ? 'nav.stories' : 'audiobook.title')}: ${longformActivityStatus(render, t)}`
+        : null,
       downloads.active ? t('modelInstall.activeCount', { count: downloads.active }) : null,
       ...visible.map((note) => note.title || note.message),
     ]
@@ -226,6 +233,7 @@ export function SystemNotifications({
         align={titlebar ? 'end' : 'start'}
         className="max-h-[min(28rem,calc(100vh-2rem))] w-[min(22rem,calc(100vw-2rem))] space-y-1 overflow-y-auto p-1.5"
       >
+        <LongformActivityCard />
         <DownloadActivityList activity={downloads} />
         {!enabled && total === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">

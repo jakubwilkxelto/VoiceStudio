@@ -331,7 +331,20 @@ def test_working_gpu_and_gpu_less_and_pinned_states():
     assert _report(_cpu_caps(probe_ok=False), [], "unknown")["state"] == "probe_failed"
 
 
-def test_kernel_risk_note_marks_accelerated_with_caveat():
+def test_kernel_risk_note_marks_the_host_as_missing_kernels():
+    # A wheel with no kernels for the card makes the loader fall back to the
+    # CPU, so the report must not present the host as GPU-accelerated (#3067).
+    caps = HostCaps(
+        family="cuda", available_families=("cuda", "cpu"),
+        notes=("GPU (sm_120) not in this torch build's archs - may fail at kernel launch",),
+    )
+    assert _report(caps, [GEFORCE], "cuda")["state"] == "kernels_missing"
+
+
+def test_forced_cuda_keeps_the_accelerated_caveat(monkeypatch):
+    # OMNIVOICE_FORCE_CUDA=1 runs the engine on the GPU anyway, so the host
+    # is usable and the risk stays a caveat rather than a missing-kernel host.
+    monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", "1")
     caps = HostCaps(
         family="cuda", available_families=("cuda", "cpu"),
         notes=("GPU (sm_120) not in this torch build's archs - may fail at kernel launch",),

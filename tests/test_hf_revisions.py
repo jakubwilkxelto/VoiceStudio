@@ -7,23 +7,21 @@ import yaml
 from services import hf_revisions
 
 
-def test_every_catalog_repo_has_an_immutable_revision():
-    catalog = yaml.safe_load(Path("backend/config/models.yaml").read_text(encoding="utf-8"))
-    # Dependency repos are downloaded by the installer exactly like top-level
-    # ones (setup/download.py resolves `revision_for(dependency["repo_id"])`),
-    # and `revision_for` raises on an unpinned repo — so an unpinned dependency
-    # ships an install that always fails. Pin them under the same rule (#2163).
-    curated = []
-    for model in catalog["models"]:
-        curated.append(model["repo_id"])
-        for dependency in model.get("dependencies") or ():
-            curated.append(dependency["repo_id"])
-    missing = {
-        repo_id for repo_id in curated if repo_id not in hf_revisions.CURATED_REVISIONS
-    }
-    assert missing == set()
-    assert all(len(revision) == 40 for revision in hf_revisions.CURATED_REVISIONS.values())
-    assert all(int(revision, 16) >= 0 for revision in hf_revisions.CURATED_REVISIONS.values())
+def test_catalog_repos_and_dependencies_all_have_full_sha_pins():
+    cfg = Path(__file__).resolve().parents[1] / "backend" / "config" / "models.yaml"
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    entries = data["models"] if isinstance(data, dict) else data
+    repos = set()
+    for entry in entries:
+        if entry.get("repo_id"):
+            repos.add(entry["repo_id"])
+        for dep in entry.get("dependencies") or []:
+            repos.add(dep["repo_id"])
+    unpinned = sorted(repos - set(hf_revisions.CURATED_REVISIONS))
+    assert not unpinned, f"catalogue repos without a pinned revision: {unpinned}"
+    for repo, rev in hf_revisions.CURATED_REVISIONS.items():
+        assert len(rev) == 40, repo
+        int(rev, 16)  # raises ValueError if not hex
 
 
 def test_nllb_components_use_the_reviewed_revision():

@@ -1,12 +1,10 @@
-import { useNavigate } from '@tanstack/react-router';
-import { AudioPreviewButton } from '@/components/audio-preview-button';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { PlayInDockButton } from '@/components/now-playing-dock';
 import { takePlaybackKind } from '@/lib/audio/playback-kind';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { setWorkspace } from '@/lib/store/workspace';
 import { openTake, reuseTake, useSelectedTake } from '@/lib/store/takes';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   FingerprintIcon,
   PencilIcon,
@@ -33,11 +31,10 @@ import {
   useToggleStarred,
 } from '@/hooks/use-history';
 import { useDeleteProfile, useProfiles } from '@/hooks/use-profiles';
-import { audioUrl, profileAudioUrl } from '@/lib/api/client';
+import { audioUrl } from '@/lib/api/client';
 import type { HistoryItem, Profile } from '@/lib/api/types';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { selectCloneProfile } from '@/lib/store/reference';
-import { queryKeys } from '@/lib/query';
 import { cn } from '@/lib/utils';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { ConfirmDialog } from './confirm-dialog';
@@ -50,47 +47,15 @@ import {
   restoreDesignProfile,
   writeDraft,
 } from '@/features/design/design-draft';
-import { useTtsReadiness, type TtsReadinessBlocker } from '@/hooks/use-tts-readiness';
-
-const VIRTUALIZE_ABOVE = 30;
-
-export function profileListPresentation(
-  count: number,
-  library: boolean,
-): 'grid' | 'list' | 'virtual' {
-  if (library) return 'grid';
-  return count > VIRTUALIZE_ABOVE ? 'virtual' : 'list';
-}
+import { useTtsReadiness } from '@/hooks/use-tts-readiness';
+import {
+  PreviewButton,
+  VIRTUALIZE_ABOVE,
+  profileListPresentation,
+  selectedVoiceId,
+} from './saved-voice-parts';
 
 // ── Saved voices ────────────────────────────────────────────────────────────
-
-function PreviewButton({
-  profile,
-  ttsBlocker,
-  disabledLabel,
-}: {
-  profile: Profile;
-  ttsBlocker: TtsReadinessBlocker;
-  disabledLabel: string;
-}) {
-  const client = useQueryClient();
-  const pendingIdentity =
-    profile.kind === 'design' && !profile.ref_audio_path && !profile.locked_audio_path;
-  return (
-    <AudioPreviewButton
-      src={profileAudioUrl(profile.id, profile.audio_url)}
-      source={'profile-' + profile.id}
-      activity={pendingIdentity ? 'synthesis' : undefined}
-      disabled={pendingIdentity && Boolean(ttsBlocker)}
-      disabledLabel={disabledLabel}
-      onReady={
-        pendingIdentity
-          ? () => void client.invalidateQueries({ queryKey: queryKeys.profiles })
-          : undefined
-      }
-    />
-  );
-}
 
 export function SavedVoices({
   onSelected,
@@ -108,6 +73,9 @@ export function SavedVoices({
   const deleteProfile = useDeleteProfile();
   const selectedProfileId = useCloneSetting('selectedProfileId');
   const [selectedDesignId, setSelectedDesignId] = useState(() => readDraft().profileId);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // One selected voice at a time: the one the current workspace is using.
+  const activeId = selectedVoiceId(pathname, selectedProfileId, selectedDesignId);
   const [pendingDelete, setPendingDelete] = useState<Profile | null>(null);
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | Profile['kind']>('all');
@@ -147,6 +115,7 @@ export function SavedVoices({
     return () => window.removeEventListener(DESIGN_DRAFT_EVENT, sync);
   }, []);
 
+  /** Restore a saved design's complete recipe or select a clone reference. */
   const select = async (profile: Profile) => {
     if (profile.kind === 'design') {
       const current = readDraft();
@@ -156,6 +125,9 @@ export function SavedVoices({
           attrs: restored.attrs,
           seed: restored.seed,
           profileId: restored.profileId,
+          description: restored.description,
+          picks: restored.picks,
+          mapped: restored.mapped,
         }),
       );
       setCloneSetting('language', restored.language);
@@ -293,7 +265,7 @@ export function SavedVoices({
             : items.map((profile) => ({ profile, row: null }))
           ).map(({ profile, row }) => {
             const design = profile.kind === 'design';
-            const active = profile.id === (design ? selectedDesignId : selectedProfileId);
+            const active = profile.id === activeId;
             return (
               <li
                 key={profile.id}
@@ -308,7 +280,7 @@ export function SavedVoices({
               >
                 <button
                   type="button"
-                  className="absolute inset-y-0 left-0 right-24 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   title={profile.name + ' · ' + formatRelative(profile.created_at, i18n.language)}
                   aria-label={profile.name}
                   aria-pressed={active}

@@ -35,16 +35,39 @@ selection and timestamp stay visible, while row actions reveal on hover or keybo
 focus. Inset hairline separators preserve the reading rhythm; source text and metadata
 stay dimmed until the row is active, while the translation remains the visual lead.
 Clicking a translation turns only that row into a growing editor. Advanced
-voice and timing controls remain folded behind the speaker header. When a workspace
+voice and timing controls remain folded behind the speaker header, which also
+moves the line to another speaker or a **New speaker**; **Set speaker...** in the
+selection bar does the same for several lines. A line that followed its old
+speaker's voice takes the new speaker's voice, while a voice picked for that line
+stays. See the [multi-speaker walkthrough](dubbing/multi-speaker-guide.md). When a workspace
 also opens local controls, constrained or scaled windows automatically use the main
 navigation rail so the transcript keeps the available width; expanding it remains an
 explicit temporary override.
 When several targets are selected, progress tabs above the transcript switch the
 active language in one click while preserving every target for Translate All and
 Generate. Persisted provider error pages are discarded and restored to the source
-dialogue with a retryable error state.
+dialogue with a retryable error state. Restored errors stay attached to the affected
+language, preserving its warning badge and issue-navigation stop when switching targets.
+
+The transcript toolbar counts flagged segments and offers Previous issue / Next
+issue controls. They wrap through tight-fit and overlong lines, translation errors
+or Fast fallbacks, generated-audio overflows, and QC verification flags in transcript
+order. Each jump selects and scrolls to the row, including rows outside the visible
+part of a long transcript. Keyboard focus stays on the control so Enter or Space
+can continue the review. Translation-error badges and navigation use the active
+language's saved failures, so a successful translation into another language does
+not hide them. Pasted replacements and edits to saved translations clear that
+language's error while keeping failures in other languages. The count follows
+edits and the active transcript; zero means no recorded flags, not that ungenerated
+speech has been verified. Navigation is disabled while a job is running or awaiting
+recovery.
 
 Long projects virtualize transcript rows, so only the visible editors are mounted.
+The transcript toolbar and waveform timeline stay above that scroll container.
+Selecting a timeline cue, with the mouse or keyboard, reveals its transcript row
+without moving the timeline out of view; timing controls remain available while
+editing long projects. Expanded rows, resized inline notices and dismissed errors
+retain their correct virtualized positions.
 
 The Dubbing pane has a Projects tab beside its controls that lists saved dub projects, newest first. Selecting a project and confirming opens it in place (it waits while a dub is running); the Projects workspace remains the place to save, rename and delete.
 Timeline waveform peaks and onsets are computed once by the backend and cached as a
@@ -105,6 +128,11 @@ The backend retains voice references only where their timing overlaps the new cu
 Malformed, overlapping, or duration-clamped cue counts remain visible in the sidebar.
 Failed imports preserve the current edits. Generated track buttons clear on successful
 replacement to avoid presenting older audio as the new subtitles' output.
+Ruby pronunciation guides in SRT/VTT captions are excluded from the spoken text
+in Dub and Stories: `<ruby>read<rt>reed</rt></ruby>` speaks only "read".
+Nested annotation containers and fallback parentheses are excluded too; unchanged
+Dub subtitle exports retain the original ruby markup. An unclosed annotation
+ends at the enclosing ruby or cue boundary, so it cannot hide the next cue.
 URL import runs only after clicking Ingest; it uses the backend's existing yt-dlp
 pipeline. URL imports (here and in the voice gallery) accept only `http://` and
 `https://` links and refuse addresses on this computer or the local network,
@@ -250,7 +278,8 @@ either neighbor. Merge/split uses Tauri's shared attribution bookkeeping, so spe
 voice, direction, gain and target language survive moving words across a boundary.
 Undo and redo retain the latest 50 edit states and reset when a new source, subtitle
 file, translation or project becomes the editing baseline. The toolbar and
-Cmd/Ctrl shortcuts expose the same operations. Unit and browser regressions cover
+Cmd/Ctrl shortcuts expose the same operations; Cmd/Ctrl+Z in any other field (glossary,
+translation notes, segment Start/End) stays that field's own undo. Unit and browser regressions cover
 the full insert/delete/merge/split/undo/redo sequence and merge-to-split attribution.
 
 The editor includes a proportional timing lane above the segment rows. Segment
@@ -299,32 +328,38 @@ transcripts automatically.
 
 ### Mirror source delivery
 
-**More → Mirror source delivery** writes a direction for each line from how the
-original actor spoke it. VoiceStudio measures pitch, pitch movement, loudness,
-syllable rate and voicing on the separated vocals track (the full mix when
-separation did not run) and compares every line against the same speaker's own
-typical delivery. Markedly louder, higher and faster lines become `urgent, quick`;
-near-unvoiced lines become `whispered`; lines close to the speaker's norm stay empty.
+**More → Mirror source delivery** writes short delivery words into the Direction
+field of segments that have none, based on how the original speaker said each line.
+It never touches a direction you typed, and the whole pass is one Undo step.
 
-| Measured against the speaker's baseline | Direction |
-| :--- | :--- |
-| Louder, faster and higher | `urgent` |
-| Louder, higher or more animated | `energetic` |
-| Quieter, lower and flatter | `calm` |
-| Loud but unhurried | `announcing` |
-| Mostly unvoiced and quiet | `whispered` |
-| Faster or slower syllables | `quick` / `slow` |
+For every segment it measures the separated vocals (the mix when no vocals exist):
+loudness, speaking rate, pitch level, pitch movement and how much of the line is
+voiced. Each line is then compared with the same speaker's usual delivery, and only
+clear departures become words from the same taxonomy as typed directions. Lines
+close to the speaker's norm get nothing.
 
-Only empty directions are filled; a direction you typed is never replaced, and
-**Undo** reverts the whole pass. The words are the same taxonomy typed directions
-use, so they reach the TTS instruction, translation tone and speech-rate target
-with or without an LLM. Emotion is not inferred from acoustics; add it yourself.
-A speaker needs three measurable lines for their own baseline; otherwise the video's
-pooled baseline is used without pitch, which does not transfer between voices.
-Analysis runs locally in pure NumPy and takes roughly ten seconds per hour of
-dialogue; a line longer than a minute is measured from its first minute. The API is `POST /dub/prosody-mirror/{job_id}` with the editor's current
-segments; it only suggests directions and never changes the job, and refuses requests
-whose segments add up to more than twice the source audio plus one minute (one line).
+| Measured against the speaker's norm | Word |
+| --- | --- |
+| Louder and faster, with higher pitch when pitch is comparable | urgent |
+| Louder and higher or more animated overall | energetic |
+| Quieter and lower or flatter overall | calm |
+| Much louder and slower | announcing |
+| Mostly unvoiced and quieter | whispered (nothing else is added) |
+| Noticeably faster / slower | quick / slow |
+
+Emotion is never inferred; add it yourself in the Direction field.
+
+A speaker with at least three measured lines gets a personal baseline, including
+pitch. Otherwise lines are compared with all measured lines pooled together, and
+pitch is only used in that pooled case when the whole file has a single known
+speaker. Fewer than three measurable lines produce no suggestions. Analysis runs
+locally with no model download. A line longer than a minute is measured from its
+first minute.
+
+The same analysis is available as `POST /dub/prosody-mirror/{job_id}`. It only
+reads the job and never changes it. The request is rejected when the segments
+together cover more than twice the track length plus one minute (typically
+duplicated or overlapping segments).
 
 ### Preserve sound outside dialogue
 

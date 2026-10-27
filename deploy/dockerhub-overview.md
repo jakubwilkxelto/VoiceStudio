@@ -14,24 +14,23 @@ cloning, and cinematic video dubbing — fully local, with no cloud API keys or 
 
 ![VoiceStudio — the open-source ElevenLabs alternative](https://raw.githubusercontent.com/debpalash/VoiceStudio/main/.github/assets/social-preview.png)
 
-VoiceStudio runs entirely on your own hardware (CUDA / ROCm / CPU
-auto-detect). Nothing leaves the machine without your explicit yes: product
-analytics are opt-in (PostHog, content-free usage metadata only) behind a
-first-run consent prompt — declining or skipping keeps them off, and
-`-e OMNIVOICE_ANALYTICS_DISABLED=1` disables them entirely. This image is the **headless
-web-server build**: a FastAPI backend serving a pre-built React UI over HTTP, so
-you can run it on an AMD64 homelab box or GPU server and open
-the UI in a browser.
+VoiceStudio processes media on your own hardware and automatically chooses CUDA,
+ROCm, or CPU. Data leaves the machine only after you explicitly agree. PostHog
+analytics collect content-free metadata only when you accept the first-run
+consent question; declining or skipping keeps analytics disabled, and
+`-e OMNIVOICE_ANALYTICS_DISABLED=1` turns them off completely. This headless
+server image runs FastAPI with the pre-built React interface over HTTP, making
+it suitable for an AMD64 homelab or GPU server that you control from a browser.
 
-**Architecture:** the main and `:rocm` images are **`linux/amd64` only**.
-ARM servers with an NVIDIA GPU (DGX Spark / GB10, GH200, GB200) use the native
-`linux/arm64` `:stable-cuda-arm64` image. On Apple Silicon, use the
+The primary image and `:rocm` variant support `linux/amd64` only. NVIDIA ARM
+servers such as DGX Spark/GB10, GH200, and GB200 can use the native
+`linux/arm64` tag `:stable-cuda-arm64`. On Apple Silicon, install the
 [native macOS app](https://github.com/debpalash/VoiceStudio/blob/main/docs/install/macos.md)
-for Apple GPU acceleration; the Linux container cannot access the Mac's Apple
-GPU through MPS or MLX. Other ARM64 hosts need an AMD64 server or CPU emulation,
-which can be much slower. See the
-[architecture requirements](https://github.com/debpalash/VoiceStudio/blob/main/docs/install/docker.md#architecture)
-before pulling an image.
+for Apple GPU acceleration; a Linux container cannot access the Mac GPU through
+MPS or MLX. Other ARM64 systems have no native image, so use an AMD64 host or
+accept the substantial slowdown of emulation. Review the
+[architecture guidance](https://github.com/debpalash/VoiceStudio/blob/main/docs/install/docker.md#architecture)
+before choosing an image.
 
 > The desktop app's auto-updater is **desktop-only** and does not apply to this
 > image — to update, pull a newer tag and recreate the container.
@@ -149,7 +148,7 @@ The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
 - **📦 Batch Queue** — drop 50 videos and walk away; per-job progress.
 - **🤖 MCP Server** — drive VoiceStudio from Claude, Cursor, or any MCP client.
 - **🛡️ AI Watermark** — invisible AudioSeal (Meta) marking that survives compression.
-- **⚡ GPU Auto-Detect** — CUDA · ROCm · CPU, with auto-offload on ≤8 GB cards.
+- **⚡ GPU Auto-Detect** — selects CUDA, ROCm, or CPU and auto-offloads on GPUs with 8 GB VRAM or less.
 - **🧩 Extensible** — subclass `TTSBackend` to add any engine in ~50 lines.
 
 Multiple TTS engines ship out of the box (IndexTTS, CosyVoice, Supertonic-3, and

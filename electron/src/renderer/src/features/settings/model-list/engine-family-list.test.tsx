@@ -112,7 +112,9 @@ it('lists each engine once with install and select on the same row, active first
       within(omnivoice).getByRole('button', { name: 'modelMaintenance.download' }),
     ).toBeEnabled(),
   );
-  expect(within(omnivoice).getByRole('button', { name: 'modelSettings.selected' })).toBeDisabled();
+  // Selected once, as a badge: no second, disabled "Selected" button.
+  expect(within(omnivoice).queryByRole('button', { name: 'modelSettings.selected' })).toBeNull();
+  expect(screen.getAllByText('modelSettings.selected')).toHaveLength(1);
   fireEvent.click(within(omnivoice).getByRole('button', { name: 'modelMaintenance.download' }));
   expect(mock.api).toHaveBeenCalledWith(
     '/models/install',

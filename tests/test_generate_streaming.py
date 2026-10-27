@@ -495,3 +495,26 @@ def test_classic_generate_unaffected_by_stream_default(client, monkeypatch,
     assert res.status_code == 200, res.text
     assert res.headers.get("content-type") == "audio/wav"
     assert res.headers.get("x-audio-id")
+
+
+def test_stream_sends_keepalive_lines_while_a_chunk_renders(client, monkeypatch,
+                                                            no_omnivoice_model):
+    """A chunk that renders longer than the proxy idle limit must not leave the
+    stream byte-silent (Cloudflare 524): blank NDJSON lines fill the gap, and
+    the event sequence itself is unchanged."""
+    import core.stream_keepalive as keepalive
+
+    monkeypatch.setattr(keepalive, "STREAM_KEEPALIVE_S", 0.05)
+    fake = _make_deterministic_engine(delay_s=0.3)
+    monkeypatch.setitem(_tts_mod()._REGISTRY, "stream-fake", fake)
+
+    with client.stream("POST", "/generate", data={
+        "text": "One short sentence here.", "engine": "stream-fake", "stream": "true",
+    }) as r:
+        assert r.status_code == 200
+        assert r.headers["x-accel-buffering"] == "no"
+        assert "no-transform" in r.headers["cache-control"]
+        lines = list(r.iter_lines())
+    assert any(not line.strip() for line in lines), "no keepalive during a slow render"
+    events = [json.loads(line) for line in lines if line.strip()]
+    assert [e["type"] for e in events] == ["start", "chunk", "done"]

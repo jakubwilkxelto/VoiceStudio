@@ -1,12 +1,7 @@
 import { StoryStems } from './story-stems';
 import { previewStoryLine } from './story-preview';
 import { storyVoicesReady } from './story-inputs';
-import {
-  DEFAULT_SPLIT_MODE,
-  SPLIT_MODES,
-  splitStoryText,
-  type SplitMode,
-} from '@shared/utils/splitStoryText';
+import { DEFAULT_SPLIT_MODE, splitStoryText, type SplitMode } from '@shared/utils/splitStoryText';
 import { useEffect, useRef, useState } from 'react';
 import { buildAutoCast } from '@shared/utils/autoCast';
 import { SAMPLE_STORY_CAST, SAMPLE_STORY_LINES, SAMPLE_STORY_NAME } from '@shared/data/sampleStory';
@@ -14,14 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { BookOpenTextIcon, ChevronRightIcon, PlusIcon, SparklesIcon } from 'lucide-react';
 import { StoryBlock } from './story-block';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SplitPresetPicker } from './split-preset-picker';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { describeError } from '@/lib/api/client';
 import { reorder } from '@shared/utils/storyReorder';
@@ -106,9 +94,8 @@ export function StoryEditor({
   };
   const script = draft.importText;
   const setScript = (importText: string) => onChange({ importText });
-  const [splitMode, setSplitMode] = useState<SplitMode>(DEFAULT_SPLIT_MODE);
-  // Electron's Sentences preset keeps its established 500-char ceiling.
-  const [maximum, setMaximum] = useState(500);
+  const [preset, setPreset] = useState<SplitMode>(DEFAULT_SPLIT_MODE);
+  const [charLimit, setCharLimit] = useState(500);
   const [inputOpen, setInputOpen] = useState(Boolean(script));
   useEffect(() => {
     if (script) setInputOpen(true);
@@ -135,7 +122,7 @@ export function StoryEditor({
     setNotice(
       t('stories.autocastDone', {
         lines: result.tracks.length,
-        voices: result.speakers.length,
+        count: result.speakers.length,
       }),
     );
   };
@@ -192,10 +179,9 @@ export function StoryEditor({
       })),
     });
   return (
-    // No `min-h-0` here: the page column is the scroll container, and a
-    // shrinkable flex item let a long script paint over the generation
-    // progress panel and the footer instead of pushing them down.
-    <div data-slot="story-editor" className="flex-1 space-y-4">
+    // Deliberately not min-h-0: the page column is what scrolls. A root that could
+    // shrink would let a tall script spill over the pinned generate controls.
+    <div data-slot="story-editor" className="space-y-4 flex-1">
       {previewError && (
         <PipelineFailure fallback={previewError} onDismiss={() => setPreviewError(null)} />
       )}
@@ -235,7 +221,7 @@ export function StoryEditor({
               variant="ghost"
               disabled={disabled || !script.trim()}
               onClick={() => {
-                const parts = splitStoryText(script, splitMode, maximum);
+                const parts = splitStoryText(script, preset, charLimit);
                 onChange({
                   lines: [
                     ...draft.lines,
@@ -252,46 +238,13 @@ export function StoryEditor({
             >
               {t('stories.splitIntoTracks')}
             </Button>
-            <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              {t('stories.splitMode')}
-              <Select
-                items={SPLIT_MODES.map((mode) => ({
-                  value: mode,
-                  label: t(`stories.split_${mode}`),
-                }))}
-                value={splitMode}
-                disabled={disabled}
-                onValueChange={(value) => setSplitMode(value as SplitMode)}
-              >
-                <SelectTrigger aria-label={t('stories.splitMode')} className="h-8 min-w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="end">
-                  {SPLIT_MODES.map((mode) => (
-                    <SelectItem key={mode} value={mode}>
-                      {t(`stories.split_${mode}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-            {splitMode === 'sentences' && (
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                {t('stories.maxChars')}
-                <Input
-                  type="number"
-                  min="40"
-                  max="2000"
-                  step="10"
-                  className="h-8 w-20"
-                  disabled={disabled}
-                  value={maximum}
-                  onChange={(e) =>
-                    setMaximum(Math.max(40, Math.min(2000, Number(e.target.value) || 40)))
-                  }
-                />
-              </label>
-            )}
+            <SplitPresetPicker
+              preset={preset}
+              onPreset={setPreset}
+              charLimit={charLimit}
+              onCharLimit={setCharLimit}
+              disabled={disabled}
+            />
           </div>
           <p className="text-xs text-muted-foreground">{t('stories.splitModeHint')}</p>
           {notice && (

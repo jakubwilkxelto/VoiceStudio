@@ -288,3 +288,81 @@ def test_nvidia_never_gets_an_hsa_override():
                arch_list=["sm_89"])
     )
     assert "HSA_OVERRIDE_GFX_VERSION" not in os.environ
+
+
+# ── #3418: RDNA4 (RX 9060 / 9070, gfx1200 / gfx1201) ────────────────────
+
+# torch 2.8.0's ROCm wheels (the pinned rocm6.4 index) are built with
+# PYTORCH_ROCM_ARCH including gfx1200;gfx1201 (.ci/docker/manywheel/build.sh).
+ROCM64_ARCHS = ["gfx900", "gfx906", "gfx908", "gfx90a", "gfx942", "gfx1030",
+                "gfx1100", "gfx1101", "gfx1102", "gfx1200", "gfx1201"]
+PRE_RDNA4_ARCHS = ["gfx900", "gfx906", "gfx90a", "gfx1030", "gfx1100"]
+
+
+@pytest.mark.parametrize("gfx", ["gfx1200", "gfx1201"])
+def test_rdna4_is_native_on_the_pinned_rocm_build(gfx):
+    torch = _torch(hip="6.4", capability=(12, int(gfx[-1])), gcn_arch=gfx,
+                   device_name="AMD Radeon RX 9070 XT", arch_list=ROCM64_ARCHS)
+    assert device_caps.arch_unsupported(torch) is None
+
+
+@pytest.mark.parametrize("gfx", ["gfx1200", "gfx1201"])
+def test_rdna4_never_gets_an_hsa_override(gfx):
+    """No remap exists for gfx12: neither a native build nor an old one may
+    point an RX 9070 at gfx1100 kernels."""
+    import os
+
+    import services.model_manager as mm
+
+    for archs in (ROCM64_ARCHS, PRE_RDNA4_ARCHS):
+        mm._configure_rocm_if_needed(
+            _torch(hip="6.4", capability=(12, 1), gcn_arch=gfx,
+                   device_name="AMD Radeon RX 9070 XT", arch_list=archs)
+        )
+        assert "HSA_OVERRIDE_GFX_VERSION" not in os.environ
+
+
+def test_rdna4_on_an_old_build_is_a_mismatch_with_no_remap_advice(monkeypatch):
+    """The reported failure mode: a build without gfx12 must say "install a build
+    that lists it", never "set HSA_OVERRIDE_GFX_VERSION=11.0.0"."""
+    import services.model_manager as mm
+
+    torch = _torch(hip="6.2", capability=(12, 1), gcn_arch="gfx1201",
+                   device_name="AMD Radeon RX 9070 XT", arch_list=PRE_RDNA4_ARCHS)
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
+    assert device_caps.arch_unsupported(torch) == ("gfx1201", tuple(PRE_RDNA4_ARCHS))
+    compatible, warning = mm.check_device_compatibility()
+    assert compatible is False
+    assert "11.0.0" not in warning
+    assert "No HSA_OVERRIDE_GFX_VERSION remap can help" in warning
+    assert "gfx1201" in warning and "rocm6.4" in warning
+
+
+def test_remap_advice_names_a_same_generation_target_the_build_ships(monkeypatch):
+    import services.model_manager as mm
+
+    torch = _torch(hip="6.2", capability=(10, 1), gcn_arch="gfx1010",
+                   arch_list=["gfx906", "gfx1030", "gfx1100"])
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
+    _, warning = mm.check_device_compatibility()
+    assert "HSA_OVERRIDE_GFX_VERSION=10.3.0" in warning
+    assert "11.0.0" not in warning
+
+
+def test_every_override_stays_within_its_gfx_generation():
+    """Recurrence guard: a cross-generation remap (gfx1201 → gfx1100) cannot run,
+    so no entry may ever add one."""
+    for source, target in device_caps.ROCM_GFX_OVERRIDES.items():
+        assert device_caps.gfx_generation(source), source
+        assert device_caps.gfx_generation(source) == device_caps.gfx_generation(target), (
+            source, target,
+        )
+    assert not any(k.startswith("gfx12") for k in device_caps.ROCM_GFX_OVERRIDES)
+
+
+def test_gfx_generation_and_siblings():
+    assert device_caps.gfx_generation("gfx1201:xnack-") == "12"
+    assert device_caps.gfx_generation("gfx90a") == "9"
+    assert device_caps.gfx_generation("sm_89") == ""
+    assert device_caps.same_generation_targets("gfx1201", PRE_RDNA4_ARCHS) == ()
+    assert device_caps.same_generation_targets("gfx1200", ROCM64_ARCHS) == ("gfx1201",)

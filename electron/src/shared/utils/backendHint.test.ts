@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { backendFailureCause, backendFailureHints, inSyncedFolder } from './backendHint';
+import {
+  backendCauseAction,
+  backendFailureCause,
+  backendFailureHints,
+  inSyncedFolder,
+} from './backendHint';
 
 // #2440 / #2445 / #2465: the three recurring "backend would not start" reports
 // each have one fix that the raw message never names. The hint maps the stable
@@ -53,6 +58,15 @@ describe('backendFailureCause', () => {
   it.each([
     ['Could not start the backend: spawn UNKNOWN', 'spawn_blocked'],
     ['Could not start the backend: spawn UNKNOWN (Smart App Control)', 'smart_app_control'],
+    // #3209: a refused DLL load names its blocker, so the advice matches it.
+    [
+      "Backend exited (exit code 1): Windows refused to load one of the engine's files. Windows Smart App Control blocked it. Last output: ImportError: DLL load failed while importing _sqlite3: An Application Control policy has blocked this file.",
+      'smart_app_control',
+    ],
+    [
+      "Backend exited (exit code 1): Windows refused to load one of the engine's files. Your antivirus blocked it.",
+      'spawn_blocked',
+    ],
     ['Backend exited unexpectedly (exit code 3221225477).', 'native_crash'],
     ['Backend exited unexpectedly (exit code -1073741819).', 'native_crash'],
     ['Backend exited unexpectedly (signal SIGSEGV).', 'native_crash'],
@@ -61,8 +75,14 @@ describe('backendFailureCause', () => {
       'The Python environment in C:\\Users\\a\\OneDrive\\VS is missing or incomplete.',
       'synced_folder',
     ],
-    ['The Python environment in C:\\VoiceStudio is missing (no .venv\\Scripts\\python.exe). Install it.', 'missing_env'],
-    ['The Python environment in C:\\VoiceStudio is incomplete: ImportError: torch. Install it.', 'missing_env'],
+    [
+      'The Python environment in C:\\VoiceStudio is missing (no .venv\\Scripts\\python.exe). Install it.',
+      'missing_env',
+    ],
+    [
+      'The Python environment in C:\\VoiceStudio is incomplete: ImportError: torch. Install it.',
+      'missing_env',
+    ],
     ['EPERM: operation not permitted, mkdir', 'permission'],
     ['Backend did not answer on port 3900 within 600 s', 'slow_start'],
   ])('names %s', (message, cause) => expect(backendFailureCause(message)).toBe(cause));
@@ -86,4 +106,15 @@ describe('inSyncedFolder', () => {
     'ignores %s',
     (path) => expect(inSyncedFolder(path)).toBe(false),
   );
+});
+
+describe('backendCauseAction', () => {
+  it('offers moving the environment only for an app-managed runtime (#3480)', () => {
+    for (const cause of ['missing_env', 'permission', 'synced_folder'] as const) {
+      expect(backendCauseAction(cause, { managedRuntime: true })).toBe('choose_folder');
+      expect(backendCauseAction(cause, { managedRuntime: false })).toBe('retry');
+    }
+    expect(backendCauseAction('native_crash', { managedRuntime: false })).toBe('copy_diagnostics');
+    expect(backendCauseAction(null, { managedRuntime: true })).toBe('retry');
+  });
 });

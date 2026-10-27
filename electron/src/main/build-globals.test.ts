@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -30,4 +30,15 @@ describe('renderer build-time globals', () => {
       expect(missing, `${config} is missing ${missing.join(', ')}`).toEqual([]);
     });
   }
+});
+
+describe('main-process app version', () => {
+  // app.getVersion() reads electron/package.json, a placeholder outside packaged
+  // builds; the root package.json version reaches main as __APP_VERSION__.
+  it('never reads the placeholder package version', () => {
+    const offenders = readdirSync(resolve(root, 'src/main'))
+      .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+      .filter((file) => /\bapp\.getVersion\(\)/.test(read(`src/main/${file}`)));
+    expect(offenders).toEqual([]);
+  });
 });

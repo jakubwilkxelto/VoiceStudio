@@ -95,9 +95,7 @@ if (i18n.language) {
   if (i18n.language !== 'en') void loadLocale(i18n.language);
 }
 
-// Selectable UI languages. Native language names live here, in the i18n
-// layer — never hardcoded in component code (see the "no hardcoded
-// non-English UI text outside locale files" rule in CLAUDE.md).
+// Native language names belong here rather than in individual components.
 export const LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'zh-CN', label: '简体中文' },

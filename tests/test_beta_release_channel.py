@@ -65,7 +65,7 @@ def test_beta_release_uses_beta_notes_and_skips_sunset_feeds(release_module, mon
     assets = tmp_path / "assets"
     assets.mkdir()
     for suffix in ("mac-arm64.dmg", "mac-x64.dmg", "linux-x64.deb"):
-        (assets / f"VoiceStudio-Electron-1.2.3-beta.2-{suffix}").write_bytes(b"x")
+        (assets / f"VoiceStudio-1.2.3-beta.2-{suffix}").write_bytes(b"x")
     payload = b"foo"
     digest = base64.b64encode(hashlib.sha512(payload).digest()).decode()
     (assets / "electron-beta-win32-x64.yml").write_text(
@@ -146,4 +146,4 @@ def test_appimage_update_info_contract_matches_the_embed_script():
     contract = (ROOT / "electron/tests/update-package-contract.mjs").read_text(encoding="utf-8")
     assert "isBeta ? releaseTag : 'latest'" in embed
     assert "channel.startsWith('electron-beta-') ? `v${version}` : 'latest'" in contract
-    assert "|latest|VoiceStudio-Electron" not in contract, "contract must not hardcode latest"
+    assert "|latest|VoiceStudio-" not in contract, "contract must not hardcode latest"

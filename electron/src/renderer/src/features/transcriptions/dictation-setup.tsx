@@ -108,7 +108,6 @@ export function DictationSetup({ onReady }: { onReady: () => void }) {
         {model.installed ? <CheckIcon /> : <DownloadIcon />}
         {t(model.installed ? 'asr_missing.use' : 'asr_missing.download', {
           label: model.label,
-          size: model.size_gb,
         })}
       </Button>
     </div>
@@ -181,7 +180,7 @@ export function DictationSetup({ onReady }: { onReady: () => void }) {
       {others.length > 0 && (
         <details>
           <summary className="cursor-pointer text-xs text-muted-foreground">
-            {t('asr_missing.choose')}
+            {t('asr_missing.other_models')}
           </summary>
           <div className="mt-2 grid gap-2 @2xl:grid-cols-2">{others.map(choice)}</div>
         </details>

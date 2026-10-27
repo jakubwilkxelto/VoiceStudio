@@ -44,23 +44,23 @@ _FAMILIES = {
 }
 
 
-def _catalogue_active_id(family: str, module) -> str:
-    """Return the active id represented by the public engine catalogue."""
-    active = module.active_backend_id()
-    if family != "tts" or active != "omnivoice-subprocess":
-        return active
-
-    from core.device_caps import detect_host_caps
-
+def _visible_active_backend(family: str, selected_id: str) -> str:
+    should_translate = family == "tts" and selected_id == "omnivoice-subprocess"
+    if not should_translate:
+        return selected_id
     try:
-        return "omnivoice" if detect_host_caps().family == "mps" else active
+        from core.device_caps import detect_host_caps
+        host_family = detect_host_caps().family
     except Exception:
-        return active
+        return selected_id
+    return "omnivoice" if host_family == "mps" else selected_id
 
 
 def _family_payload(family: str, module):
     """Public inventory plus whether an environment pin owns this family."""
-    active = _catalogue_active_id(family, module)
+    configured_id = module.active_backend_id()
+    # Older MPS preferences point at a valid but deliberately unlisted alias.
+    active = _visible_active_backend(family, configured_id)
     model = None
     if family == "asr":
         model = asr_backend._offline_asr_repo(active)
@@ -109,8 +109,6 @@ def _family_payload(family: str, module):
                     )
                     backend["license_accepted"] = False
     return {
-        # MPS hides the explicit compatibility row, so legacy configs report
-        # the visible canonical equivalent as active to picker consumers.
         "active": active,
         "active_model": model,
         "env_override": bool(os.environ.get(f"OMNIVOICE_{family.upper()}_BACKEND")),
@@ -912,14 +910,8 @@ def select_engine(req: SelectEngineRequest):
     if not family:
         raise HTTPException(400, f"Unknown family: {req.family}. Expected one of tts/asr/llm.")
     module, pref_key = family
-    # MPS intentionally hides the redundant explicit OmniVoice sidecar from
-    # the picker, but existing scripts and saved preferences may still submit
-    # that supported compatibility id directly.
-    rows = (
-        module.list_backends(include_hidden=True)
-        if req.family == "tts"
-        else module.list_backends()
-    )
+    catalogue_options = {"include_hidden": True} if req.family == "tts" else {}
+    rows = module.list_backends(**catalogue_options)
     available = {b["id"]: b for b in rows}
     if req.backend_id not in available:
         raise HTTPException(400, f"Unknown {req.family} backend: {req.backend_id!r}")

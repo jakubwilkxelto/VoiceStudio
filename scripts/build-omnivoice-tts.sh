@@ -63,6 +63,11 @@ case "$PLATFORM" in
 esac
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# A bare `-j` runs every compile at once. With GGML_CPU_ALL_VARIANTS that is
+# dozens of cc1plus processes, which the kernel OOM-kills on a 16 GB runner
+# ("Killed signal terminated program cc1plus"). Bound it by the CPU count.
+BUILD_JOBS="${OMNIVOICE_BUILD_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-2}")}"
 source "$REPO_ROOT/scripts/lib/omnivoice-vulkan.sh"
 BIN_DIR="$REPO_ROOT/bin"
 mkdir -p "$BIN_DIR"
@@ -77,7 +82,7 @@ git -C "$WORK/src" submodule update --init --recursive
 
 cd "$WORK/src"
 
-# A dynamically-linked build (buildcpu.sh, or cmake when it finds BLAS)
+# A dynamically-linked build (the portable x86-64 CPU or Vulkan build)
 # leaves the ggml runtime as shared libraries inside the build tree; only
 # copying the executable ships a binary that dies on first spawn with
 # exit 127 — "libggml.so.0: cannot open shared object file" — because the
@@ -107,6 +112,30 @@ copy_shared_libs() {
         done
 }
 
+# MSVC builds link the C++ runtime dynamically, and a Windows host without the
+# Visual C++ Redistributable cannot start the binary (exit 0xC0000135). The
+# desktop installer ships it (#2780), so deploy the runtime app-locally next
+# to the executable, as Microsoft documents for redistribution. These x64
+# copies also serve Windows on ARM, which runs this binary under emulation.
+copy_msvc_runtime() {
+    # OMNIVOICE_MSVC_RUNTIME_DIR overrides the source directory (tests).
+    local runtime_dir="${OMNIVOICE_MSVC_RUNTIME_DIR:-}" dll
+    if [[ -z "$runtime_dir" ]]; then
+        runtime_dir="$(cygpath -u "${SYSTEMROOT:-C:\\Windows}")/System32"
+    fi
+    for dll in vcruntime140.dll vcruntime140_1.dll msvcp140.dll msvcp140_1.dll \
+        msvcp140_2.dll vcomp140.dll; do
+        if [[ -f "$runtime_dir/$dll" ]]; then
+            cp -v "$runtime_dir/$dll" "$BIN_DIR/"
+            printf '%s\n' "$dll" >> "$COPIED_LIBS"
+        fi
+    done
+    if [[ ! -f "$BIN_DIR/msvcp140.dll" || ! -f "$BIN_DIR/vcruntime140.dll" ]]; then
+        echo "Visual C++ runtime DLLs not found in $runtime_dir" >&2
+        return 1
+    fi
+}
+
 # Multi-config generators (Visual Studio) put the executable under
 # build/Release/; single-config ones (Ninja, Makefiles) put it in build/.
 built_windows_exe() {
@@ -121,6 +150,25 @@ built_windows_exe() {
     return 1
 }
 
+# x86-64 CPU builds must run on every x86-64 CPU, not just the build host.
+# A plain configure defaults to GGML_NATIVE=ON, compiling for the CI runner's
+# CPU (AVX-512 on current hosted runners); the shipped runtime then dies with
+# an illegal instruction on older or AVX2-only CPUs (#2780). Instead build
+# every CPU variant as a loadable backend and let ggml pick the best one the
+# host supports at startup (the same flags the Vulkan path uses).
+portable_x86_cpu_build() {
+    cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_BACKEND_DL=ON -DBUILD_SHARED_LIBS=ON \
+        -DGGML_NATIVE=OFF -DGGML_CPU_ALL_VARIANTS=ON "$@"
+    cmake --build build --config Release -j "$BUILD_JOBS"
+}
+
+# The desktop app supports macOS 13.3+; without an explicit target the binary
+# would require the build host's macOS version.
+case "$PLATFORM" in
+    darwin-*) export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.3}" ;;
+esac
+
 OUT_NAME="omnivoice-tts-$PLATFORM"
 case "$PLATFORM" in
     windows-x86_64) OUT_NAME="$OUT_NAME.exe" ;;
@@ -130,11 +178,12 @@ case "$PLATFORM" in
     linux-x86_64|linux-aarch64)
         if ! try_vulkan_build; then
             rm -rf build
-            if [[ "$PLATFORM" == linux-x86_64 && -x ./buildcpu.sh ]]; then
-                ./buildcpu.sh
+            if [[ "$PLATFORM" == linux-x86_64 ]]; then
+                # Not upstream buildcpu.sh: it compiles for the build host.
+                portable_x86_cpu_build
             else
                 cmake -B build -DCMAKE_BUILD_TYPE=Release
-                cmake --build build --config Release -j
+                cmake --build build --config Release -j "$BUILD_JOBS"
             fi
         fi
         cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
@@ -143,17 +192,16 @@ case "$PLATFORM" in
     windows-x86_64)
         # MSYS / git-bash uses the runner's configured MSVC toolchain.
         if ! try_vulkan_build; then
-            cmake -B build -DCMAKE_BUILD_TYPE=Release
-            cmake --build build --config Release -j
+            portable_x86_cpu_build
         fi
         exe="$(built_windows_exe)"
         cp -v "$exe" "$BIN_DIR/$OUT_NAME"
         copy_shared_libs
+        copy_msvc_runtime
         ;;
     darwin-x86_64)
         # x86_64 Macs build the CPU variant; Metal on Intel is undocumented.
-        cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
-        cmake --build build --config Release -j
+        portable_x86_cpu_build -DCMAKE_OSX_ARCHITECTURES=x86_64
         cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
         copy_shared_libs
         ;;
@@ -161,7 +209,7 @@ case "$PLATFORM" in
         # Apple Silicon — try Metal (no published buildmetal.sh; we
         # invoke the GGML flag directly per Pitfall 1 / A1).
         if cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DCMAKE_OSX_ARCHITECTURES=arm64; then
-            if cmake --build build --config Release -j; then
+            if cmake --build build --config Release -j "$BUILD_JOBS"; then
                 cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
                 copy_shared_libs
             else

@@ -1,19 +1,17 @@
-"""Execute notebook prerequisite ordering with mocked downloads (#1922)."""
 import json
 import os
-from pathlib import Path
-import sys
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 
-NOTEBOOK = Path(__file__).resolve().parents[1] / "notebooks/OmniVoice_Studio_Colab.ipynb"
+NOTEBOOK = Path(__file__).resolve().parents[1] / "notebooks" / "OmniVoice_Studio_Colab.ipynb"
 
 
 class ColabWebBuildTests(unittest.TestCase):
     def build_source(self):
-        cells = json.loads(NOTEBOOK.read_text())["cells"]
+        cells = json.loads(NOTEBOOK.read_text(encoding="utf-8"))["cells"]
         source = next("".join(c["source"]) for c in cells
                       if "# 2d." in "".join(c["source"]))
         return source[source.index("# 2d."):source.index("# 2e.")]
@@ -43,75 +41,74 @@ class ColabWebBuildTests(unittest.TestCase):
             self.run_build([False, False])
 
 
-class ColabASRSetupTests(unittest.TestCase):
-    def setup_source(self):
-        cells = json.loads(NOTEBOOK.read_text())["cells"]
-        for cell in cells:
-            source = "".join(cell["source"])
-            if cell["cell_type"] == "code" and "12a. Install the transcription model" in source:
-                return source
-        self.fail("Notebook needs an explicit ASR setup cell before transcription")
+class ColabAsrSetupTests(unittest.TestCase):
+    """Cell 12a installs the ASR model; cells 13 and 18 refuse to run without it."""
 
-    def test_setup_downloads_exact_repo_and_can_be_rerun(self):
+    REPO = "Systran/faster-whisper-large-v3"
+
+    def cells(self):
+        return json.loads(NOTEBOOK.read_text(encoding="utf-8"))["cells"]
+
+    def source_index(self, predicate):
+        for i, c in enumerate(self.cells()):
+            if c["cell_type"] == "code" and predicate("".join(c["source"])):
+                return i
+        self.fail("no matching code cell")
+
+    def code_source(self, marker):
+        cells = self.cells()
+        return "".join(cells[self.source_index(lambda s: s.startswith(marker))]["source"])
+
+    def run_setup(self, snapshot_download, namespace=None):
+        fake = types.ModuleType("huggingface_hub")
+        fake.snapshot_download = snapshot_download
+        ns = namespace if namespace is not None else {}
+        with patch.dict("sys.modules", {"huggingface_hub": fake}):
+            exec(self.code_source("# ── 12a."), ns)
+        return ns
+
+    def test_setup_downloads_the_default_model_into_the_shared_cache(self):
         calls = []
-        def download(repo_id):
-            self.assertEqual(repo_id, "Systran/faster-whisper-large-v3")
-            calls.append(repo_id)
-            return "/fake/hub/snapshot"
+        ns = self.run_setup(lambda *a, **kw: calls.append((a, kw)) or "/cache/snap")
+        self.assertEqual(len(calls), 1)
+        args, kwargs = calls[0]
+        self.assertEqual(kwargs.get("repo_id", args[0] if args else None), self.REPO)
+        self.assertNotIn("local_dir", kwargs)
+        self.assertIs(ns["ASR_MODEL_READY"], True)
 
-        module = types.ModuleType("huggingface_hub")
-        module.snapshot_download = download
-        scope = {}
-        with patch.dict(sys.modules, {"huggingface_hub": module}):
-            exec(self.setup_source(), scope)
-            self.assertTrue(scope["ASR_MODEL_READY"])
-            self.assertEqual(len(calls), 1)
-            calls.clear()
-            exec(self.setup_source(), scope)
-            self.assertEqual(len(calls), 1)
+    def test_setup_can_be_rerun(self):
+        calls = []
+        ns = self.run_setup(lambda **kw: calls.append(kw) or "/cache/snap")
+        self.run_setup(lambda **kw: calls.append(kw) or "/cache/snap", ns)
+        self.assertEqual(len(calls), 2)
+        self.assertIs(ns["ASR_MODEL_READY"], True)
 
-    def test_failed_download_clears_previous_ready_state(self):
-        module = types.ModuleType("huggingface_hub")
+    def test_failed_download_propagates_and_clears_the_flag(self):
+        def broken(**kwargs):
+            raise OSError("network down")
+        ns = {"ASR_MODEL_READY": True}
+        with self.assertRaises(OSError):
+            self.run_setup(broken, ns)
+        self.assertIs(ns["ASR_MODEL_READY"], False)
 
-        def download(*args, **kwargs):
-            raise OSError("download interrupted")
-
-        module.snapshot_download = download
-        scope = {"ASR_MODEL_READY": True}
-        with patch.dict(sys.modules, {"huggingface_hub": module}):
-            with self.assertRaises(OSError):
-                exec(self.setup_source(), scope)
-        self.assertFalse(scope["ASR_MODEL_READY"])
-
-    def test_transcription_and_dubbing_gate_before_any_work(self):
-        cells = json.loads(NOTEBOOK.read_text())["cells"]
-        for number in (13, 18):
-            source = next("".join(c["source"]) for c in cells
-                          if c["cell_type"] == "code"
-                          and f" {number}. " in "".join(c["source"]).splitlines()[0])
-            with self.subTest(cell=number):
+    def test_transcription_and_dubbing_need_the_setup_cell(self):
+        for marker in ("# ── 13.", "# ── 18."):
+            with self.subTest(cell=marker):
                 with self.assertRaisesRegex(SystemExit, "12a"):
-                    exec(source, {})
+                    exec(self.code_source(marker), {})
 
-    def test_setup_precedes_transcription_in_run_all(self):
-        code = ["".join(c["source"]) for c in json.loads(NOTEBOOK.read_text())["cells"]
-                if c["cell_type"] == "code"]
-        setup = next(i for i, s in enumerate(code)
-                     if "12a. Install the transcription model" in s)
-        transcribe = next(i for i, s in enumerate(code)
-                          if " 13. " in s.splitlines()[0])
+    def test_setup_cell_runs_before_transcription_cell(self):
+        setup = self.source_index(lambda s: s.startswith("# ── 12a."))
+        transcribe = self.source_index(lambda s: s.startswith("# ── 13."))
+        dub = self.source_index(lambda s: s.startswith("# ── 18."))
         self.assertLess(setup, transcribe)
+        self.assertLess(setup, dub)
 
-    def test_asr_model_is_prefetched_before_the_backend_starts(self):
-        # Saving a clone in the web UI transcribes its reference only with an
-        # installed ASR model, so Part 1 fetches it before the launch cell.
-        code = ["".join(c["source"]) for c in json.loads(NOTEBOOK.read_text())["cells"]
-                if c["cell_type"] == "code"]
-        prefetch = next(i for i, s in enumerate(code)
-                        if "!hf download Systran/faster-whisper-large-v3" in s)
-        launch = next(i for i, s in enumerate(code)
-                      if s.startswith("# ── 5. Launch the backend"))
+    def test_prefetch_cell_runs_before_backend_launch(self):
+        prefetch = self.source_index(lambda s: f"hf download {self.REPO}" in s)
+        launch = self.source_index(lambda s: s.startswith("# ── 5. Launch the backend"))
         self.assertLess(prefetch, launch)
+
 
 
 class ColabLicenceErrorTests(unittest.TestCase):
@@ -121,7 +118,7 @@ class ColabLicenceErrorTests(unittest.TestCase):
                        "models": [{"repo_id": "org/model-a"}]}}
 
     def cell(self, marker):
-        cells = json.loads(NOTEBOOK.read_text())["cells"]
+        cells = json.loads(NOTEBOOK.read_text(encoding="utf-8"))["cells"]
         return next("".join(c["source"]) for c in cells
                     if c["cell_type"] == "code" and marker in "".join(c["source"]))
 

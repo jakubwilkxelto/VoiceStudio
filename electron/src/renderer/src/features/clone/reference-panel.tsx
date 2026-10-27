@@ -33,6 +33,7 @@ import { selectCloneProfile, setReferenceFile, useReference } from '@/lib/store/
 import { setWorkspace } from '@/lib/store/workspace';
 import { cn } from '@/lib/utils';
 import { ReferenceSourcePicker, ReferenceUsageNote } from './reference-input';
+import { FOCUS_TRANSCRIPT_EVENT } from './add-transcript-button';
 
 interface SaveProfileFormProps {
   metadata?: { refText: string; instruct: string; language: string; seed: number | null };
@@ -254,6 +255,15 @@ export function OptionalDetails({
   }, [refText, transcription?.state]);
   const transcriptId = useId();
   const styleId = useId();
+  useEffect(() => {
+    const focus = () => {
+      setOpen(true);
+      // The box mounts with the opened panel, so focus it on the next frame.
+      requestAnimationFrame(() => document.getElementById(transcriptId)?.focus());
+    };
+    window.addEventListener(FOCUS_TRANSCRIPT_EVENT, focus);
+    return () => window.removeEventListener(FOCUS_TRANSCRIPT_EVENT, focus);
+  }, [transcriptId]);
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="rounded-lg bg-muted/30">
       <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-[length:var(--text-label)] font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">

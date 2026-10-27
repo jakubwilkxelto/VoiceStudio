@@ -70,3 +70,30 @@ it('disables replace all when no spoken match remains', () => {
   );
   expect(screen.getByRole('button', { name: 'Replace all' })).toBeDisabled();
 });
+
+it('keeps replace folded into one slim row until asked for', () => {
+  const onReplacement = vi.fn();
+  render(
+    <SegmentFindBar
+      query="acme"
+      replacement=""
+      matchIndex={0}
+      matchCount={1}
+      canReplace
+      onQuery={vi.fn()}
+      onReplacement={onReplacement}
+      onPrev={vi.fn()}
+      onNext={vi.fn()}
+      onReplace={vi.fn()}
+      onReplaceAll={vi.fn()}
+    />,
+  );
+  expect(screen.queryByLabelText('Replace with…')).toBeNull();
+  const toggle = screen.getByRole('button', { name: 'Find and replace' });
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(toggle);
+  expect(screen.getByRole('button', { name: 'Replace all' })).toBeVisible();
+  fireEvent.click(toggle);
+  expect(onReplacement).toHaveBeenCalledWith('');
+  expect(screen.queryByRole('button', { name: 'Replace all' })).toBeNull();
+});

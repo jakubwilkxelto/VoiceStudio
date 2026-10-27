@@ -31,6 +31,7 @@
     "src/shared/utils/windowChrome.ts",
     "src/shared/app-config.ts",
     "src/shared/utils/generationFailureMessage.ts",
+    "src/shared/utils/failureCatalog.ts",
     "src/shared/utils/generateBudget.ts",
     "src/shared/utils/coalescedJsonStorage.ts",
     "src/shared/utils/indexedDbLongformStore.ts",

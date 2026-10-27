@@ -95,108 +95,92 @@ it('prioritizes required and curated models across families, with optional downl
   );
 });
 
-it('names each model in the compact setup pack, even two of the same family', async () => {
+const makeBalancedCatalogue = (present: boolean) => [
+  {
+    repo_id: performancePackRepos.balanced[0],
+    label: 'Studio synthesizer',
+    role: 'TTS',
+    size_gb: 2.1,
+    installed: present,
+    supported: true,
+  },
+  {
+    repo_id: performancePackRepos.balanced[1],
+    label: 'Rapid recognizer',
+    role: 'ASR',
+    size_gb: 1.4,
+    installed: present,
+    supported: true,
+  },
+  {
+    repo_id: performancePackRepos.balanced[2],
+    label: 'Pocket listener',
+    role: 'ASR',
+    dictation_id: 'pocket',
+    size_gb: 0.3,
+    installed: present,
+    supported: true,
+  },
+  {
+    repo_id: performancePackRepos.balanced[3],
+    label: 'Desk listener',
+    role: 'ASR',
+    dictation_id: 'desk',
+    size_gb: 0.8,
+    installed: present,
+    supported: true,
+  },
+];
+
+const balancedProfile = {
+  global: 'balanced',
+  overrides: {},
+  effective: {},
+  families: [],
+  implemented_families: [],
+  targets: { tts: {} },
+  selections: { tts: { engine: 'fixture-engine', model: null } },
+};
+
+function serveBalancedPack({ installed, freeGb }: { installed: boolean; freeGb: number }) {
   mock.api.mockImplementation((path: string) => {
-    if (path === '/models') {
+    if (path === '/models')
       return Promise.resolve({
-        disk_free_gb: 100,
-        models: performancePackRepos.balanced.map((repo_id, index) => ({
-          repo_id,
-          label: `Model ${index}`,
-          role: 'ASR',
-          dictation_id: repo_id.includes('sherpa') ? `dictation-${index}` : undefined,
-          size_gb: 1,
-          installed: false,
-          supported: true,
-        })),
+        models: makeBalancedCatalogue(installed),
+        disk_free_gb: freeGb,
+        disk_headroom_gb: 10,
       });
-    }
-    if (path === '/api/settings/performance-profile') {
-      return Promise.resolve({
-        global: 'balanced',
-        overrides: {},
-        effective: {},
-        families: [],
-        implemented_families: [],
-        targets: {},
-        selections: {},
-      });
-    }
     if (path === '/models/install/status') return Promise.resolve({ jobs: [] });
-    if (path === '/setup/recommendations') {
-      return Promise.resolve({
-        device: { label: 'Linux x64' },
-        models: [],
-        download_gb_remaining: 0,
-        total_gb: 0,
-        all_installed: false,
-      });
-    }
+    if (path === '/setup/recommendations')
+      return Promise.resolve({ device: { label: 'Fixture workstation' } });
+    if (path === '/api/settings/performance-profile') return Promise.resolve(balancedProfile);
     return Promise.resolve({});
   });
+}
 
+it('keeps distinct model names visible in the compact pack summary', async () => {
+  serveBalancedPack({ installed: false, freeGb: 40 });
   render(
     <QueryClientProvider client={new QueryClient()}>
       <PerformanceModelPacks compact />
     </QueryClientProvider>,
   );
-
-  const names = performancePackRepos.balanced.map((_, index) => `Model ${index}`);
-  for (const name of names) expect(await screen.findByText(name)).toBeInTheDocument();
-  // The balanced pack carries two dictation engines; the role stays visible.
-  expect(screen.getAllByText(/^engineSidebar\.dictation · /)).toHaveLength(2);
+  const labels = makeBalancedCatalogue(false).map(({ label }) => label);
+  expect(await screen.findByText(labels[0])).toBeVisible();
+  expect(labels.slice(1).every((label) => screen.getByText(label))).toBe(true);
+  expect(screen.getAllByText(/engineSidebar\.dictation/)).toHaveLength(2);
 });
 
-it('allows using an installed performance pack below the download reserve', async () => {
-  const profile = {
-    global: 'balanced',
-    overrides: {},
-    effective: {},
-    families: [],
-    implemented_families: [],
-    targets: { tts: {} },
-    selections: { tts: { engine: 'other', model: null } },
-  };
-  mock.api.mockImplementation((path: string) => {
-    if (path === '/models') {
-      return Promise.resolve({
-        disk_free_gb: 2.5,
-        models: performancePackRepos.balanced.map((repo_id) => ({
-          repo_id,
-          label: repo_id,
-          role: repo_id.includes('whisper') || repo_id.includes('sherpa') ? 'ASR' : 'TTS',
-          size_gb: 1,
-          installed: true,
-          supported: true,
-        })),
-      });
-    }
-    if (path === '/api/settings/performance-profile') return Promise.resolve(profile);
-    if (path === '/models/install/status') return Promise.resolve({ jobs: [] });
-    if (path === '/setup/recommendations') {
-      return Promise.resolve({
-        device: { label: 'Windows x64' },
-        models: [],
-        download_gb_remaining: 0,
-        total_gb: 0,
-        all_installed: true,
-      });
-    }
-    if (path.startsWith('/batch/jobs')) return Promise.resolve([]);
-    return Promise.resolve({});
-  });
-
+it('permits selecting a complete pack when the disk is nearly full', async () => {
+  serveBalancedPack({ installed: true, freeGb: 0.5 });
   render(
     <QueryClientProvider client={new QueryClient()}>
       <PerformanceModelPacks />
     </QueryClientProvider>,
   );
-
-  const usePack = await screen.findByRole('button', { name: 'models.pack_use' });
-  expect(usePack).toBeEnabled();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  fireEvent.click(usePack);
-
+  const activate = await screen.findByRole('button', { name: /models\.pack_use/ });
+  fireEvent.click(activate);
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith(
       '/api/settings/performance-profile',
@@ -206,51 +190,22 @@ it('allows using an installed performance pack below the download reserve', asyn
       }),
     ),
   );
-  expect(mock.api.mock.calls.every(([path]) => path !== '/models/install')).toBe(true);
+  expect(activate).toBeEnabled();
+  expect(mock.api).not.toHaveBeenCalledWith('/models/install', expect.anything());
 });
 
-it('keeps the disk reserve guard when a performance pack still needs downloads', async () => {
-  mock.api.mockImplementation((path: string) => {
-    if (path === '/models') {
-      return Promise.resolve({
-        disk_free_gb: 2.5,
-        models: performancePackRepos.balanced.map((repo_id, index) => ({
-          repo_id,
-          label: repo_id,
-          role: repo_id.includes('whisper') || repo_id.includes('sherpa') ? 'ASR' : 'TTS',
-          size_gb: index === 0 ? 1 : 0,
-          installed: index !== 0,
-          supported: true,
-        })),
-      });
-    }
-    if (path === '/api/settings/performance-profile')
-      return Promise.resolve({ global: 'balanced', targets: {}, selections: {} });
-    if (path === '/models/install/status') return Promise.resolve({ jobs: [] });
-    if (path === '/setup/recommendations') {
-      return Promise.resolve({
-        device: { label: 'Windows x64' },
-        models: [],
-        download_gb_remaining: 0,
-        total_gb: 0,
-        all_installed: true,
-      });
-    }
-    if (path.startsWith('/batch/jobs')) return Promise.resolve([]);
-    return Promise.resolve({});
-  });
-
+it('disables a pack that still needs downloads when reserve space is missing', async () => {
+  serveBalancedPack({ installed: false, freeGb: 0.5 });
   render(
     <QueryClientProvider client={new QueryClient()}>
       <PerformanceModelPacks />
     </QueryClientProvider>,
   );
-
-  const installPack = await screen.findByRole('button', { name: 'models.pack_install' });
-  expect(installPack).toBeDisabled();
-  expect(screen.getByRole('alert')).toHaveTextContent('models.pack_low_disk');
-  fireEvent.click(installPack);
-  expect(mock.api.mock.calls.every(([path]) => path !== '/models/install')).toBe(true);
+  expect(await screen.findByRole('alert')).toHaveTextContent('models.pack_low_disk');
+  const blockedAction = await screen.findByRole('button', { name: /models\.pack_install/ });
+  fireEvent.click(blockedAction);
+  expect(blockedAction).toBeDisabled();
+  expect(mock.api).not.toHaveBeenCalledWith('/models/install', expect.anything());
 });
 
 it('unloads a resident model before deleting its slash-separated repository', async () => {

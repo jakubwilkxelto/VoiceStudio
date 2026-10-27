@@ -593,3 +593,11 @@ def test_optional_gpu_never_blocks_cpu_setup(monkeypatch, tmp_path, vendor, avai
     if vendor == "nvidia" and not available:
         assert "CPU-only" in gpu["fix"]
         assert "GPU-only engines remain unavailable" in gpu["fix"]
+
+
+def test_network_probe_default_timeout_is_eight_seconds():
+    import inspect
+
+    from api.routers.setup import wizard
+
+    assert inspect.signature(wizard._probe_network).parameters["timeout"].default == 8.0

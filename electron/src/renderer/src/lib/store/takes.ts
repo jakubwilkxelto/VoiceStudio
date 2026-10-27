@@ -52,6 +52,9 @@ export function takeSettings(item: HistoryItem): Partial<TakeSettings> {
     language: item.language || 'Auto',
     instruct: item.instruct || '',
     selectedProfileId: item.profile_id,
+    // A transcript never rides along with a take, not even its own saved
+    // edit: blank means the selected saved voice uses its stored transcript.
+    refText: '',
   };
   const neutralEmotion = {
     emotionMode: DEFAULT_CLONE_SETTINGS.emotionMode,

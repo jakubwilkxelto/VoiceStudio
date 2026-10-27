@@ -7,6 +7,8 @@ export interface RuntimeProbeOptions {
   signal?: AbortSignal;
   onSpawn?: (child: ChildProcess) => void;
   onClose?: (child: ChildProcess) => void;
+  /** Resolve with stderr appended to stdout (uv writes its plan and debug log there). */
+  captureStderr?: boolean;
 }
 
 /** Terminate the probe tree; its close event remains the cleanup/settlement gate. */
@@ -72,6 +74,12 @@ export function runRuntimeProbe(
     child.stdout?.on('data', (chunk: Buffer | string) => {
       stdout = (stdout + chunk.toString()).slice(-65_536);
     });
+    let stderr = '';
+    if (options.captureStderr)
+      child.stderr?.on('data', (chunk: Buffer | string) => {
+        // A verbose uv dry run lists hundreds of packages; keep enough for all of them.
+        stderr = (stderr + chunk.toString()).slice(-4_194_304);
+      });
     child.once('error', (error) => {
       failure ??= error;
     });
@@ -88,7 +96,7 @@ export function runRuntimeProbe(
             code: failure && 'code' in failure ? failure.code : code,
           }),
         );
-      else resolve(stdout);
+      else resolve(options.captureStderr ? `${stdout}\n${stderr}` : stdout);
     });
     options.onSpawn?.(child);
     if (options.signal?.aborted) abort();

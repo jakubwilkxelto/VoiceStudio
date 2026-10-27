@@ -158,9 +158,9 @@ export function DictationList() {
         icon={familyIcons.dictation}
         items={items}
         header={
-          <SettingsRow id="dictation-enabled" title={t('engineSidebar.dictation')} titleHidden>
+          <SettingsRow id="dictation-enabled" title={t('modelSettings.dictation_enabled')}>
             <Switch
-              aria-label={t('engineSidebar.dictation')}
+              aria-labelledby="dictation-enabled"
               checked={Boolean(data?.enabled)}
               disabled={toggling || !data || (!data.enabled && !canEnable)}
               onCheckedChange={(value) => void setEnabled(value)}

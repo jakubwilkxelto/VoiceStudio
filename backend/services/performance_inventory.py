@@ -77,19 +77,27 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
     elif "tts" in current:
         fixed["tts"] = current["tts"]
 
-    if os.environ.get("OMNIVOICE_ASR_BACKEND") or prefs.is_env_shadowed("ASR_MODEL_FASTER"):
+    asr_engine = current["asr"].engine if "asr" in current else None
+    installed = None
+    if not (
+        os.environ.get("OMNIVOICE_ASR_BACKEND")
+        or prefs.is_env_shadowed("ASR_MODEL_FASTER")
+        or (asr_engine is not None and asr_engine not in profiles.TIERED_ASR_ENGINES)
+    ):
+        installed = profiles._preset_asr_models(asr_engine)
+    # A Mac on MLX Whisper with no other MLX model keeps its GPU engine.
+    if installed is None or (asr_engine == "mlx-whisper" and not installed):
         if "asr" in current:
             fixed["asr"] = current["asr"]
     else:
-        backend = profiles._faster_whisper_backend()
-        if backend:
+        if installed or profiles._faster_whisper_backend():
             from core.windows_rocm.ct2 import hip_ct2_available
 
             ct2_gpu = hardware["device"] == "cuda" or (
                 hardware["device"] == "rocm" and hip_ct2_available()
             )
             models = []
-            for model in profiles._installed_ct2_models():
+            for backend, model in installed:
                 repo = model["repo_id"]
                 # Explicit Whisper quality order, not download-size sorting.
                 rank, ram, vram = (4, 4, 5)
@@ -99,9 +107,10 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
                     rank, ram, vram = 2, 1.5, 1.5
                 elif "tiny" in repo or "base" in repo:
                     rank, ram, vram = 1, .6, .6
-                # Verified Windows HIP CT2 consumes VRAM just like CUDA.
+                # Verified Windows HIP CT2 consumes VRAM just like CUDA; MLX
+                # runs on Apple's unified memory, which the RAM budget covers.
                 models.append(Candidate(backend, repo, rank, ram,
-                                        vram if ct2_gpu else 0))
+                                        vram if ct2_gpu and backend != "mlx-whisper" else 0))
             inventory["asr"] = models
 
     if os.environ.get("OMNIVOICE_SHERPA_ASR_MODEL") or not prefs.get("dictation.enabled", True):

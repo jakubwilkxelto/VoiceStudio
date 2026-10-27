@@ -1,36 +1,40 @@
 import type { DesignRecipe, HistoryItem, InstructVocabulary, Profile } from '@/lib/api/types';
+import { pickDesignSeed } from '@shared/utils/seed';
 import {
   applyVdState,
   buildDesignInstruct,
   instructToVdStates,
   mergeDescribedAttrs,
 } from '@shared/utils/voiceInstruct';
-import { pickDesignSeed } from '@shared/utils/seed';
 export const STORAGE = 'voicestudio.design.v1';
 export const DESIGN_DRAFT_EVENT = 'voicestudio:design-draft';
 
+/** A detail the user chose explicitly, and the description that was in effect then. */
+export interface DesignPick {
+  value: string;
+  description: string;
+}
+
 export interface DesignDraft {
   text: string;
-  /** Effective details: the description mapping with the user's picks on top. */
+  /** Effective details: what the description maps to, with the picks on top. */
   attrs: Record<string, string>;
   seed: number;
   profileId: string | null;
-  /** What the user wrote; free-form engines receive it as written (#2389). */
+  /** What the user wrote. */
   description: string;
-  /** Details chosen explicitly; each holds until the description says otherwise. */
+  /** Explicit choices; each holds until the description says something else about it. */
   picks: Record<string, DesignPick>;
   /** The details the current description maps to. */
   mapped: Record<string, string>;
 }
 
-export interface DesignPick {
-  value: string;
-  /** The description in effect when the detail was picked. */
-  description: string;
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function stringRecord(value: unknown): Record<string, string> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+function stringEntries(value: unknown): Record<string, string> {
+  if (!isPlainObject(value)) return {};
   return Object.fromEntries(
     Object.entries(value).filter(
       (entry): entry is [string, string] => typeof entry[1] === 'string',
@@ -38,49 +42,69 @@ function stringRecord(value: unknown): Record<string, string> {
   );
 }
 
-function pickRecord(value: unknown): Record<string, DesignPick> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, DesignPick] =>
-        typeof entry[1]?.value === 'string' && typeof entry[1]?.description === 'string',
-    ),
-  );
+/** Details that are set (not Auto), recorded as picks made under no description. */
+function explicitPicks(attrs: Record<string, string>): Record<string, DesignPick> {
+  const result: Record<string, DesignPick> = {};
+  for (const category in attrs) {
+    const value = attrs[category];
+    if (value !== 'Auto') result[category] = { value, description: '' };
+  }
+  return result;
 }
 
-/** With no description behind them, every set detail was chosen explicitly. */
-function explicitDetails(attrs: Record<string, string>): Record<string, DesignPick> {
-  return Object.fromEntries(
-    Object.entries(attrs)
-      .filter(([, value]) => value !== 'Auto')
-      .map(([category, value]) => [category, { value, description: '' }]),
-  );
+/** Strip a picks map down to category -> chosen value. */
+function pickValues(picks: Record<string, DesignPick>): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const category in picks) values[category] = picks[category].value;
+  return values;
+}
+
+function blankDraft(): DesignDraft {
+  return {
+    text: '',
+    attrs: mergeDescribedAttrs(),
+    seed: pickDesignSeed(false, null),
+    profileId: null,
+    description: '',
+    picks: {},
+    mapped: {},
+  };
 }
 
 export function readDraft(): DesignDraft {
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE) || '{}');
-    const attrs = mergeDescribedAttrs(value.attrs);
+    const stored: unknown = JSON.parse(localStorage.getItem(STORAGE) ?? '{}');
+    const value = isPlainObject(stored) ? stored : {};
+    const attrs = mergeDescribedAttrs(stringEntries(value.attrs));
+    let picks: Record<string, DesignPick>;
+    if (!('picks' in value)) {
+      // Saved before descriptions were kept: every detail was a manual choice.
+      picks = explicitPicks(attrs);
+    } else {
+      picks = {};
+      if (isPlainObject(value.picks)) {
+        for (const [category, pick] of Object.entries(value.picks)) {
+          if (
+            isPlainObject(pick) &&
+            typeof pick.value === 'string' &&
+            typeof pick.description === 'string'
+          ) {
+            picks[category] = { value: pick.value, description: pick.description };
+          }
+        }
+      }
+    }
     return {
       text: typeof value.text === 'string' ? value.text : '',
       attrs,
-      seed: Number.isInteger(value.seed) ? value.seed : pickDesignSeed(false, null),
+      seed: Number.isInteger(value.seed) ? (value.seed as number) : pickDesignSeed(false, null),
       profileId: typeof value.profileId === 'string' ? value.profileId : null,
       description: typeof value.description === 'string' ? value.description : '',
-      // Drafts saved before descriptions were persisted only held picks.
-      picks: value.picks === undefined ? explicitDetails(attrs) : pickRecord(value.picks),
-      mapped: stringRecord(value.mapped),
+      picks,
+      mapped: stringEntries(value.mapped),
     };
   } catch {
-    return {
-      text: '',
-      attrs: mergeDescribedAttrs(),
-      seed: pickDesignSeed(false, null),
-      profileId: null,
-      description: '',
-      picks: {},
-      mapped: {},
-    };
+    return blankDraft();
   }
 }
 
@@ -94,22 +118,19 @@ export function writeDraft(draft: DesignDraft) {
 }
 
 /**
- * Replace the design recipe (saved profile, preset, personality or demo). The
- * description belonged to the previous voice, so it is dropped: a free-form
- * engine would otherwise receive both as contradictory directions. The new
- * recipe's details are explicit choices.
+ * Replace a Voice Design draft with a saved profile, preset, or new recipe.
+ * Any description and picks supplied by the source are preserved. If omitted,
+ * they reset instead of leaking another voice's earlier free-form directions.
  */
 export function replaceRecipe(current: DesignDraft, recipe: Partial<DesignDraft>): DesignDraft {
-  // Only a saved voice links the draft; a preset, personality or demo starts
-  // a new, unsaved design.
   const next = {
     ...current,
     ...recipe,
     profileId: recipe.profileId ?? null,
-    description: '',
-    mapped: {},
+    description: recipe.description ?? '',
+    mapped: recipe.mapped ?? {},
   };
-  return { ...next, picks: explicitDetails(next.attrs) };
+  return { ...next, picks: recipe.picks ?? explicitPicks(next.attrs) };
 }
 
 /**
@@ -163,11 +184,11 @@ export function designRequestSeed(
 }
 
 /**
- * Apply the mapping of `described`, which the caller has checked is still the
- * current description. The most recent intent wins per detail: a pick holds
- * until the description changes what it says about that detail (or about its
- * exclusive counterpart). A pick made while `described` was already in effect
- * is newer than it, so a mapping that lands late never undoes it.
+ * Merge the server's reading of `described` into the draft. A pick survives
+ * unless it was made under an earlier text and that text (now) says something
+ * different about the same detail, or about the exclusive detail the pick
+ * would wipe. Picks made under `described` itself are newer than the mapping
+ * and are always kept.
  */
 export function applyDescription(
   current: DesignDraft,
@@ -175,15 +196,18 @@ export function applyDescription(
   described: string,
 ): DesignDraft {
   const mapped = mergeDescribedAttrs(mapping);
-  const restated = (category: string) => mapped[category] !== (current.mapped[category] ?? 'Auto');
-  let attrs = mapped;
+  const textChanged = (category: string) =>
+    mapped[category] !== (current.mapped[category] ?? 'Auto');
   const picks: Record<string, DesignPick> = {};
+  let attrs = mapped;
   for (const [category, pick] of Object.entries(current.picks)) {
-    const older = pick.description !== described;
-    if (older && restated(category)) continue;
-    const { vdStates, clearedCategory } = applyVdState(attrs, category, pick.value);
-    if (older && clearedCategory && restated(clearedCategory)) continue;
-    attrs = vdStates;
+    const outcome = applyVdState(attrs, category, pick.value);
+    const overruled =
+      pick.description !== described &&
+      (textChanged(category) ||
+        (outcome.clearedCategory !== null && textChanged(outcome.clearedCategory)));
+    if (overruled) continue;
+    attrs = outcome.vdStates;
     picks[category] = pick;
   }
   return { ...current, attrs, picks, mapped };
@@ -203,62 +227,61 @@ export function canResetToDescription(
   );
 }
 
-/** Record an explicit pick; one that clears an exclusive category drops that pick. */
+/** Record an explicit choice. Also names the exclusive detail that had to reset, if any. */
 export function pickDetail(
   current: DesignDraft,
   category: string,
   value: string,
 ): { draft: DesignDraft; clearedCategory: string | null } {
   const { vdStates, clearedCategory } = applyVdState(current.attrs, category, value);
-  const picks = {
-    ...current.picks,
-    [category]: { value, description: current.description.trim() },
+  const book = new Map(Object.entries(current.picks));
+  book.set(category, { value, description: current.description.trim() });
+  if (clearedCategory) book.delete(clearedCategory);
+  return {
+    draft: {
+      ...current,
+      attrs: vdStates,
+      picks: Object.fromEntries(book),
+      profileId: sameAttrs(vdStates, current.attrs) ? current.profileId : null,
+    },
+    clearedCategory,
   };
-  if (clearedCategory) delete picks[clearedCategory];
-  const profileId = sameAttrs(vdStates, current.attrs) ? current.profileId : null;
-  return { draft: { ...current, attrs: vdStates, picks, profileId }, clearedCategory };
 }
 
 /**
- * The instruct a design take sends. OmniVoice only accepts its tag set, so the
- * effective details are all it gets. Free-form engines read the description as
- * written, with only the user's picks appended as extra cues: details mapped
- * from the description would repeat or contradict it (#2389).
+ * What a design take sends as `instruct`. Tag engines get the effective
+ * details. Free-form engines get the written text followed by the user's own
+ * picks; whatever the text merely mapped to is left out as redundant.
  */
 export function designInstruct(
   draft: Pick<DesignDraft, 'attrs' | 'description' | 'picks'>,
   vocabulary: InstructVocabulary,
 ): string {
   if (vocabulary !== 'freeform') return buildDesignInstruct(draft.attrs, '').instruct;
-  const picked = Object.fromEntries(
-    Object.entries(draft.picks).map(([category, pick]) => [category, pick.value]),
-  );
-  const tags = buildDesignInstruct(picked, '').instruct;
-  return [draft.description.trim(), tags].filter(Boolean).join(', ');
+  const ownTags = buildDesignInstruct(pickValues(draft.picks), '').instruct;
+  return [draft.description.trim(), ownTags].filter((part) => part !== '').join(', ');
 }
 
-/** The part of the draft sent with a take so reopening it rebuilds the draft (#2389). */
-export function designRecipe(draft: DesignDraft): DesignRecipe {
-  return {
-    description: draft.description.trim(),
-    picks: Object.fromEntries(
-      Object.entries(draft.picks).map(([category, pick]) => [category, pick.value]),
-    ),
-  };
+/** The part of the draft that is stored with the take. */
+export function designRecipe(draft: Pick<DesignDraft, 'description' | 'picks'>): DesignRecipe {
+  return { description: draft.description.trim(), picks: pickValues(draft.picks) };
 }
 
-function parseRecipe(
-  raw: string | null | undefined,
-): (DesignRecipe & { mapped: Record<string, string> }) | null {
+interface StoredRecipe {
+  description: string;
+  picks: Record<string, string>;
+  mapped: Record<string, string>;
+}
+
+function parseStoredRecipe(raw: string | null | undefined): StoredRecipe | null {
   if (!raw) return null;
   try {
-    const value = JSON.parse(raw);
-    if (!value || typeof value !== 'object' || typeof value.description !== 'string') return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed) || typeof parsed.description !== 'string') return null;
     return {
-      description: value.description,
-      picks: stringRecord(value.picks),
-      // Derived by the backend from this description when the take was stored.
-      mapped: stringRecord(value.mapped),
+      description: parsed.description,
+      picks: stringEntries(parsed.picks),
+      mapped: stringEntries(parsed.mapped),
     };
   } catch {
     return null;
@@ -266,16 +289,16 @@ function parseRecipe(
 }
 
 /**
- * Rebuild the Voice Design workspace from a generation-history take. A take
- * with a stored recipe comes back exactly as it was drafted. An older take
- * only has its combined instruct: it returns as the description, so a
- * free-form engine receives it unchanged, with its recognised tags as
- * details, so OmniVoice does too.
+ * Rebuild the Design workspace from a take. A take with a stored recipe gets
+ * its description, picks and mapped details back. An older one returns its
+ * whole instruct as the description, and the tags it recognises become the
+ * mapped details.
  */
 export function designDraftFromTake(item: HistoryItem): DesignDraft {
-  const recipe = parseRecipe(item.design_recipe);
+  const recipe = parseStoredRecipe(item.design_recipe);
   const description = recipe?.description ?? item.instruct ?? '';
   const mapped = mergeDescribedAttrs(recipe?.mapped ?? instructToVdStates(description));
+  const described = description.trim();
   const draft: DesignDraft = {
     text: item.text,
     attrs: mapped,
@@ -285,38 +308,52 @@ export function designDraftFromTake(item: HistoryItem): DesignDraft {
     picks: Object.fromEntries(
       Object.entries(recipe?.picks ?? {}).map(([category, value]) => [
         category,
-        { value, description },
+        { value, description: described },
       ]),
     ),
     mapped,
   };
-  // The picks were made with this description, so they layer over its mapping.
-  return applyDescription(draft, mapped, description);
+  return applyDescription(draft, mapped, described);
 }
 
 /** Restore a saved design recipe without leaking values from the previous voice. */
 export function restoreDesignProfile(
   profile: Profile,
   fallbackSeed: number,
-): Pick<DesignDraft, 'attrs' | 'seed' | 'profileId'> & { language: string } {
+): Pick<DesignDraft, 'attrs' | 'seed' | 'profileId' | 'description' | 'picks' | 'mapped'> & {
+  language: string;
+} {
+  const recipe = parseStoredRecipe(profile.design_recipe);
   const editedAttrs = instructToVdStates(profile.instruct ?? '');
   let attrs = editedAttrs;
   if (profile.vd_states) {
     try {
       const parsed = JSON.parse(profile.vd_states);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        // vd_states is the saved source of truth for explicit controls. Keep
-        // any values that are only represented in the descriptive prompt.
+        // vd_states remains the source of truth for the effective category
+        // controls, even if the free-form description covers richer traits.
         attrs = { ...editedAttrs, ...(parsed as Record<string, string>) };
       }
     } catch {
       /* The complete instruct-derived fallback remains usable. */
     }
   }
+  const description = recipe?.description ?? '';
+  const merged = mergeDescribedAttrs(attrs);
   return {
-    attrs: mergeDescribedAttrs(attrs),
+    attrs: merged,
     seed: profile.seed ?? fallbackSeed,
     profileId: profile.id,
     language: profile.language || 'Auto',
+    description,
+    mapped: recipe?.mapped ?? {},
+    picks: recipe
+      ? Object.fromEntries(
+          Object.entries(recipe.picks).map(([category, value]) => [
+            category,
+            { value, description },
+          ]),
+        )
+      : explicitPicks(merged),
   };
 }

@@ -41,35 +41,42 @@ _perf_counter = time.perf_counter
 
 
 async def _resolve_stream_backend(engine_id: str | None):
-    """Resolve the live-stream engine without bypassing host isolation."""
+    """Pick the engine instance for one streaming request.
+
+    No ``engine_id`` means the configured engine. An explicit id is a
+    per-request override and is served from the shared engine cache, so the
+    configured engine keeps running and other sockets' engines are never
+    unloaded or evicted from here.
+    """
     from services import tts_backend
 
     selected_id = engine_id or tts_backend.active_backend_id()
     cls = tts_backend.get_backend_class(selected_id)
-    # Every branch below can hand back an already-built instance; refuse first.
+    # Check the licence before choosing a branch: each one may hand back an
+    # instance that was already built.
     tts_backend.ensure_engine_licence(cls)
+
     if cls is tts_backend.OmniVoiceBackend:
         if engine_id:
-            # Preserve the explicit core override path; the shared model is
-            # loaded on demand by OmniVoiceBackend, not cached as a sidecar.
+            # The backend loads the shared model lazily itself.
             return cls()
         from services.model_manager import get_model
 
         return tts_backend.get_active_tts_backend(model=await get_model())
+
     if not engine_id:
         return tts_backend.get_active_tts_backend()
-    # The configured backend is cached separately from explicit overrides.
-    # Reuse it when the ids match rather than constructing a second instance.
-    # Never evict here: another socket can still hold a backend across chunks.
-    if (
-        tts_backend._active_instance_id == selected_id
-        and isinstance(tts_backend._active_instance, cls)
-    ):
-        if not tts_backend._built_for_other_model(cls, tts_backend._active_instance):
-            return tts_backend._active_instance
+
+    active = tts_backend._active_instance
+    if tts_backend._active_instance_id == selected_id and isinstance(active, cls):
+        if not tts_backend._built_for_other_model(cls, active):
+            return active
+        # The model preference changed: pick up the new build without
+        # unloading the instance a running job may still hold.
         if tts_backend.active_backend_id() == selected_id:
             return tts_backend.get_active_tts_backend()
     return tts_backend.get_engine_instance_for(selected_id)
+
 
 class StreamTTSRequest(BaseModel):
     """Client request for streaming TTS."""
@@ -245,15 +252,17 @@ async def synthesize_stream(
     """
     import functools
 
+    from services.tts_backend import engine_in_use
     from core.device_caps import detect_host_caps
     from core.scrub import scrub_text
     from services.engine_routing import runtime_compute_profile_async
     from services.model_manager import generate_timeout_s, run_on_gpu_pool_guarded
 
     backend = await _resolve_stream_backend(engine)
-    from services.tts_backend import engine_in_use
 
     kw = build_stream_kwargs({"voice": voice, "language": language})
+    # Hold the engine for the whole body (routing check, eviction of the
+    # others, every sentence job) so the idle sweeper cannot unload it midway.
     with engine_in_use(backend):
         routing = await runtime_compute_profile_async(backend, detect_host_caps())
         if routing["routing_status"] == "unavailable":
@@ -303,9 +312,8 @@ async def ws_tts(websocket: WebSocket):
             t0 = _perf_counter()
             text = data["text"]
 
-            # Close on every exit: normal completion, routing rejection,
-            # disconnect, generation failure or task cancellation.
-            engine_lease = ExitStack()
+            # Per-request lease on the engine, released on every exit path below.
+            lease = ExitStack()
             try:
                 # Resolve engine
                 engine_id = data.get("engine")
@@ -323,12 +331,12 @@ async def ws_tts(websocket: WebSocket):
                     log_if_low(f"TTS stream load ({engine_id or 'active engine'})")
                 except Exception:
                     pass
-                backend = await _resolve_stream_backend(engine_id)
                 from services.tts_backend import engine_in_use
 
-                # The idle sweeper can run between sentence jobs and socket
-                # sends. Hold the cached instance for this whole request.
-                engine_lease.enter_context(engine_in_use(backend))
+                backend = await _resolve_stream_backend(engine_id)
+                # The idle sweeper can run between sentence jobs and socket sends;
+                # keep the engine in use until this request is fully done.
+                lease.enter_context(engine_in_use(backend))
 
                 # ── Routing gate (#21 — no silent CPU fallback). WebSockets have
                 # no response headers, so this uses frames: an error frame +
@@ -491,7 +499,7 @@ async def ws_tts(websocket: WebSocket):
                 except Exception:
                     break
             finally:
-                engine_lease.close()
+                lease.close()
 
     except WebSocketDisconnect:
         pass

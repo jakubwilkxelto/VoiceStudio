@@ -18,6 +18,18 @@ export const DEFAULT_FIXTURES = {
   '/dictation/models': { engine_available: false, models: [] },
   '/batch/jobs': [],
   '/history': [],
+  // The Calls view at #/calls (Workflows moved to #/workflows): no Twilio set up, no calls yet.
+  '/calls': { calls: [] },
+  // backend/services/telephony/calls.py readiness() returns a bare list.
+  '/calls/readiness': [],
+  '/calls/settings': {
+    from_number: '',
+    disclosure_template: '',
+    inbound_mode: 'greeting',
+    inbound_brief: '',
+    max_concurrent: 1,
+    record_calls: false,
+  },
   '/api/settings/performance-profile': {
     global: 'balanced',
     overrides: {},

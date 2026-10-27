@@ -86,7 +86,7 @@ def _prepare(release, monkeypatch, tmp_path, changelog, **kwargs):
     assets = tmp_path / "assets"
     assets.mkdir(exist_ok=True)
     for suffix in ("mac-arm64.dmg", "mac-x64.dmg", "linux-x64.deb"):
-        (assets / f"VoiceStudio-Electron-1.2.3-beta.1-{suffix}").write_bytes(b"x")
+        (assets / f"VoiceStudio-1.2.3-beta.1-{suffix}").write_bytes(b"x")
     release.prepare(assets, "v1.2.3-beta.1", **kwargs)
     return (assets / "RELEASE_NOTES.md").read_text()
 

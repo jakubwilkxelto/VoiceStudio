@@ -1,142 +1,123 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAC_TRAFFIC_LIGHTS_BAND } from '@shared/utils/windowChrome';
 
-// The main navigation sits directly under the sidebar header, above the voice
-// library, so its position never depends on how tall the library is.
+const host = vi.hoisted(() => ({
+  mac: false,
+  open: vi.fn(),
+  state: { compact: false, compactViewport: false, forceExpanded: false, secondaryWorkspace: true },
+}));
 
-const route = vi.hoisted(() => ({ pathname: '/clone' }));
-const sidebar = vi.hoisted(() => ({ compact: false, setOpen: vi.fn() }));
 vi.mock('@tanstack/react-router', () => ({
-  useRouterState: ({ select }: any) => select({ location: route }),
-  Link: ({ to, children, ...props }: any) => (
-    <a href={to} {...props}>
+  Link: ({ to, children, ...rest }: any) => (
+    <a href={to} {...rest}>
       {children}
     </a>
   ),
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { version?: string }) =>
-      key === 'app.version_dev'
-        ? `v${values?.version} · Dev`
-        : key === 'app.version'
-          ? `v${values?.version}`
-          : key,
+    // Echo keys; when a version is interpolated, append it so the label is checkable.
+    t: (key: string, vars?: Record<string, string>) =>
+      vars?.version ? `${key}@${vars.version}` : key,
   }),
+}));
+vi.mock('@/components/bridge', () => ({ isMac: () => host.mac, appVersion: () => '7.1.0' }));
+vi.mock('@/hooks/use-window-fullscreen', () => ({ useWindowFullscreen: () => false }));
+vi.mock('@/hooks/use-pane-resize', () => ({
+  usePaneResize: () => ({ host: { current: null }, width: 220, separatorProps: {} }),
 }));
 vi.mock('@/lib/store/workspace', () => ({
-  useWorkspace: () => ({ libraryOpen: true, libraryTab: 'voices' }),
+  useWorkspace: () => ({ libraryOpen: true }),
   setWorkspace: vi.fn(),
 }));
-const platform = vi.hoisted(() => ({ mac: false }));
-vi.mock('@/components/bridge', () => ({ appVersion: () => '0.5.7', isMac: () => platform.mac }));
-vi.mock('@/hooks/use-window-fullscreen', () => ({ useWindowFullscreen: () => false }));
-vi.mock('@/lib/brand', () => ({ brandIcon: 'icon.png', brandArtwork: 'art.png' }));
-vi.mock('@/hooks/use-pane-resize', () => ({
-  usePaneResize: () => ({ host: { current: null }, width: 280, separatorProps: {} }),
+vi.mock('./use-workspace-sidebar', () => ({
+  useWorkspaceSidebarState: () => ({ ...host.state, setOpen: host.open }),
 }));
-vi.mock('@/hooks/use-backend-status', () => ({ useBackendStatus: () => ({ stage: 'ready' }) }));
-vi.mock('@/features/clone/voices-sidebar', () => ({
-  VoicesSidebar: () => <div data-testid="library" />,
-}));
-vi.mock('./workspace-menu', () => ({
-  WorkspaceNavigation: () => <nav data-testid="navigation" />,
-}));
+vi.mock('./workspace-menu', () => ({ WorkspaceNavigation: () => <nav aria-label="nav-stub" /> }));
 vi.mock('./status-bar', () => ({
-  StatusBar: ({ footerLeading }: { footerLeading?: React.ReactNode }) => (
-    <div data-testid="status">{footerLeading}</div>
+  StatusBar: ({ footerLeading }: { footerLeading?: unknown }) => (
+    <footer aria-label="status-stub">{footerLeading as never}</footer>
   ),
 }));
-vi.mock('./system-notifications', () => ({ SystemNotifications: () => null }));
+import { WorkspaceSidebar, versionTranslationKey } from './workspace-sidebar';
 
-vi.mock('./use-workspace-sidebar', () => ({
-  useWorkspaceSidebarState: () => ({
-    compact: sidebar.compact,
-    compactViewport: false,
-    forceExpanded: false,
-    secondaryWorkspace: false,
-    setOpen: sidebar.setOpen,
-  }),
-}));
-import { MAC_TRAFFIC_LIGHTS_BAND } from '@shared/utils/windowChrome';
-import { versionTranslationKey, WorkspaceSidebar } from './workspace-sidebar';
-
-beforeEach(() => {
-  sidebar.compact = false;
-  sidebar.setOpen.mockClear();
-  vi.stubGlobal('matchMedia', () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-  }));
+function show({ mac = false, compact = false } = {}) {
+  host.mac = mac;
+  host.state = { ...host.state, compact };
+  return render(<WorkspaceSidebar />);
+}
+afterEach(() => {
+  cleanup();
+  host.open.mockClear();
 });
 
-it('expands the compact rail on double-click without changing single-click navigation', () => {
-  sidebar.compact = true;
-  render(<WorkspaceSidebar />);
-  const rail = screen.getByRole('complementary', { name: 'clone.saved_profiles' });
-  fireEvent.click(rail);
-  expect(sidebar.setOpen).not.toHaveBeenCalled();
-  fireEvent.doubleClick(rail);
-  expect(sidebar.setOpen).toHaveBeenCalledWith(true);
-});
+describe('expanded sidebar', () => {
+  it('stacks navigation above status and carries no library', () => {
+    show();
+    const aside = document.querySelector('aside[aria-label="app.name"]')!;
+    const order = [...aside.querySelectorAll('[aria-label]')]
+      .map((node) => node.getAttribute('aria-label'))
+      .filter((label) => label === 'nav-stub' || label === 'status-stub');
+    expect(order).toEqual(['nav-stub', 'status-stub']);
+    expect(aside.querySelector('[data-slot="library"]')).toBeNull();
+  });
 
-it('keeps only navigation and status in the slim expanded sidebar', () => {
-  render(<WorkspaceSidebar />);
-  const navigation = screen.getByTestId('navigation');
-  const status = screen.getByTestId('status');
-  expect(
-    navigation.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
-  // The saved voices and takes live in the section's own secondary sidebar.
-  expect(screen.queryByTestId('library')).toBeNull();
-});
+  it('names the app with its version on the brand link', () => {
+    show();
+    expect(versionTranslationKey(true)).toBe('app.version_dev');
+    expect(versionTranslationKey(false)).toBe('app.version');
+    const link = screen.getByRole('link', { name: /app\.name app\.version/ });
+    expect(link.getAttribute('href')).toBe('/');
+    expect(link.getAttribute('aria-label')).toContain('@7.1.0');
+  });
 
-it('shows the app version beneath the brand name in the expanded sidebar', () => {
-  render(<WorkspaceSidebar />);
-  const brand = screen.getByRole('link', { name: 'app.name v0.5.7 · Dev' });
-  expect(brand).toHaveTextContent('app.name');
-  expect(brand).toHaveTextContent('v0.5.7 · Dev');
-});
+  it('closes through the header control', () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    expect(host.open).toHaveBeenCalledWith(false);
+  });
 
-it('uses the plain version label outside development builds', () => {
-  expect(versionTranslationKey(true)).toBe('app.version_dev');
-  expect(versionTranslationKey(false)).toBe('app.version');
-});
-
-it('starts the brand row below the macOS traffic lights, never beside them', () => {
-  platform.mac = true;
-  try {
-    const { container } = render(<WorkspaceSidebar />);
-    const row = container.querySelector('[data-slot="titlebar-row"]') as HTMLElement;
+  it('pads below the traffic lights only on macOS, and spells out Settings there', () => {
+    const { unmount } = show({ mac: true });
+    const row = document.querySelector<HTMLElement>('[data-slot="titlebar-row"]')!;
     expect(row.style.paddingTop).toBe(`${MAC_TRAFFIC_LIGHTS_BAND}px`);
-  } finally {
-    platform.mac = false;
-  }
+    expect(within(screen.getByLabelText('status-stub')).getByText('nav.settings')).toBeTruthy();
+    unmount();
+    show();
+    expect(
+      document.querySelector<HTMLElement>('[data-slot="titlebar-row"]')!.style.paddingTop,
+    ).toBe('');
+  });
 });
 
-it('labels Settings in the expanded macOS footer instead of a bare icon', () => {
-  platform.mac = true;
-  try {
-    render(<WorkspaceSidebar />);
-    expect(screen.getByTestId('status')).toHaveTextContent('nav.settings');
-  } finally {
-    platform.mac = false;
-  }
-});
+describe('icon rail', () => {
+  it('opens on a double click only', () => {
+    show({ compact: true });
+    const rail = document.querySelector('[data-slot="compact-main-sidebar"]')!;
+    expect(rail.getAttribute('aria-label')).toBe('clone.saved_profiles');
+    fireEvent.click(rail);
+    expect(host.open).not.toHaveBeenCalled();
+    fireEvent.doubleClick(rail);
+    expect(host.open).toHaveBeenCalledTimes(1);
+    expect(host.open).toHaveBeenCalledWith(true);
+  });
 
-it('shows the brand mark on the compact rail on macOS too, with the expand icon behind it', () => {
-  platform.mac = true;
-  sidebar.compact = true;
-  try {
-    const { container } = render(<WorkspaceSidebar />);
+  it.each([false, true])('has a labelled expand toggle with the brand mark (mac=%s)', (mac) => {
+    show({ mac, compact: true });
     const toggle = screen.getByRole('button', { name: 'clone.toggle_sidebar' });
-    expect(toggle.querySelector('[data-slot="rail-brand"]')).not.toBeNull();
-    expect(toggle.querySelector('svg')).not.toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.querySelector('[data-slot="rail-brand"]')).toBeTruthy();
+    expect(toggle.querySelectorAll('svg').length).toBe(1);
     fireEvent.click(toggle);
-    expect(sidebar.setOpen).toHaveBeenCalledWith(true);
-    expect(container).toBeTruthy();
-  } finally {
-    platform.mac = false;
-  }
+    expect(host.open).toHaveBeenCalledWith(true);
+  });
+
+  it('sizes the rail to the row above the bottom player, never the whole viewport', () => {
+    // A viewport-tall rail ran under the now-playing dock and hid its last items.
+    show({ compact: true });
+    const rail = document.querySelector('[data-slot="compact-main-sidebar"]')!;
+    expect(rail.classList.contains('h-full')).toBe(true);
+    expect(rail.className).not.toMatch(/\bh-(?:dvh|screen|svh)\b/);
+  });
 });

@@ -41,6 +41,7 @@ const STATES = new Set([
   'nvidia_cuda_unavailable',
   'nvidia_rocm_build',
   'intel_unsupported',
+  'kernels_missing',
 ]);
 const OPTIONS = new Set([
   'vulkan_engines',
@@ -49,6 +50,7 @@ const OPTIONS = new Set([
   'rocm_device_access',
   'reinstall_cuda_torch',
   'update_nvidia_driver',
+  'install_matching_torch',
 ]);
 const ENGINE_CODES = new Set([
   'gpu',

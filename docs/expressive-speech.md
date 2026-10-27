@@ -20,7 +20,9 @@ ignores.
 
 ## Recovering an interrupted audiobook
 
-Switching away from the Audiobook tab explicitly interrupts synthesis at a chapter boundary. The Audiobook recovery card lets you resume with its cached chapters, and **Open chapter cache** reveals the chapter audio cache.
+Leaving the Audiobook tab interrupts synthesis at a chapter boundary. When you
+return, the recovery card can reuse completed chapters and render only the
+remainder; **Open chapter cache** reveals the cached audio folder.
 
 Cached chapters are matched by their script, voice and render settings, not by where the data folder lives, so they stay reusable after the folder is moved (in **Settings → Storage** or by hand) or the machine loses power. One exception: chapters cached by an earlier version render once more if the folder is moved by hand before this version has been launched from the old location. When a chapter you expected to reuse renders again, the backend log names the input that changed (for example a voice's reference text or the pronunciation lexicon); the diagnostic bundle includes that log.
 
@@ -35,8 +37,8 @@ the pipeline goes out of its way not to break tags:
 - Zero-width joiners and non-joiners used in Persian, Urdu, Indic text and
   emoji survive normalization; unsafe invisible and direction controls are
   still removed.
-- The text-normalization pass (numbers, abbreviations) skips every `[…]` span
-  (`backend/services/text_normalization.py`).
+- The text-normalization pass (numbers, abbreviations, markdown emphasis)
+  skips every `[…]` span (`backend/services/text_normalization.py`).
 - The long-text chunker never cuts inside a bracket tag
   (`backend/services/chunked_tts.py`, `_BRACKET_TAG_RE`).
 
@@ -111,25 +113,25 @@ IndexTTS2 emotion (also available in Voice Cloning; see below), and **Vary repea
 that gives every identical line its own take instead of replaying one recording
 (off by default, so books stay byte-reproducible unless you ask for variety).
 
-It also owns the **joins**. Every engine pads each rendered line with its own
-lead-in and tail silence (GPT-SoVITS ≈ 70 ms / 300 ms, others similar); joined
-raw, a book reads as a string of separate takes. By default the renderer trims
-that padding (**Trim engine silence**, −40 dBFS with 40 ms kept at each edge)
-and inserts deliberate silence instead: **Gap between lines** (250 ms) between
-consecutive lines that carry no `[pause]` of their own — an explicit `[pause]`
-replaces the gap rather than adding to it — and **Gap between paragraphs**
-(350 ms) at a blank line inside one line of script. A line that inline markup
-(`[slow]`, `[emphasis]`, `[spell]`) splits into several renders is still one
-line: no gap lands in the middle of it (and a blank line sitting on that split
-still gets the paragraph gap). A `[voice:NAME]` change is a line boundary and
-gets the line gap, blank line or not — the paragraph gap is for breaks inside
-one voice's text. With the paragraph gap at 0 a line is
-rendered in one engine call exactly as before, so setting both gaps to 0 and
-turning trimming off gives the pre-existing hard joins (and their cache keys)
-back, including cached renders with seed or emotion overrides. A chapter may
-request at most 15 minutes of added join silence; larger requests fail before
-synthesis or cache reads. Reduce the gaps or split the chapter to proceed.
-Accepted gaps retain their exact duration on fresh renders and cache reuse.
+**Joins between lines.** Every engine pads each render with its own lead-in and
+tail, from tens to hundreds of milliseconds, so the pauses you hear between lines
+are whatever the engine happened to add. The Audiobook and Stories production
+controls make that explicit: **Trim engine silence** cuts everything quieter than
+-40 dBFS from both ends of each render (keeping 40 ms), **Gap between lines**
+and **Gap between paragraphs** then insert exactly the silence you choose, up to
+5 seconds each. With both gaps at zero and trimming off, joins are the old hard
+joins and cache keys are unchanged, including renders that use a seed or
+emotion override, so existing books are not re-rendered. An explicit `[pause]`
+replaces the line gap after its line instead of adding to it. Markup that splits
+one line (`[slow]`, `[fast]`, `[emphasis]`, `[spell]`) is still one line: there
+is no gap inside it, except that a blank line at the split gets the paragraph gap.
+A `[voice:NAME]` change is a line boundary and gets the line gap. A paragraph gap
+above zero renders the paragraphs of a line as separate engine calls; at zero a
+line is one call, exactly as before. The join stage adds at most 15 minutes of
+silence to a chapter; a request beyond that fails before any synthesis or cache
+read, with a message to lower the gaps or split the chapter. Values around 250 ms
+for lines and 350 ms for paragraphs suit most narration, but they are explicit
+choices: the defaults are 0.
 
 **Longform-only tags.** Audiobook and Stories additionally parse SSML-lite —
 `[slow]…[/slow]`, `[fast]…[/fast]`, `[emphasis]…[/emphasis]`, `[spell]` —

@@ -15,7 +15,7 @@ try_vulkan_build() {
     if cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON \
             -DGGML_BACKEND_DL=ON -DBUILD_SHARED_LIBS=ON \
             -DGGML_NATIVE=OFF -DGGML_CPU_ALL_VARIANTS=ON &&
-        cmake --build build --config Release -j; then
+        cmake --build build --config Release -j "$BUILD_JOBS"; then
         return 0
     fi
     echo "→ Vulkan build failed; retrying $PLATFORM with CPU." >&2

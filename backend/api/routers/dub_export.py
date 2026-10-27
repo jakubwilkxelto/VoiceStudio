@@ -99,11 +99,11 @@ def _unique_stamp() -> str:
     return f"{time.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
 
 
-#: Seconds of silence on a `/tasks/stream` before a keepalive comment goes out.
-#: A task that is busy but quiet — ffmpeg on a long video, a slow TTS segment,
-#: a job queued behind another — leaves the stream byte-silent, and byte-silent
-#: SSE gets severed by the desktop webview, Chrome's ~5 min cap or a proxy's
-#: idle timeout (#1196, #2108). Comments are invisible to every consumer.
+#: Longest quiet spell, in seconds, before `/tasks/stream` writes a keepalive
+#: comment. A task can be busy yet silent (a long ffmpeg run, one slow TTS
+#: segment, a job waiting behind another); with nothing on the wire, desktop
+#: webviews, Chrome (~5 min cap) and proxy idle timeouts close the stream.
+#: Read at call time so tests can patch it.
 TASK_STREAM_KEEPALIVE_S = 15.0
 
 
@@ -306,6 +306,7 @@ async def stream_task(task_id: str, after_seq: int = 0):
                 try:
                     evt = await asyncio.wait_for(q.get(), timeout=TASK_STREAM_KEEPALIVE_S)
                 except asyncio.TimeoutError:
+                    # SSE comment line: ignored by every client, but keeps bytes flowing.
                     yield ": keepalive\n\n"
                     continue
                 if evt is None:
@@ -712,11 +713,14 @@ async def dub_download(
         raise HTTPException(status_code=404, detail="Job not found")
 
     tracks = job.get("dubbed_tracks", {})
-    if not tracks:
-        raise HTTPException(status_code=400, detail="No dubbed tracks generated yet")
-
     include_set = set(t.strip() for t in include_tracks.split(",") if t.strip()) if include_tracks else None
     include_original = include_set is None or "original" in include_set
+    is_audio_job = (job.get("input_type") or "video").lower() == "audio"
+    # A transcribed video can be exported before any dub exists: the original
+    # audio with its transcript as burned or soft subtitles (#3393). Audio
+    # jobs have nothing to add without a dub.
+    if not tracks and (is_audio_job or not include_original):
+        raise HTTPException(status_code=400, detail="No dubbed tracks generated yet")
 
     if include_set:
         filtered_tracks = {k: v for k, v in tracks.items() if k in include_set}
@@ -1100,7 +1104,7 @@ async def dub_download(
 
     base_name = os.path.splitext(job.get('filename', 'output'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'output'
-    dl_name = f"dubbed_{safe_name}_{stamp}.mp4"
+    dl_name = f"{'dubbed' if tracks_to_process else 'subtitled'}_{safe_name}_{stamp}.mp4"
 
     # Structured warning surface for the Smart Fit fallback ladder: header is
     # a fixed ASCII token (FileResponse headers must be latin-1 safe); the
@@ -1522,43 +1526,45 @@ async def dub_get_onsets(job_id: str):
 
 @router.post("/dub/prosody-mirror/{job_id}")
 async def dub_prosody_mirror(job_id: str, req: ProsodyMirrorRequest):
-    """Suggest per-segment directions that mirror the source delivery.
+    """Suggest delivery directions from how the source actor spoke each line.
 
-    Measures each line on the Demucs vocals track (the mix when separation
-    did not run) against its speaker's baseline and returns taxonomy
-    directions the editor can apply to lines without one. Read-only: nothing
-    about the job changes.
+    Read-only: nothing on the job changes.
     """
     _job_dir_or_400(job_id)
     job = _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    mix = _optional_dub_artifact(job.get("audio_path"), job_id)
     vocals = _optional_dub_artifact(job.get("vocals_path"), job_id)
-    src_path = vocals or mix
-    if not src_path:
-        raise HTTPException(status_code=404, detail="No audio track available for prosody analysis")
+    mix = _optional_dub_artifact(job.get("audio_path"), job_id)
+    audio_path = vocals or mix
+    if not audio_path:
+        raise HTTPException(status_code=404, detail="No audio track available for delivery analysis")
     source = "vocals" if vocals and vocals != mix else "mix"
 
     spans = [
-        SegmentSpan(id=seg.id, start=seg.start, end=seg.end, speaker_id=seg.speaker_id or "")
-        for seg in req.segments
+        SegmentSpan(
+            id=segment.id,
+            start=segment.start,
+            end=segment.end,
+            speaker_id=segment.speaker_id or "",
+        )
+        for segment in req.segments
     ]
     try:
-        results = await asyncio.to_thread(mirror_file, src_path, spans)
-    except AnalysisBudgetExceeded as e:
+        results = await asyncio.to_thread(mirror_file, audio_path, spans)
+    except AnalysisBudgetExceeded as exc:
+        logger.warning("Prosody mirror refused: %s", log_safe(exc))
         raise HTTPException(
             status_code=413,
-            detail="These segments overlap far more than the source audio allows. "
-            "Remove duplicated or overlapping segments and try again.",
-        ) from e
-    except (OSError, RuntimeError, ValueError) as e:
-        logger.warning("prosody mirror failed for %s: %s", log_safe(job_id), log_safe(e))
+            detail="The segments cover far more audio than the source holds. Remove duplicated or overlapping segments and try again.",
+        ) from exc
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.warning("Prosody mirror could not read the source audio: %s", log_safe(exc))
         raise HTTPException(
             status_code=422,
-            detail="Prosody analysis could not read this job's audio. Re-import the source and try again.",
-        ) from e
+            detail="The source audio could not be analysed. Re-import the source and try again.",
+        ) from exc
     return {"source": source, "segments": [result.to_dict() for result in results]}
 
 

@@ -463,7 +463,15 @@ hard rules from the first prompt.
     copy is found (`backend/services/media_tools.py`); the huggingface.co vs
     hf-mirror.com reachability probe that picks a download endpoint on
     restricted networks, skipped when the user set an endpoint
-    (`backend/services/endpoint_race.py`); and Hugging Face model downloads
+    (`backend/services/endpoint_race.py`); the dependency install's download
+    of the packages pinned in `uv.lock`, from their locked URLs or the
+    regional mirror the user chose or the Auto region selected, including the
+    parallel multi-connection wheel prefetch
+    (`electron/src/main/wheel-prefetch.ts`; owner-approved 2026-10-27); the
+    Auto region's speed check, which reads the start of one locked wheel from
+    files.pythonhosted.org and mirrors.aliyun.com (one ranged request each,
+    timed out, no retries) and keeps PyPI on any doubt
+    (`electron/src/main/pypi-mirror.ts`); and Hugging Face model downloads
     (gated on install state or an explicit user action).
   - **Windows ROCm setup the user explicitly selects** (owner-approved
     2026-10-26): the matched AMD SDK and PyTorch wheels from `repo.radeon.com`,

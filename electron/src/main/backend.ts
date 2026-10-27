@@ -2,9 +2,12 @@ import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
 import { runRuntimeProbe } from './runtime-probe';
+import { pypiFilesHost } from './pypi-mirror';
 import {
   installRuntime,
   MISSING_SYSTEM_LIBRARY_CODE,
+  OUTDATED_SYSTEM_LIBRARY_CODE,
+  RUNTIME_FILES_LOCKED_CODE,
   promoteLegacyRuntimeCaches,
   runtimeDependenciesReady,
   runtimeDownloadHosts,
@@ -20,7 +23,12 @@ import { asciiSafePthFiles } from './pth-ascii';
 import { devProbeStamped, writeDevProbeStamp } from './dev-probe-stamp';
 import { CrashJournal } from './crash-journal';
 import { nativeFaultSummary } from '../shared/utils/crashReport';
-import { backendStartupFailure, isBrokenEnvironmentOutput } from '../shared/utils/backendOutput';
+import {
+  backendStartupFailure,
+  isBrokenEnvironmentOutput,
+  windowsLoadBlock,
+  type WindowsLoadBlock,
+} from '../shared/utils/backendOutput';
 import { availableBackendPort } from './backend-port';
 import { scopedStorage, scopedStorageEnv, type ScopedStorage } from './storage-scope';
 import { legacyStorageEnv } from './legacy-storage';
@@ -246,12 +254,7 @@ export function bundledUvPath(resourcesPath: string, platform = process.platform
   return join(resourcesPath, 'tools', platform === 'win32' ? 'uv.exe' : 'uv');
 }
 
-/**
- * Intel Macs (#889, #2365): PyTorch ships no macOS x86_64 wheels, so the
- * managed runtime can never resolve there. The setup screen must say so
- * before any install is offered — never after a multi-GB failure.
- * Testable via parameters following bundledUvPath's precedent.
- */
+/** Whether this host has no installable managed AI runtime. */
 export function isUnsupportedPlatform(platform = process.platform, arch = process.arch): boolean {
   return platform === 'darwin' && arch === 'x64';
 }
@@ -291,7 +294,10 @@ function usableFile(path: string): boolean {
  * located. A blank value is dropped rather than passed on, because the backend reads
  * any set value as "the shell tried and failed" instead of falling back to PATH.
  */
-export function bundledUvEnv(pinned: string | undefined, locate: () => string | null): string | undefined {
+export function bundledUvEnv(
+  pinned: string | undefined,
+  locate: () => string | null,
+): string | undefined {
   if (pinned?.trim()) return pinned;
   return locate() ?? undefined;
 }
@@ -488,7 +494,10 @@ export async function resolveSpawnPlan(
   // deadline and repeat that download after every restart (#2184).
   const portArg = ['--port', String(port)];
   const python = venvPython(root);
-  const setup = `Open a terminal in ${root}, run \`bun run setup:api\`, wait for it to finish, then restart.`;
+  // Only a source checkout reaches this point: an installed app returned above
+  // with its app-managed runtime, which the setup screen repairs in-app (#3480).
+  // Retry re-runs this check, so a finished setup needs no app restart.
+  const setup = `Open a terminal in ${root}, run \`bun run setup:api\`, wait for it to finish, then press Retry.`;
   if (!existsSync(python)) {
     // Not a source checkout and not a packaged app (a copied folder, a
     // download of the wrong archive): setup:api does not exist there (#2988).
@@ -637,7 +646,10 @@ export type SmartAppControl = 'on' | 'evaluation' | 'off' | 'unknown';
 export function smartAppControlFromRegistry(output: string): SmartAppControl {
   const match = /VerifiedAndReputablePolicyState\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(output);
   if (!match) return 'unknown';
-  return ({ 0: 'off', 1: 'on', 2: 'evaluation' } as const)[Number.parseInt(match[1], 16) as 0 | 1 | 2] ?? 'unknown';
+  return (
+    ({ 0: 'off', 1: 'on', 2: 'evaluation' } as const)[Number.parseInt(match[1], 16) as 0 | 1 | 2] ??
+    'unknown'
+  );
 }
 
 /** Read only after a launch was already refused, so the 3 s cap never delays a healthy start. */
@@ -646,7 +658,12 @@ function readSmartAppControl(platform = process.platform): SmartAppControl {
   try {
     const result = spawnSync(
       'reg.exe',
-      ['query', String.raw`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy`, '/v', 'VerifiedAndReputablePolicyState'],
+      [
+        'query',
+        String.raw`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy`,
+        '/v',
+        'VerifiedAndReputablePolicyState',
+      ],
       { encoding: 'utf8', timeout: 3000, windowsHide: true },
     );
     return smartAppControlFromRegistry(result.stdout ?? '');
@@ -682,6 +699,30 @@ export function spawnFailureMessage(
   return runtimeOwned
     ? `Could not start ${command}: ${detail}. Install or repair the local runtime, then restart VoiceStudio.`
     : `Could not start ${command}: ${detail}. Check that the program exists and can be launched, then try again.`;
+}
+
+/** A backend that Windows stopped from loading one of its files names who did
+ *  it, in words the renderer's hints recognise: Smart App Control (no per-app
+ *  exceptions), an antivirus, or another application-control policy (#3209). */
+export function loadBlockMessage(
+  why: string,
+  lastOutput: string,
+  block: WindowsLoadBlock,
+  smartAppControl: SmartAppControl = block === 'application_control'
+    ? readSmartAppControl()
+    : 'unknown',
+): string {
+  const who =
+    block === 'antivirus'
+      ? 'Your antivirus blocked it.'
+      : block === 'application_control' &&
+          (smartAppControl === 'on' || smartAppControl === 'evaluation')
+        ? 'Windows Smart App Control blocked it.'
+        : 'A Windows application control policy blocked it.';
+  return (
+    `Backend exited (${why}): Windows refused to load one of the engine's files. ${who}` +
+    (lastOutput ? ` Last output: ${lastOutput}` : '')
+  );
 }
 
 /** The startup-budget failure says what the launch actually did, so a report
@@ -801,7 +842,12 @@ export class BackendSupervisor extends EventEmitter<{
       uv: findUvAsync,
       gpu: async () => {
         const info = (await app.getGPUInfo('basic')) as {
-          gpuDevice?: { vendorId?: number; deviceId?: number; active?: boolean; driverVersion?: string }[];
+          gpuDevice?: {
+            vendorId?: number;
+            deviceId?: number;
+            active?: boolean;
+            driverVersion?: string;
+          }[];
         };
         const devices = info.gpuDevice ?? [];
         const active = devices.find((device) => device.active) ?? devices[0];
@@ -951,8 +997,7 @@ export class BackendSupervisor extends EventEmitter<{
               previouslyInstalled: await runtimeWasInstalled(project),
               repairAttempted: this.repairAttempted,
               unsupported: isUnsupportedPlatform(),
-              rocmNotYetInstalled:
-                windowsRocmRequested() && !(await windowsRocmInstalled(project)),
+              rocmNotYetInstalled: windowsRocmRequested() && !(await windowsRocmInstalled(project)),
             });
             this.runtimeRepairFailed = action === 'repair_failed';
             this.runtimeInterrupted = await runtimeInstallInterrupted(project);
@@ -1036,8 +1081,6 @@ export class BackendSupervisor extends EventEmitter<{
       this.installation ||
       this.cleaningRuntime ||
       this.stage !== 'setup_required' ||
-      // The setup screen hides the install CTA here; refuse direct IPC too —
-      // the dependency set can never resolve on this host (#2365).
       isUnsupportedPlatform()
     )
       return;
@@ -1107,6 +1150,20 @@ export class BackendSupervisor extends EventEmitter<{
         project,
         findUv(),
         (command, args, cwd, env, options) => {
+          // A planning run (uv's dry run) is read, not shown: its package list
+          // would read as installs to the progress tracker.
+          if (options?.quiet)
+            return runRuntimeProbe(
+              command,
+              args,
+              cwd,
+              { ...childEnv(this.port, this.runtimeRegion), ...env },
+              {
+                timeoutMs: options.timeoutMs,
+                signal: controller.signal,
+                captureStderr: true,
+              },
+            );
           if (options?.timeoutMs)
             return runRuntimeProbe(
               command,
@@ -1173,6 +1230,22 @@ export class BackendSupervisor extends EventEmitter<{
           this.emitStatus();
         },
         this.runtimeRegion,
+        {
+          log: (line) => {
+            if (gen === this.generation) this.pushLog('out', line);
+          },
+          transfer: (name, received, total) => {
+            if (gen !== this.generation) return;
+            this.setupProgress.observeTransfer(name, received, total);
+            this.emitStatus();
+          },
+          pypiHost: (host) => {
+            if (gen !== this.generation) return;
+            void runtimeDownloadHosts(backendRoot(), process.platform, process.arch, host)
+              .then((hosts) => this.setupProgress.setDownloadHosts(hosts))
+              .catch(() => undefined);
+          },
+        },
       );
       if (gen === this.generation) await this.start();
     } catch (error) {
@@ -1185,9 +1258,13 @@ export class BackendSupervisor extends EventEmitter<{
               ? 'space'
               : code === MISSING_SYSTEM_LIBRARY_CODE
                 ? 'missing_system_library'
-                : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
-                  ? 'access'
-                  : undefined;
+                : code === OUTDATED_SYSTEM_LIBRARY_CODE
+                  ? 'outdated_system_library'
+                  : code === RUNTIME_FILES_LOCKED_CODE
+                    ? 'files_locked'
+                    : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
+                      ? 'access'
+                      : undefined;
         this.setupRequiredGib =
           code === 'ENOSPC' ? (error as { requiredGib?: number }).requiredGib : undefined;
         this.runtimeRepairFailed = this.repairAttempted;
@@ -1209,7 +1286,14 @@ export class BackendSupervisor extends EventEmitter<{
   private watchSetupDownloads(gen: number, signal: AbortSignal): () => void {
     const reporter = new SetupDownloadReporter();
     void Promise.resolve()
-      .then(() => runtimeDownloadHosts(backendRoot()))
+      .then(() =>
+        runtimeDownloadHosts(
+          backendRoot(),
+          process.platform,
+          process.arch,
+          pypiFilesHost(this.runtimeRegion),
+        ),
+      )
       .then((hosts) => this.setupProgress.setDownloadHosts(hosts))
       .catch(() => undefined);
     let sampling = false;
@@ -1366,7 +1450,9 @@ export class BackendSupervisor extends EventEmitter<{
   private runtimeStorage(): { runtimeStorage?: ScopedStorage } {
     const scoped = scopedRuntimeRoot();
     const root = this.runtimeProject ? dirname(this.runtimeProject) : null;
-    return scoped && root && samePath(scoped, root) ? { runtimeStorage: scopedStorage(scoped) } : {};
+    return scoped && root && samePath(scoped, root)
+      ? { runtimeStorage: scopedStorage(scoped) }
+      : {};
   }
 
   setRuntimeLocation(parent: string | null): { path: string; custom: boolean } {
@@ -1423,7 +1509,9 @@ export class BackendSupervisor extends EventEmitter<{
   get ownedRuntimeEntries(): string | string[] | null {
     const root = this.ownedRuntimeRoot;
     if (!root || storedRuntimeLocation()?.scoped !== true) return root;
-    return ['project', '.uv-cache', '.python', '.tmp', 'tmp'].map((name) => join(root, name));
+    return ['project', '.uv-cache', '.python', '.tmp', 'tmp', '.wheel-prefetch'].map((name) =>
+      join(root, name),
+    );
   }
 
   websocketUrl(path: '/ws/transcribe' | '/ws/events' | '/ws/tts'): Promise<string> {
@@ -1639,9 +1727,7 @@ export class BackendSupervisor extends EventEmitter<{
     this.exitCode = code;
     this.exitSignal = signal;
     const bindFailure =
-      code === EXIT_PORT_IN_USE
-        ? 'in_use'
-        : bindFailureFromLog(this.childLog.join('\n'));
+      code === EXIT_PORT_IN_USE ? 'in_use' : bindFailureFromLog(this.childLog.join('\n'));
     if (bindFailure === 'in_use') {
       this.setStage('port_in_use', {
         message: `Port ${this.port} is already in use by another process. Stop it or set OMNIVOICE_PORT.`,
@@ -1667,6 +1753,28 @@ export class BackendSupervisor extends EventEmitter<{
     // "503 Service Unavailable" — and hid the import error that actually
     // killed the process (#3058).
     const startup = backendStartupFailure(this.childErrorLog);
+    // Windows refused to load one of the runtime's files: name who did, since
+    // the quoted DLL error alone reads like a broken install (#3209).
+    // Python words the refusal in the Windows display language, so a non-English
+    // message is matched by the Smart App Control state instead.
+    const loadBlock =
+      windowsLoadBlock(this.childErrorLog) ??
+      (process.platform === 'win32' &&
+      /dll load failed/i.test(this.childErrorLog.slice(-20).join('\n')) &&
+      // A missing DLL is a broken runtime that repair can fix, not a refusal.
+      !/the specified module could not be found|could not find module/i.test(
+        this.childErrorLog.slice(-20).join('\n'),
+      ) &&
+      ['on', 'evaluation'].includes(readSmartAppControl())
+        ? 'application_control'
+        : null);
+    if (loadBlock) {
+      this.setStage('crashed', {
+        managed: true,
+        message: loadBlockMessage(why, lastLine ?? '', loadBlock),
+      });
+      return;
+    }
     // A backend that died while importing its own dependencies is a broken
     // environment, not a crash to retry: its wheels are damaged or a system
     // library they link against is gone. Repair the managed runtime once per
@@ -1708,9 +1816,7 @@ export class BackendSupervisor extends EventEmitter<{
     if (!project) return false;
     if (samePath(project, join(defaultRuntimeRoot(), 'project'))) return true;
     const configured = storedRuntimeLocation();
-    return Boolean(
-      configured?.owned && samePath(project, join(configured.root, 'project')),
-    );
+    return Boolean(configured?.owned && samePath(project, join(configured.root, 'project')));
   }
 
   private canRepairRuntime(): boolean {

@@ -37,8 +37,8 @@ Download the installer matching your PC from the
 
 | PC | Installer |
 |---|---|
-| Intel / AMD (x64) | `VoiceStudio-Electron-<version>-win-x64.exe` |
-| Windows on ARM (Snapdragon X etc., experimental) | `VoiceStudio-Electron-<version>-win-arm64.exe` (releases without it: the x64 installer also works, under emulation) |
+| Intel / AMD (x64) | `VoiceStudio-<version>-win-x64.exe` |
+| Windows on ARM (Snapdragon X etc., experimental) | `VoiceStudio-<version>-win-arm64.exe` (releases without it: the x64 installer also works, under emulation) |
 
 The setup wizard installs for the current user by default (no administrator
 rights needed) and lets you choose the installation folder. Compare the download with the
@@ -49,7 +49,7 @@ Or, from a regular (non-admin) PowerShell, let the
 wizard:
 
 ```powershell
-irm https://voicestudio.sh/install | iex
+irm https://voicestudio.sh/install.ps1 | iex
 ```
 
 ### PCs without an NVIDIA GPU
@@ -120,6 +120,23 @@ unlisted Radeon hardware and the Ryzen AI NPU are outside this recipe.
 Engines with their own runtime remain separate: [audio.cpp](../engines/audio-cpp.md)
 can use its Vulkan build, subject to its own installation/capability checks.
 Linux ROCm setup remains documented in [linux.md](linux.md#amd-gpu-rocm).
+Unsupported community alternative: a WSL2 distro with ROCm 7.2.4 and AMD's
+`librocdxg` bridge, validated on an RX 7800 XT with the `v0.5.6` tag, is
+recorded in [wsl-amd-rocm.md](wsl-amd-rocm.md).
+
+**Intel Arc GPUs (XPU) — experimental.** The Windows install does not ship the
+Intel XPU build of PyTorch, so out of the box an Arc card is not used. If you run
+VoiceStudio with a PyTorch `+xpu` build, the main OmniVoice engine and PyTorch
+Whisper ASR run on the card. Engines that install their own PyTorch (CosyVoice,
+VoxCPM2, IndexTTS and similar) still run on the CPU. Two Windows driver quirks
+are handled for you:
+
+- The Arc driver cannot report free GPU memory. VoiceStudio estimates it as total
+  memory minus what PyTorch has reserved, so model loads no longer fail with
+  "doesn't support querying the available free memory".
+- An out-of-memory error (`UR_RESULT_ERROR_OUT_OF_DEVICE_MEMORY` or
+  `XPU out of memory`) is reported as one and its memory is released, so the next
+  generation can run without restarting the app.
 
 **Settings → Performance → GPU acceleration** shows exactly what applies to your
 machine: the GPUs Windows reports, which PyTorch build is installed, and a
@@ -133,7 +150,7 @@ saying "no GPU acceleration detected".
 ## Building from source
 
 Use this for development or to run current `main`. The install script's
-`main` mode (`$env:VOICESTUDIO_INSTALL_MODE='main'; irm https://voicestudio.sh/install | iex`)
+`main` mode (`$env:VOICESTUDIO_INSTALL_MODE='main'; irm https://voicestudio.sh/install.ps1 | iex`)
 builds and installs a desktop package from `main` without a checkout; see
 [the install script guide](script.md).
 
@@ -199,11 +216,7 @@ synthesise call. On machines with <16 GB VRAM, that compile step can OOM
 `OutOfMemoryError: CUDA out of memory` or `RuntimeError: Triton compilation
 failed`.
 
-**The one-click fix:** open **Settings → Performance** in the app and toggle
-**"Disable torch.compile"** on. That sets the `TORCH_COMPILE_DISABLE=1` env var
-on every engine subprocess VoiceStudio spawns and forces the in-process engine
-to eager mode as well. You'll lose a few percent of peak throughput in exchange
-for the engine actually loading.
+For the built-in remedy, open **Settings → Performance** and turn on **Disable torch.compile**. In-process generation then follows the eager path, while every engine child launched by VoiceStudio receives `TORCH_COMPILE_DISABLE=1`. The tradeoff is a modest loss of maximum throughput.
 
 **From the CLI / from source:** set the env var manually before launching:
 
@@ -212,13 +225,7 @@ $env:TORCH_COMPILE_DISABLE = "1"
 bun run dev
 ```
 
-The OOM this section describes is Windows-specific, but the toggle itself works
-on **every** platform — it used to be greyed out elsewhere, which left Linux and
-macOS users with no way to switch off a `torch.compile` that was breaking their
-engine. Tracking issues:
-[#65](https://github.com/debpalash/VoiceStudio/issues/65) (this OOM) and
-[#2135](https://github.com/debpalash/VoiceStudio/issues/2135) (the same toggle
-on Linux/CUDA).
+Although [#65](https://github.com/debpalash/VoiceStudio/issues/65) describes a Windows-only memory problem, the control is intentionally not restricted to Windows. Other hosts can need the same eager fallback for compiler failures, including the older-NVIDIA crash tracked in [#2135](https://github.com/debpalash/VoiceStudio/issues/2135).
 
 ## Hugging Face token (optional but recommended)
 

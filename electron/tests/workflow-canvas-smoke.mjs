@@ -67,7 +67,7 @@ page.on('dialog', async (dialog) => {
 
 try {
   await page.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
-  await page.goto(`${base}/#/calls`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/#/workflows`, { waitUntil: 'domcontentloaded' });
   try {
     await page.getByRole('textbox', { name: 'Workflow name' }).waitFor({ timeout: 5000 });
   } catch (error) {
@@ -248,7 +248,7 @@ try {
       }),
     );
   });
-  await localized.goto(`${base}/#/calls`, { waitUntil: 'domcontentloaded' });
+  await localized.goto(`${base}/#/workflows`, { waitUntil: 'domcontentloaded' });
   await localized.getByRole('textbox', { name: 'Workflow-Name' }).waitFor();
   await localized.getByRole('button', { name: 'Unbenannter Workflow', exact: true }).waitFor();
   await localized.getByRole('button', { name: 'Unbenannter Workflow (3)' }).waitFor();

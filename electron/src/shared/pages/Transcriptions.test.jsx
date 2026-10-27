@@ -69,14 +69,14 @@ describe('Transcriptions capture entry point', () => {
 
   it('keeps the capture action available for whitespace-only searches', () => {
     render(<TranscriptionsPage />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Search transcriptions…' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search transcripts…' }), {
       target: { value: '   ' },
     });
 
     const button = screen.getByRole('button', { name: 'Start dictation' });
     expect(button.querySelector(':scope > svg')).toBeInTheDocument();
     expect(button.querySelector(':scope > span')).toHaveTextContent('Start dictation');
-    expect(screen.getByText('No transcriptions yet')).toBeInTheDocument();
+    expect(screen.getByText('No transcripts saved yet')).toBeInTheDocument();
   });
 
   it('moves the single capture action to the header once history exists', () => {
@@ -87,7 +87,7 @@ describe('Transcriptions capture entry point', () => {
     expect(button.closest('.txn-header__right')).toBeInTheDocument();
     expect(button.querySelector(':scope > svg')).toBeInTheDocument();
     expect(button.querySelector(':scope > span')).toHaveTextContent('Start dictation');
-    expect(screen.queryByText('No transcriptions yet')).not.toBeInTheDocument();
+    expect(screen.queryByText('No transcripts saved yet')).not.toBeInTheDocument();
   });
 
   it('shows a successful transcript emitted by the shared recorder', async () => {
@@ -154,7 +154,7 @@ describe('transcription clipboard', () => {
     copyToClipboard.mockResolvedValueOnce(copied);
     render(<TranscriptionsPage />);
     fireEvent.click(screen.getByText('Copy this transcript.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy text' }));
     await waitFor(() => expect(copyToClipboard).toHaveBeenCalledWith('Copy this transcript.'));
     await waitFor(() => expect(copied ? toast.success : toast.error).toHaveBeenCalled());
     expect(copied ? toast.error : toast.success).not.toHaveBeenCalled();
@@ -164,7 +164,7 @@ describe('transcription clipboard', () => {
     copyToClipboard.mockRejectedValueOnce(new Error('Clipboard unavailable'));
     render(<TranscriptionsPage />);
     fireEvent.click(screen.getByText('Copy this transcript.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy text' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(toast.success).not.toHaveBeenCalled();
   });

@@ -177,4 +177,28 @@ describe('SetupProgressTracker', () => {
     tracker.reset();
     expect(tracker.snapshot(DOWNLOAD_STALL_MS * 3).stalled).toBeUndefined();
   });
+
+  it('shows wheel downloads the shell runs itself, with rate, stall and hand-back to uv (#3411)', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.setDownloadHosts(new Map([['torch', 'download-r2.pytorch.org']]));
+    tracker.observeTransfer('torch', 0, 3_000_000_000, 0);
+    tracker.observeTransfer('torch', 500_000_000, 3_000_000_000, 10_000);
+    const moving = tracker.observeTransfer('torch', 1_000_000_000, 3_000_000_000, 20_000);
+    expect(moving).toMatchObject({
+      activePackage: 'torch',
+      downloadHost: 'download-r2.pytorch.org',
+      downloadedBytes: 1_000_000_000,
+      totalBytes: 3_000_000_000,
+      downloadsComplete: false,
+    });
+    expect(moving.bytesPerSecond).toBeCloseTo(50_000_000);
+    expect(tracker.snapshot(20_000 + DOWNLOAD_STALL_MS).stalled).toBe(true);
+    expect(tracker.observeTransfer('torch', 3_000_000_000, 3_000_000_000, 80_000)).toMatchObject({
+      completedDownloads: 1,
+      downloadsComplete: true,
+    });
+    // A failed fast download is withdrawn: uv announces its own download next.
+    tracker.observeTransfer('torch', 0, 0, 90_000);
+    expect(tracker.snapshot(90_000 + DOWNLOAD_STALL_MS).stalled).toBeUndefined();
+  });
 });

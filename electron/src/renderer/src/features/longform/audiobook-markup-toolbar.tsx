@@ -6,6 +6,7 @@ import {
   ChevronDownIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
+  HashIcon,
   PauseIcon,
   SmileIcon,
   SpellCheckIcon,
@@ -13,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { TAGS } from '@shared/utils/constants';
+import { chapterHeadingSnippet } from '@shared/utils/audiobookScript';
 
 export function AudiobookMarkupToolbar({
   textareaRef,
@@ -54,6 +56,15 @@ export function AudiobookMarkupToolbar({
     splice(open + selected + close, start, end);
     focus(selected ? start + open.length + selected.length + close.length : start + open.length);
   };
+  const insertChapter = () => {
+    const input = textareaRef.current;
+    if (!input) return;
+    const start = input.selectionStart ?? text.length;
+    const end = input.selectionEnd ?? start;
+    const snippet = chapterHeadingSnippet(input.value, start, end);
+    splice(snippet, start, end);
+    focus(start + snippet.replace(/\n$/, '').length);
+  };
   const insertVoice = () => {
     const input = textareaRef.current;
     if (!input) return;
@@ -69,7 +80,11 @@ export function AudiobookMarkupToolbar({
       aria-label={t('audiobook.markup_toolbar')}
       className="flex flex-wrap items-center gap-1 rounded-xl border border-border/50 bg-muted/15 p-1.5"
     >
-      <Button size="xs" variant="ghost" disabled={disabled} onClick={() => insert('[pause 500ms]')}>
+      <Button size="xs" variant="ghost" disabled={disabled} onClick={insertChapter}>
+        <HashIcon />
+        {t('audiobook.insert_chapter')}
+      </Button>
+      <Button size="xs" variant="ghost" disabled={disabled} onClick={() => insert('[pause 0.5s]')}>
         <PauseIcon />
         {t('audiobook.insert_pause')}
       </Button>

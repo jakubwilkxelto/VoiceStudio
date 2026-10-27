@@ -1,9 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { LoaderCircleIcon, TriangleAlertIcon, WrenchIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
 import { useModelInstall } from '@/hooks/use-model-install';
 import { InstallProgress } from '@/components/model-install-progress';
@@ -172,7 +174,7 @@ export function EngineSetupProgress({
   );
 }
 
-/** "Fix" in a notice; the composer's primary "Set up" action while TTS is not ready. */
+/** "Set up" in a notice, and the composer's primary action while TTS is not ready. */
 export function EngineSetupButton({
   setup,
   primary = false,
@@ -198,7 +200,7 @@ export function EngineSetupButton({
       ) : (
         <WrenchIcon />
       )}
-      <span className="truncate">{t(primary ? 'engines.set_up' : 'repairAgent.fix')}</span>
+      <span className="truncate">{t('engines.set_up')}</span>
     </Button>
   );
 }
@@ -217,14 +219,104 @@ export function EngineSetupStatus({ setup, id }: { setup: EngineSetup; id?: stri
   );
 }
 
+/** The one "Set up" action for a model family whose setup lives in Settings → Models. */
+export function SetUpLink({
+  family,
+  className,
+}: {
+  family: 'tts' | 'asr' | 'dictation' | 'translation' | 'diarisation' | 'llm';
+  className?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Link
+      to="/settings/models/$family"
+      params={{ family }}
+      className={cn(buttonVariants({ size: 'sm' }), 'shrink-0', className)}
+    >
+      <WrenchIcon />
+      {t('engines.set_up')}
+    </Link>
+  );
+}
+
+const noticeIcon = (
+  <span
+    aria-hidden="true"
+    className="flex size-7 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning"
+  >
+    <TriangleAlertIcon className="size-3.5" />
+  </span>
+);
+
+/**
+ * The single "not ready" banner every workspace uses: a warning mark, what is
+ * missing, an optional line on what happens next, and one action. Compact is
+ * one slim row for pages where vertical space belongs to the work itself.
+ */
+export function NotReadyNotice({
+  title,
+  body,
+  action,
+  compact = false,
+  className,
+}: {
+  title: string;
+  body?: string;
+  action?: ReactNode;
+  compact?: boolean;
+  className?: string;
+}) {
+  if (compact) {
+    return (
+      <div
+        role="status"
+        data-slot="not-ready-notice"
+        className={cn(
+          'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1.5 text-sm',
+          className,
+        )}
+      >
+        {noticeIcon}
+        <p className="min-w-40 flex-1 truncate font-medium text-foreground" title={body}>
+          {title}
+          {body && <span className="sr-only"> {body}</span>}
+        </p>
+        {action}
+      </div>
+    );
+  }
+  return (
+    <div
+      role="alert"
+      data-slot="not-ready-notice"
+      className={cn(
+        'flex min-w-0 items-start gap-3 rounded-xl border border-border/60 bg-muted/20 px-3.5 py-3 text-sm',
+        className,
+      )}
+    >
+      {noticeIcon}
+      <div className="min-w-0 flex-1 pt-0.5">
+        <p className="font-medium text-foreground">{title}</p>
+        {body && <p className="mt-0.5 text-muted-foreground">{body}</p>}
+        {action && <div className="mt-2.5">{action}</div>}
+      </div>
+    </div>
+  );
+}
+
 export function EngineNotice({
   operation = 'tts',
   compact = false,
+  className,
 }: {
   operation?: string;
   compact?: boolean;
+  className?: string;
 }) {
-  return <EngineSetupNotice setup={useEngineSetup(operation)} compact={compact} />;
+  return (
+    <EngineSetupNotice setup={useEngineSetup(operation)} compact={compact} className={className} />
+  );
 }
 
 /**
@@ -234,51 +326,29 @@ export function EngineNotice({
 export function EngineSetupNotice({
   setup,
   compact = false,
+  className,
 }: {
   setup: EngineSetup;
   compact?: boolean;
+  className?: string;
 }) {
   const { t } = useTranslation();
   if (!setup.blocked) return null;
   const action = setup.install ? (
     <EngineSetupProgress
       setup={setup}
-      className={compact ? 'min-w-48 flex-1 basis-full' : 'mt-2.5'}
+      className={compact ? 'min-w-48 flex-1 basis-full' : undefined}
     />
   ) : (
-    <EngineSetupButton setup={setup} className={compact ? 'shrink-0' : 'mt-2.5'} />
+    <EngineSetupButton setup={setup} className="shrink-0" />
   );
-  const icon = (
-    <span
-      aria-hidden="true"
-      className="flex size-7 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning"
-    >
-      <TriangleAlertIcon className="size-3.5" />
-    </span>
-  );
-  if (compact) {
-    return (
-      <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-2.5 text-sm">
-        {icon}
-        <div className="min-w-40 flex-1">
-          <p className="font-medium text-foreground">{t('engines.none_ready_title')}</p>
-          <p className="text-xs leading-5 text-muted-foreground">{t('engines.none_ready_body')}</p>
-        </div>
-        {action}
-      </div>
-    );
-  }
   return (
-    <div
-      role="alert"
-      className="flex min-w-0 items-start gap-3 rounded-xl border border-border/60 bg-muted/20 px-3.5 py-3 text-sm"
-    >
-      {icon}
-      <div className="min-w-0 flex-1 pt-0.5">
-        <p className="font-medium text-foreground">{t('engines.none_ready_title')}</p>
-        <p className="mt-0.5 text-muted-foreground">{t('engines.none_ready_body')}</p>
-        {action}
-      </div>
-    </div>
+    <NotReadyNotice
+      compact={compact}
+      className={className}
+      title={t('engines.none_ready_title')}
+      body={t('engines.none_ready_body')}
+      action={action}
+    />
   );
 }

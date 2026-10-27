@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { isImeComposing } from '@/lib/ime';
-import type { KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 
 export function SegmentFindBar({
   query,
@@ -36,6 +36,9 @@ export function SegmentFindBar({
 }) {
   const { t } = useTranslation();
   const hasQuery = Boolean(query.trim());
+  // Replace stays folded into one slim row until asked for (or already in use).
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const showReplace = replaceOpen || Boolean(replacement);
   const onFindKey = (event: KeyboardEvent<HTMLInputElement>) => {
     if (isImeComposing(event) || event.key !== 'Enter') return;
     event.preventDefault();
@@ -48,10 +51,7 @@ export function SegmentFindBar({
     if (canReplace) onReplace();
   };
   return (
-    <div
-      data-slot="dub-find-bar"
-      className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5"
-    >
+    <div data-slot="dub-find-bar" className="flex min-w-0 flex-wrap items-center gap-1.5 px-2 py-1">
       <Input
         value={query}
         disabled={disabled}
@@ -91,34 +91,52 @@ export function SegmentFindBar({
       >
         <ChevronDownIcon />
       </Button>
-      <Input
-        value={replacement}
-        disabled={disabled}
-        aria-label={t('segment.replace_placeholder')}
-        placeholder={t('segment.replace_placeholder')}
-        className="h-7 w-36 min-w-28 bg-background/70"
-        onChange={(event) => onReplacement(event.target.value)}
-        onKeyDown={onReplaceKey}
-      />
       <Button
-        size="sm"
-        variant="ghost"
-        disabled={disabled || !canReplace}
-        aria-label={t('segment.replace')}
-        onClick={onReplace}
+        size="icon-xs"
+        variant={showReplace ? 'secondary' : 'ghost'}
+        disabled={disabled}
+        aria-expanded={showReplace}
+        aria-label={t('segment.replace_toggle')}
+        title={t('segment.replace_toggle')}
+        onClick={() => {
+          if (showReplace) onReplacement('');
+          setReplaceOpen(!showReplace);
+        }}
       >
         <ReplaceIcon />
-        <span className="hidden @5xl:inline">{t('segment.replace')}</span>
       </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={disabled || canReplaceAll === false || !hasQuery || matchCount === 0}
-        aria-label={t('segment.replace_all')}
-        onClick={onReplaceAll}
-      >
-        {t('segment.replace_all')}
-      </Button>
+      {showReplace && (
+        <>
+          <Input
+            value={replacement}
+            disabled={disabled}
+            aria-label={t('segment.replace_placeholder')}
+            placeholder={t('segment.replace_placeholder')}
+            className="h-7 w-36 min-w-28 bg-background/70"
+            onChange={(event) => onReplacement(event.target.value)}
+            onKeyDown={onReplaceKey}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={disabled || !canReplace}
+            aria-label={t('segment.replace')}
+            onClick={onReplace}
+          >
+            <ReplaceIcon />
+            <span className="hidden @5xl:inline">{t('segment.replace')}</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={disabled || canReplaceAll === false || !hasQuery || matchCount === 0}
+            aria-label={t('segment.replace_all')}
+            onClick={onReplaceAll}
+          >
+            {t('segment.replace_all')}
+          </Button>
+        </>
+      )}
     </div>
   );
 }

@@ -157,29 +157,22 @@ RUN python3 -c "import os, torch, torchaudio, torchvision; \
     import torchvision.ops; torchvision.ops.nms; \
     print('torchvision C++ ops resolve against this torch')"
 
-# CTranslate2 (WhisperX, faster-whisper) links cuDNN 8, but the CUDA base image
-# ships cuDNN 9, so libcudnn_ops_infer.so.8 is absent and loading it aborts the
-# backend process outright rather than raising (#1371). scripts/setup.py
-# side-loads the cuDNN 8 libraries for source installs; the image needs the same
-# shim or Docker users lose every CTranslate2 ASR engine (#2050).
-#
-# The target is derived from sys.prefix rather than hardcoded: backend/core/
-# cudnn8.py looks for <sys.prefix>/lib/pythonX.Y/site-packages/cudnn8_compat,
-# and sys.prefix differs between the conda-based CUDA image and the ROCm venv.
-# --no-deps keeps this to the cuDNN wheels alone, leaving the base image's torch
-# stack untouched. Skipped for ROCm, which does not use cuDNN, and on aarch64
-# (DGX Spark / GH200 builds, #2831): NVIDIA publishes no aarch64 wheel of
-# nvidia-cudnn-cu12==8.9.7.29, so CTranslate2 ASR engines stay unavailable there.
+# CTranslate2 (WhisperX, faster-whisper) is linked against cuDNN 8 while the
+# CUDA base image ships cuDNN 9. When libcudnn_ops_infer.so.8 is missing the
+# whole backend process aborts instead of raising (#1371). scripts/setup.py
+# side-loads cuDNN 8 for source installs (#2050); the image needs the same,
+# placed where backend/core/cudnn8.py looks.
+# Skipped for ROCm (no cuDNN there) and for aarch64: nvidia-cudnn-cu12==8.9.7.29
+# has no aarch64 wheel (DGX Spark / GH200 builds, #2831), so CTranslate2 ASR
+# stays unavailable on those images.
 RUN if [ "$GPU_FLAVOR" = "cuda" ] && [ "$(uname -m)" != "aarch64" ]; then \
-      target="$(python3 -c "import os, sys; print(os.path.join(sys.prefix, 'lib', 'python%d.%d' % sys.version_info[:2], 'site-packages', 'cudnn8_compat'))")" && \
-      uv pip install --python "$(command -v python3)" --no-cache --no-deps \
-        --target "$target" nvidia-cudnn-cu12==8.9.7.29 && \
-      python3 -c "import os, sys; d = os.path.join(sys.prefix, 'lib', 'python%d.%d' % sys.version_info[:2], 'site-packages', 'cudnn8_compat', 'nvidia', 'cudnn', 'lib'); \
-        libs = [f for f in os.listdir(d) if '.so.8' in f]; \
-        assert libs, 'cudnn8_compat installed but no .so.8 libraries in ' + d; \
-        print('cuDNN 8 compat libraries: %d' % len(libs))"; \
+        target="$(python3 -c "import sys; print(f'{sys.prefix}/lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages/cudnn8_compat')")" \
+        && uv pip install --python "$(command -v python3)" --no-cache --no-deps \
+            --target "$target" nvidia-cudnn-cu12==8.9.7.29 \
+        && CUDNN8_TARGET="$target" python3 -c "import glob, os; t = os.environ['CUDNN8_TARGET']; found = [f for f in glob.glob(t + '/nvidia/cudnn/lib/*') if '.so.8' in f]; assert found, 'cuDNN 8 libraries missing from ' + t; print(f'cuDNN 8 compat: {len(found)} libraries in ' + t)"; \
+    else \
+        echo "cuDNN 8 compat skipped (GPU_FLAVOR=$GPU_FLAVOR, arch=$(uname -m))"; \
     fi
-
 # Copy application source
 COPY backend/ ./backend/
 COPY omnivoice/ ./omnivoice/

@@ -29,7 +29,7 @@ export function CastSettings({
       )}
       {names.map((name) => (
         <details key={name} className="space-y-2">
-          <summary className="flex cursor-pointer list-none items-baseline gap-2 rounded-md text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer items-baseline gap-2 rounded-md text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <span className="font-medium">{name}</span>
             <span className="min-w-0 truncate text-xs text-muted-foreground">
               {castVoice(cast, name)

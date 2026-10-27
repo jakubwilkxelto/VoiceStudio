@@ -6,13 +6,28 @@ with no computer, account or cloud service. If you also run VoiceStudio on a
 computer (desktop app, Docker or a server), you can pair the phone with it and
 choose, per task, to run on **This phone** or **My computer**.
 
-> **Preview.** The apps aren't in the App Store or Google Play yet. Build them
-> from source (below).
+> **Preview.** The apps aren't in the App Store or Google Play yet. Download them
+> from [Releases](https://github.com/debpalash/VoiceStudio/releases/latest)
+> ([Install](#install)) or build them from source (below).
 
 | | iOS | Android |
 |---|---|---|
 | Minimum OS | iOS 17 (iPhone, iPad) | Android 10 (API 29) |
 | Source | [`mobile/ios/`](../mobile/ios/README.md) | [`mobile/android/`](../mobile/android/README.md) |
+
+## Install
+
+Each release attaches the phone apps next to the desktop installers on the
+[Releases page](https://github.com/debpalash/VoiceStudio/releases/latest).
+
+- **Android:** download `VoiceStudio-<version>-android.apk` on the phone, open
+  it and allow installs from that source when Android asks.
+- **iPhone:** download `VoiceStudio-<version>-ios-unsigned.ipa` and install it
+  with a sideloading tool that signs it with your own Apple ID (for example
+  Sideloadly). With a free Apple ID the install expires after 7 days; turn on
+  Developer Mode (Settings → Privacy & Security) when iOS asks.
+
+Check downloads against the release's `SHA256SUMS.txt`.
 
 Home keeps its title and feature summary beside a compact contributor column,
 with a stacked layout at accessibility text sizes. “Brought to you by” introduces
@@ -339,17 +354,26 @@ across Play and GitHub releases. Local and `mobile` workflow builds stay debug-s
 
 ## Releasing
 
-The `mobile-release` workflow builds the signed Android APK/AAB and iOS IPA and
-drafts a GitHub prerelease with them. Store uploads are separate: use
+Every desktop release calls `mobile-release` at the same tag and includes the
+signed Android APK/AAB and unsigned iOS sideload IPA in the same GitHub Release.
+Both phone builds must pass before publication. Store uploads are separate: use
 [TestFlight](#testflight-maintainers) and
 [Play internal testing](#play-internal-testing-maintainers). Nothing is published
 to production automatically.
 
-- **Run it:** Actions → `mobile-release` → Run workflow (signed artifacts only),
-  or push a `mobile-v*` tag (also drafts the release).
-- **Downloads for everyone:** the draft prerelease holds the signed APK and AAB,
-  the App Store IPA, an unsigned IPA for sideloading, and `SHA256SUMS.txt`. Review
-  it, then publish. The App Store IPA only installs through TestFlight; iPhone
+- **Run it:** the desktop release runs both phone builds automatically. For recovery,
+  Actions → `mobile-release` → Run workflow, set `release_ref` to the release tag
+  and `signed_ios=false` for sideload artifacts without Apple signing. Manual
+  runs produce artifacts. Rename them to `VoiceStudio-X.Y.Z-android.apk`,
+  `VoiceStudio-X.Y.Z-android.aab` and `VoiceStudio-X.Y.Z-ios-unsigned.ipa` before
+  attaching missing files to the existing release. Preserve existing published
+  binaries. Add the new files' SHA-256 digests to the shared `SHA256SUMS.txt`,
+  preserving existing entries, and update the release download links and signing
+  status. Verify the uploaded asset digests against the checksum manifest.
+  Legacy `mobile-v*` tags still draft a separate prerelease.
+- **Downloads for everyone:** the shared release holds the signed APK and AAB,
+  an unsigned IPA for sideloading, and `SHA256SUMS.txt`. Manual builds with
+  `signed_ios=true` additionally produce an App Store IPA. The App Store IPA only installs through TestFlight; iPhone
   users outside TestFlight sideload the unsigned IPA with their own Apple ID.
 - **Version:** the root `package.json` version. Android shares its increasing
   build code with Play; iOS uses the workflow run number and attempt.

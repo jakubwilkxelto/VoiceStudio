@@ -165,7 +165,11 @@ def _transcribe(audio_path, word_timestamps, decode_options=None, request_option
     extra = _request_options(request_options)
     model = _get_model()
     segments, info = model.transcribe(
-        audio_path, word_timestamps=word_timestamps, **options, **extra,
+        audio_path, word_timestamps=word_timestamps,
+        # Same as services.asr_backend.WHISPER_LONG_FORM_OPTIONS: decode each
+        # 30 s window on its own so one bad window cannot repeat to the end.
+        condition_on_previous_text=False,
+        **options, **extra,
     )
     out = []
     for s in segments:

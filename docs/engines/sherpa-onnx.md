@@ -33,7 +33,10 @@ TTS model directory.
 4. Select the engine via **Model Catalogue** (TTS tab → **Use**) or
    `OMNIVOICE_TTS_BACKEND=sherpa-onnx`.
 
-The directory must contain `model.onnx` and `tokens.txt`. Sherpa-ONNX ships
+The directory must contain `tokens.txt` and the model: `model.onnx`, or the
+single `<voice>.onnx` that Piper voices (`vits-piper-*`) ship. Files the release
+puts next to it are picked up automatically: `espeak-ng-data/` (Piper) and
+`lexicon.txt` (lexicon-based VITS such as MeloTTS). Sherpa-ONNX ships
 no bundled default model, so the engine reports unavailable — with the
 reason — until `OMNIVOICE_SHERPA_MODEL` points at a valid directory. (Before
 this gate, selecting the engine unconfigured produced a failure mislabeled
@@ -44,7 +47,28 @@ as out-of-memory —
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `OMNIVOICE_SHERPA_MODEL` | (unset) | Directory containing `model.onnx` + `tokens.txt` |
+| `OMNIVOICE_SHERPA_MODEL` | (unset) | Directory containing `model.onnx` (or one Piper `<voice>.onnx`) + `tokens.txt` |
+
+### Example: a Turkish Piper voice
+
+```bash
+curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-tr_TR-dfki-medium.tar.bz2
+tar xjf vits-piper-tr_TR-dfki-medium.tar.bz2
+export OMNIVOICE_SHERPA_MODEL=$PWD/vits-piper-tr_TR-dfki-medium
+```
+
+The same pattern works for every `vits-piper-<locale>-<voice>` archive on the
+releases page.
+
+## Licences
+
+The model you bring keeps its own terms. VoiceStudio has no licence record for
+a local model folder, so the Model Catalogue licence prompt does not cover it
+and shows nothing for this engine. Read the `MODEL_CARD` in the unpacked
+folder before you use its audio. For example, `tr_TR-dfki-medium` is trained
+on CC BY-NC-SA 4.0 data (non-commercial). `tr_TR-fahrettin-medium` and
+`tr_TR-fettah-medium` use CC0 data but are fine-tuned from the English
+`lessac` voice, whose dataset has its own terms.
 
 ## Behaviour notes
 
@@ -67,7 +91,11 @@ as out-of-memory —
 
 - "OMNIVOICE_SHERPA_MODEL not set" / "No model.onnx in …": follow Setup
   above — the variable must point at the *unpacked* model directory, not
-  the archive.
+  the archive. A directory with several `.onnx` files and no `model.onnx`
+  is ambiguous and reported the same way.
+- Numbers are only verbalized where the text normalizer supports the
+  language; decimals written with a comma (`1,5`) reach the model as digits.
+  Write them out (`bir virgül beş`) for the cleanest read.
 - Other issues: [install/troubleshooting.md](../install/troubleshooting.md).
 
 See also: [benchmarks.md](../benchmarks.md),

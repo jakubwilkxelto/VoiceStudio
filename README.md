@@ -12,7 +12,9 @@
     <a href="#documentation">Docs</a> ·
     <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
     <a href="docs/readme/README_CN.md">简体中文</a> ·
-    <a href="docs/readme/README_JA.md">日本語</a>
+    <a href="docs/readme/README_JA.md">日本語</a> ·
+    <a href="docs/readme/README_KO.md">한국어</a> ·
+    <a href="docs/readme/README_RU.md">Русский</a>
   </p>
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main" alt="CI" /></a>
@@ -77,7 +79,7 @@ curl -fsSL https://voicestudio.sh/install | sh -s -- --main
 curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall
 ```
 
-On Windows, run `irm https://voicestudio.sh/install | iex` in PowerShell.
+On Windows, run `irm https://voicestudio.sh/install.ps1 | iex` in PowerShell.
 
 If `voicestudio.sh/install` is unreachable or returns 404, run the same script
 straight from the repository, or clone it and run `scripts/install.sh`:
@@ -92,19 +94,24 @@ Node.js 22+, Bun, Rust/Cargo, and platform build tools; see
 The installer preserves your settings, projects, and models. Older versions
 must contain Electron packages; it never falls back to archived Tauri builds.
 
-Or download from [Releases](https://github.com/debpalash/VoiceStudio/releases/latest) (macOS `.dmg`, Windows `.exe`, Linux `.AppImage` or `.deb`) and follow your platform guide:
+Or download from [Releases](https://github.com/debpalash/VoiceStudio/releases/latest) (macOS `.dmg`, Windows `.exe`, Linux `.AppImage` or `.deb`, Android `.apk`, iPhone `.ipa`; or `sudo snap install voicestudio` on Linux) and follow your platform guide:
 
-**[macOS](docs/install/macos.md) · [Windows](docs/install/windows.md) · [Linux](docs/install/linux.md) · [Docker](docs/install/docker.md)**
+**[macOS](docs/install/macos.md) · [Windows](docs/install/windows.md) · [Linux](docs/install/linux.md) · [Nix / NixOS](docs/install/nix.md) · [Docker](docs/install/docker.md) · [Android and iPhone](docs/mobile.md#install)**
+
+> [!NOTE]
+> On macOS, a "VoiceStudio is damaged and can't be opened" message does not mean the download is corrupt. It is Gatekeeper rejecting a quarantined, un-notarized app. Follow the [Gatekeeper section](docs/install/macos.md#gatekeeper-quarantine) of the macOS guide.
 
 | Hardware | Support |
 |---|---|
 | NVIDIA GPU (Windows / Linux) | CUDA acceleration |
 | AMD Radeon / supported Ryzen AI (Windows) | CPU by default; [opt-in Windows ROCm setup](docs/install/windows-rocm.md) for AMD's Windows 11 hardware matrix. Setup distinguishes package repair from host failures; install the VC++ runtime manually first. Optional engines have separate limits; Vulkan engines retain their own runtime. |
-| Apple Silicon | Metal (MPS) acceleration |
+| Apple Silicon (any M-series chip) | Metal (MPS) acceleration |
 | AMD GPU | Opt-in native CosyVoice GGUF can use Vulkan when the community runtime is built with Vulkan; verified on RX 6700 XT ([setup](docs/engines/cosyvoice-gguf.md)) |
 | No dedicated GPU (Intel/AMD integrated graphics, older PCs) | Fully usable on the CPU, slower; setup installs the small CPU build of PyTorch (about 5 GB free disk) |
 | Windows on ARM (Snapdragon X etc.) | **Experimental**, validation pending: native ARM64 app, x64 Python backend under emulation, CPU only |
 | Intel Mac | App UI only; connect to a remote backend ([why](docs/install/macos.md)) |
+| Android phones (Android 10+) | **Preview**: models run on the phone, offline once downloaded ([install](docs/mobile.md#install)) |
+| iPhone and iPad (iOS 17+) | **Preview**: models run on the device; sideload the IPA with your Apple ID ([install](docs/mobile.md#install)) |
 
 Open **Voice cloning**, choose a voice or add a clean reference recording, enter your text, and generate. Install the required model when prompted. Hardware needs vary by engine; see [performance](docs/performance.md).
 
@@ -146,6 +153,7 @@ Add `-- --install` for the networked managed-runtime installation check.
 | Need | Start here |
 |---|---|
 | Setup help | [Troubleshooting](docs/install/troubleshooting.md) · [Model downloads](docs/downloading-models.md) |
+| Step-by-step guides | [Dub a video with several characters](docs/dubbing/multi-speaker-guide.md) · [Expressive speech](docs/expressive-speech.md) · [Exporting dubs](docs/dubbing/export.md) |
 | Models & audio quality | [Engine guides](docs/engines/README.md) · [whisper.cpp ASR](docs/engines/whisper-cpp.md) · [Benchmarks](docs/benchmarks.md) |
 | Integrations | [Local API](docs/speech-platform.md) · [MCP](docs/mcp.md) · [Examples](examples/README.md) |
 | Phone apps (preview, run offline) | [iOS and Android](docs/mobile.md) |

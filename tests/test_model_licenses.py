@@ -110,3 +110,27 @@ def test_dynamic_assets_cannot_inherit_blanket_clearance():
     data = registry()
     data["dynamic_assets"][0]["commercial_use"] = True
     assert any("commercial_use" in error for error in checker().validate(data, catalog()))
+
+
+def test_phone_models_do_not_share_desktop_engine_ids():
+    # Phone runtimes reuse desktop engine names ("sherpa-onnx"), and the
+    # desktop gate collects every row listing an engine id, so the desktop
+    # sherpa-onnx engine used to demand the phone's Kitten/Kokoro/Whisper terms.
+    data = registry()
+    phone = next(r for r in data["models"] if r["configured_at"].startswith("mobile/contract/"))
+    phone["engines"] = ["sherpa-onnx"]
+    assert any("'mobile:'" in error for error in checker().validate(data, catalog()))
+    desktop = next(r for r in data["models"] if r["configured_at"] == "backend/config/models.yaml")
+    desktop["engines"] = ["mobile:omnivoice"]
+    assert sum("'mobile:'" in error for error in checker().validate(data, catalog())) == 2
+
+
+def test_desktop_sherpa_engine_does_not_gate_phone_models():
+    import sys
+    sys.path.insert(0, str(ROOT / "backend"))
+    from services.model_acceptance import repos_for_engine
+
+    phone = {r["id"] for r in registry()["models"] if r["configured_at"].startswith("mobile/contract/")}
+    assert phone
+    for engine in ("sherpa-onnx", "llama.cpp", "omnivoice", "kittentts", "mlx-audio"):
+        assert not phone & set(repos_for_engine(engine)), engine

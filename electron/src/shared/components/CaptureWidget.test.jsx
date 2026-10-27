@@ -1480,12 +1480,12 @@ describe('CaptureWidget', () => {
     expect(screen.queryByText(/Listening/)).not.toBeInTheDocument();
   });
 
-  it('exposes the full setup label as a title, since the 300px pill clips it', async () => {
+  it('exposes the full Accessibility setup text as the label hover title', async () => {
     mocks.holder.a11y = false;
     render(withI18n(<CaptureWidget />));
 
-    const labelEl = await screen.findByText(/Allow Accessibility/);
-    expect(labelEl.title).toBe(i18n.t('capture.a11y_setup'));
+    const label = await screen.findByText(/Allow Accessibility/);
+    expect(label).toHaveAttribute('title', 'Allow Accessibility so dictation can type for you');
   });
 
   it('clears the Accessibility setup pill after the native grant changes', async () => {

@@ -401,6 +401,14 @@ models:
     note: "Apple Silicon only — via mlx-audio backend."
     platforms: [darwin-arm64]
 
+  - repo_id: "mlx-community/whisper-large-v3-turbo-asr-fp16"
+    label: "Whisper large-v3 Turbo (OuteTTS voice-clone reader, mlx-audio)"
+    role: TTS
+    engines: [mlx-audio]
+    size_gb: 1.6
+    note: "Apple Silicon only — OuteTTS reads the reference clip with it."
+    platforms: [darwin-arm64]
+
   - repo_id: "mlx-community/VoxCPM2-8bit"
     label: "VoxCPM2 8-bit (30 languages, 48 kHz, mlx-audio)"
     role: TTS

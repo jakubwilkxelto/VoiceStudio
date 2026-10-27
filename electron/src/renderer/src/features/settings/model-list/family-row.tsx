@@ -81,7 +81,10 @@ export function FamilyRow({ item, forceOpen = false }: { item: FamilyItem; force
               {item.badges}
             </div>
             {item.summary && (
-              <div className="line-clamp-2 text-xs leading-[1.45] text-muted-foreground [overflow-wrap:anywhere]">
+              <div
+                className="line-clamp-2 text-xs leading-[1.45] text-muted-foreground [overflow-wrap:anywhere]"
+                title={typeof item.summary === 'string' ? item.summary : undefined}
+              >
                 {item.summary}
               </div>
             )}

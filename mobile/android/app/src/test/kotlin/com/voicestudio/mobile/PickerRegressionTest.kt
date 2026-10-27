@@ -92,7 +92,7 @@ class PickerRegressionTest {
         content {ChoicePicker("mobile.speak.voice","one",listOf(Choice("one","Sample voice"))) {}}
         compose.onNodeWithText("Voice").performClick()
         compose.onNodeWithText("Search").performTextInput("missing")
-        compose.onNodeWithText("No matches for \"missing\"").assertExists()
+        compose.onNodeWithText("No matches for “missing”.").assertExists()
     }
     @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
     fun pickerValueUsesSpaceLeftByIntrinsicLabel() {

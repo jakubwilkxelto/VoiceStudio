@@ -114,7 +114,7 @@ def test_generated_changelog_passes_the_release_notes_extraction(release, versio
     assert section and section[1].strip()
 
 
-def _drive(release, monkeypatch, answers, *, dry_run, secrets_missing=(), branch="main", fail_on=None, calls=None, guessed=False, clean=False):
+def _drive(release, monkeypatch, answers, *, dry_run, secrets_missing=(), branch="main", fail_on=None, calls=None, guessed=False, clean=False, main_version="0.5.7", remote_branch="", open_pr=""):
     """Run release() with scripted prompts and every side effect recorded, not run."""
     import argparse
 
@@ -123,7 +123,7 @@ def _drive(release, monkeypatch, answers, *, dry_run, secrets_missing=(), branch
 
     def fake_sh(*cmd, **kw):
         if cmd[:2] == ("git", "show"):
-            return json.dumps({"version": "0.5.7"})
+            return json.dumps({"version": main_version})
         if cmd[:3] == ("git", "tag", "-l"):
             return "v0.5.5 v0.5.6"
         if cmd[:2] == ("git", "branch"):
@@ -132,6 +132,12 @@ def _drive(release, monkeypatch, answers, *, dry_run, secrets_missing=(), branch
             return "34"
         if cmd[:2] == ("git", "status"):
             return "" if clean else " M package.json"
+        if cmd[:2] == ("git", "ls-remote") and "--heads" in cmd:
+            calls.append(cmd)
+            return remote_branch
+        if cmd[:3] == ("gh", "pr", "list"):
+            calls.append(cmd)
+            return open_pr
         calls.append(cmd)
         if fail_on and fail_on in cmd:
             import subprocess
@@ -180,8 +186,9 @@ def test_a_version_of_the_other_channel_is_refused(release, monkeypatch):
 
 def test_draft_pushes_the_tag_but_never_dispatches_a_publish(release, monkeypatch):
     tag = "v0.5.7-beta.1"
-    calls = _drive(release, monkeypatch, ["beta", "", "draft", tag], dry_run=False)
-    assert ("ensure_main",) in calls and ("bump", "0.5.7-beta.1") in calls
+    calls = _drive(release, monkeypatch, ["beta", "", "draft", tag], dry_run=False,
+                   main_version="0.5.7-beta.1")
+    assert ("ensure_main",) in calls
     assert ("git", "push", "origin", tag) in calls
     assert not any(c[0] == "dispatch" for c in calls)
 
@@ -296,7 +303,7 @@ def test_all_platforms_signed_asks_nothing_and_does_not_allow_unsigned(release, 
 def test_missing_windows_signing_is_named_and_needs_an_explicit_yes(release, monkeypatch, capsys):
     tag = "v0.5.7-beta.1"
     calls = _drive(release, monkeypatch, ["beta", "", "publish", "yes", tag], dry_run=False,
-                   secrets_missing=["Windows"])
+                   secrets_missing=["Windows"], main_version="0.5.7-beta.1")
     out = capsys.readouterr().out
     assert "macOS    signed" in out and "Windows  NO signing secrets" in out
     assert "UNSIGNED: Windows" in out
@@ -324,22 +331,49 @@ def test_signing_names_match_what_the_release_workflow_reads(release):
             assert f"secrets.{name}" in workflow, f"{name} is not used by electron-release.yml"
 
 
-def test_a_version_already_on_main_is_tagged_without_an_empty_commit(release, monkeypatch, capsys):
-    """main keeps the bump commits of deleted tags, so the bump can change nothing;
-    `git commit` then exits 1 ("nothing to commit") and used to crash the release."""
+def test_a_version_already_on_main_is_tagged_without_touching_main(release, monkeypatch, capsys):
+    """The second run, after the release PR merged: tag main, change nothing."""
     tag = "v0.5.7-beta.1"
-    calls = _drive(release, monkeypatch, ["beta", "", "draft", tag], dry_run=False, clean=True)
-    assert not any(c[:2] == ("git", "commit") for c in calls)
-    assert ("git", "push", "origin", "main") not in calls
+    calls = _drive(release, monkeypatch, ["beta", "", "draft", tag], dry_run=False,
+                   main_version="0.5.7-beta.1")
+    assert not any(c[:2] in {("git", "commit"), ("git", "switch")} for c in calls)
+    assert not any(c[0] in {"bump", "write"} for c in calls)
     assert ("git", "tag", tag) in calls and ("git", "push", "origin", tag) in calls
-    assert "already has 0.5.7-beta.1" in capsys.readouterr().out
+    assert "main already has 0.5.7-beta.1" in capsys.readouterr().out
 
 
-def test_a_changed_tree_is_still_committed_and_pushed(release, monkeypatch):
+def test_a_new_version_opens_a_release_pull_request_and_never_pushes_main(release, monkeypatch, capsys):
+    """main only changes through pull requests: the bump goes to release/<tag>."""
     tag = "v0.5.7-beta.1"
-    calls = _drive(release, monkeypatch, ["beta", "", "draft", tag], dry_run=False)
+    calls = _drive(release, monkeypatch, ["beta", "", "publish", tag], dry_run=False)
+    branch = f"release/{tag}"
+    assert ("git", "switch", "-c", branch) in calls
     assert ("git", "commit", "-m", f"chore(release): {tag}") in calls
-    assert calls.index(("git", "push", "origin", "main")) < calls.index(("git", "tag", tag))
+    assert ("git", "push", "-u", "origin", branch) in calls
+    assert any(c[:3] == ("gh", "pr", "create") for c in calls)
+    assert ("git", "push", "origin", "main") not in calls
+    assert not any(c[:2] == ("git", "tag") for c in calls)
+    assert not any(c[0] == "dispatch" for c in calls)
+    assert "run `make release` again" in capsys.readouterr().out
+
+
+def test_a_rerun_after_a_failed_pull_request_step_finishes_it_without_bumping_again(release, monkeypatch):
+    """The push landed but `gh pr create` failed: the rerun reuses the branch."""
+    tag = "v0.5.7-beta.1"
+    branch = f"release/{tag}"
+    calls = _drive(release, monkeypatch, ["beta", "", "draft", tag], dry_run=False,
+                   remote_branch=f"abc123\trefs/heads/{branch}")
+    assert ("git", "switch", "-c", branch, "--track", f"origin/{branch}") in calls
+    assert not any(c[0] in {"bump", "write"} or c[:2] == ("git", "commit") for c in calls)
+    assert ("git", "push", "-u", "origin", branch) in calls
+    assert any(c[:3] == ("gh", "pr", "create") for c in calls)
+
+
+def test_an_open_release_pull_request_is_not_opened_twice(release, monkeypatch):
+    tag = "v0.5.7-beta.1"
+    calls = _drive(release, monkeypatch, ["beta", "", "draft", tag], dry_run=False,
+                   remote_branch=f"abc123\trefs/heads/release/{tag}", open_pr="3500")
+    assert not any(c[:3] == ("gh", "pr", "create") for c in calls)
 
 
 def test_release_folds_fragments_into_unreleased_before_the_section_is_made(release):

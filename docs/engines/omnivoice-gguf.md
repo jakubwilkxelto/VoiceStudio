@@ -112,15 +112,19 @@ location instead.
 
 ## Setup
 
-The desktop installers (Windows, macOS, Linux packages) do **not** ship this
-native binary yet, so on an installed app the engine shows *Unavailable* in
-Model Catalogue ([#2780](https://github.com/debpalash/VoiceStudio/issues/2780)).
-Use the default in-process OmniVoice engine, which is the same model, or run
-from a source checkout and build the binary for your platform (below). Once
-`bin/omnivoice-tts-<platform>` exists, select the engine via **Model
-Catalogue** (TTS tab → **Use**) or `OMNIVOICE_TTS_BACKEND=omnivoice-gguf`.
-The first generate downloads the weights if they are not installed yet (see
-[Weights](#weights)).
+The desktop installers ship this native binary under `resources/bin/`
+([#2780](https://github.com/debpalash/VoiceStudio/issues/2780)): Windows x64,
+Windows on ARM (the x64 binary, run under emulation like the rest of the local
+backend), macOS Apple Silicon and the Linux AppImage/deb. The Windows binary
+carries its own Visual C++ runtime, so no redistributable install is needed.
+The Intel Mac download has no binary because Intel Macs cannot run the local
+backend at all ([macOS install](../install/macos.md)). Store builds (Microsoft
+Store, Mac App Store, Snap Store) and the Docker image do not include it yet;
+use the default in-process OmniVoice engine there, which is the same model.
+
+Select the engine via **Model Catalogue** (TTS tab → **Use**) or
+`OMNIVOICE_TTS_BACKEND=omnivoice-gguf`. The first generate downloads the
+weights if they are not installed yet (see [Weights](#weights)).
 
 **Source checkouts:** the repo ships zero-byte placeholders in `bin/` — real
 binaries come from CI (`build-omnivoice-tts`) or a local build. The engine detects a placeholder and
@@ -129,6 +133,14 @@ reports unavailable with instructions
 failing at spawn time; build one with
 `scripts/build-omnivoice-tts.sh --platform <slug>` or use the default
 in-process engine.
+
+**x86-64 CPUs:** Windows, Linux and Intel Mac builds compile every ggml CPU
+variant (`GGML_CPU_ALL_VARIANTS`) and pick the best one this processor supports
+at startup, so a binary built on a newer machine (for example one with AVX-512)
+also runs on older or AVX2-only CPUs ([#2780](https://github.com/debpalash/VoiceStudio/issues/2780)).
+A binary built some other way that stops with an *illegal instruction* is
+reported as such, and the engine shows *Unavailable* until that binary is
+rebuilt with `scripts/build-omnivoice-tts.sh` or replaced.
 
 **Linux ARM64 (Asahi Apple Silicon):** the `linux-aarch64` binary prefers
 GGML's Vulkan backend when built on a host with `glslc` and the Khronos
@@ -199,10 +211,12 @@ Before reporting ready, the engine:
 
 ## Troubleshooting
 
-- "GGUF binary missing": the installer doesn't include the runtime (see
-  Setup) — use the default engine, or build the binary from a source checkout.
+- "GGUF binary missing": this build doesn't include the runtime (an Intel
+  Mac, a store build, Docker or a source checkout; see Setup) — use the default
+  engine, reinstall from the GitHub Release download, or build the binary from a
+  source checkout.
   The log line `Engine health check failed; engine=omnivoice-gguf` withholds the
-  reason by design; a missing binary is the usual cause on an installed app.
+  reason by design.
 - "GGUF weights are not installed": the runtime binary is there but the pinned
   weight pair is not. Follow the install steps in [Weights](#weights); the app
   never fetches weights for you, and the download has to land in the app's

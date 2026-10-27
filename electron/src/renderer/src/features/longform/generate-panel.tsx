@@ -1,11 +1,13 @@
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { LongformActivityCard } from '@/components/longform-activity-card';
+import { cn } from '@/lib/utils';
 import { GenerationProgress } from './generation-progress';
 import type { GenerateBlocker } from './generate-blocker';
 import type { AudiobookRenderChapter } from './longform-session';
 import type { RenderProgressSnapshot } from './render-eta';
 
-/** The slice of the render session this panel reads. */
 export interface GenerateSession {
   active: 'stories' | 'audiobook' | null;
   stage: string;
@@ -19,11 +21,38 @@ export interface GenerateSession {
   lastActivityAt?: number | null;
 }
 
-/**
- * Generate / Stop, the chapter tracker and the render status in one block, so
- * the primary action and its progress are always in the same, visible place
- * (pinned in the setup column) instead of below the last line of a long script.
- */
+const STATUS_ID = 'generate-status';
+
+/** One line saying what the render is doing, or why it cannot start. */
+function statusLine(
+  t: TFunction,
+  session: GenerateSession,
+  mine: boolean,
+  blocker: GenerateBlocker | null,
+): string {
+  if (!mine) return blocker ? t(`audiobook.blocked.${blocker}`) : '';
+  switch (session.stage) {
+    case 'assembling':
+      return t('audiobook.assembling');
+    case 'starting':
+      return t('common.loading');
+    default:
+      return t('audiobook.progress_summary', {
+        current: Math.min(session.completed + 1, session.total),
+        total: session.total,
+      });
+  }
+}
+
+function Note({ children }: { children: string }) {
+  return (
+    <p role="status" aria-live="polite" className="shrink-0 text-xs text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
+/** Generate / Stop, the chapter tracker and the render status, kept together. */
 export function GeneratePanel({
   mode,
   session,
@@ -38,33 +67,17 @@ export function GeneratePanel({
   onStop: () => void;
 }) {
   const { t } = useTranslation();
-  const active = session.active === mode;
-  const status = active
-    ? session.stage === 'assembling'
-      ? t('audiobook.assembling')
-      : session.stage === 'starting'
-        ? t('common.loading')
-        : t('audiobook.progress_summary', {
-            current: Math.min(session.completed + 1, session.total),
-            total: session.total,
-          })
-    : blocker
-      ? t('audiobook.blocked.' + blocker)
-      : '';
+  const mine = session.active === mode;
+  const status = statusLine(t, session, mine, blocker);
+  // The engine problem already has a visible notice with a fix button on the page.
+  const screenReaderOnly = !mine && blocker === 'engine';
+
   return (
-    <div data-slot="generate-panel" className="flex min-h-0 flex-col gap-3">
-      {session.failed > 0 && (
-        <p role="status" className="shrink-0 text-xs text-muted-foreground">
-          {t('audiobook.failed_note', { count: session.failed })}
-        </p>
-      )}
-      {session.stopped && !session.active && (
-        <p role="status" className="shrink-0 text-xs text-muted-foreground">
-          {t('audiobook.stopped_note')}
-        </p>
-      )}
-      {active && session.stage !== 'starting' && (
-        <div className="min-h-0 max-h-[38vh] overflow-y-auto">
+    <div data-slot="generate-panel" className="flex min-h-0 flex-col gap-2">
+      {session.failed > 0 && <Note>{t('audiobook.failed_note', { count: session.failed })}</Note>}
+      {session.stopped && session.active === null && <Note>{t('audiobook.stopped_note')}</Note>}
+      {mine && session.stage !== 'starting' && (
+        <div className="max-h-[38vh] min-h-0 shrink overflow-y-auto">
           <GenerationProgress
             chapters={session.chapters}
             assembling={session.stage === 'assembling'}
@@ -75,20 +88,26 @@ export function GeneratePanel({
           />
         </div>
       )}
-      {status && (
-        <p id="generate-status" role="status" className="shrink-0 text-xs text-muted-foreground">
+      {session.active !== null && !mine && <LongformActivityCard className="shrink-0" />}
+      {status !== '' && (
+        <p
+          id={STATUS_ID}
+          role="status"
+          className={cn('shrink-0 text-xs text-muted-foreground', screenReaderOnly && 'sr-only')}
+        >
           {status}
         </p>
       )}
-      {active ? (
-        <Button variant="outline" className="w-full shrink-0" onClick={onStop}>
+      {mine ? (
+        <Button type="button" variant="outline" className="w-full shrink-0" onClick={onStop}>
           {t('common.stop')}
         </Button>
       ) : (
         <Button
+          type="button"
           className="w-full shrink-0"
           disabled={blocker !== null}
-          aria-describedby={status ? 'generate-status' : undefined}
+          aria-describedby={status !== '' ? STATUS_ID : undefined}
           onClick={onGenerate}
         >
           {t(mode === 'stories' ? 'stories.generateAll' : 'audiobook.create')}

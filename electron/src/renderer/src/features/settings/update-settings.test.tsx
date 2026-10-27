@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   toastError: vi.fn(),
   activeWork: false,
+  noBridge: false,
 }));
 
 vi.mock('@/components/bridge', () => {
@@ -52,7 +53,7 @@ vi.mock('@/components/bridge', () => {
       },
     },
   };
-  return { appVersion: () => '0.5.2', getBridge: () => bridge };
+  return { appVersion: () => '0.5.2', getBridge: () => (mocks.noBridge ? null : bridge) };
 });
 
 vi.mock('@/features/dub/dub-session', () => ({
@@ -94,6 +95,7 @@ describe('UpdateSettings', () => {
     };
     mocks.listener = undefined;
     mocks.activeWork = false;
+    mocks.noBridge = false;
     mocks.getStateError = undefined;
     vi.clearAllMocks();
     mocks.getState.mockImplementation(async () => {
@@ -116,6 +118,34 @@ describe('UpdateSettings', () => {
 
   afterEach(cleanup);
 
+  test("renders What's new markdown without raw tables, links or asterisks", async () => {
+    mocks.api.mockImplementation(async (path: string) => {
+      if (path.includes('/changelog'))
+        return {
+          available: true,
+          releases: [
+            {
+              version: '1.0.0',
+              date: '2026-10-01',
+              intro:
+                '**Big news.** It ships.\n\n| Windows | [Installer](https://example.test/a.exe) |\n\nSee the [guide](https://example.test/g).',
+              sections: [{ title: 'Fixed', bullets: ['**Lead.** Uses `code`. (#1)'] }],
+            },
+          ],
+        };
+      if (path.includes('/db-backup')) return { available: false, latest: null };
+      return {};
+    });
+    const { container } = renderSettings();
+    expect(await screen.findByText('Big news.')).toBeInTheDocument();
+    expect(screen.getByText('See the guide.')).toBeInTheDocument();
+    expect(screen.getByText('code').tagName).toBe('CODE');
+    const text = container.textContent ?? '';
+    expect(text).not.toContain('|');
+    expect(text).not.toContain('**');
+    expect(text).not.toContain('https://');
+  });
+
   test('checks for updates and hides the channel choice when the build cannot switch', async () => {
     renderSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'updates.check_now' }));
@@ -124,6 +154,29 @@ describe('UpdateSettings', () => {
     // Store and dev builds report no channel, so a picker would do nothing.
     expect(screen.queryByText('update.channel')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'update.channel_beta' })).not.toBeInTheDocument();
+  });
+
+  test.each([
+    ['development', 'settings.updater_development'],
+    ['package-manager', 'settings.updater_package_manager'],
+    ['store', 'settings.updater_store'],
+  ] as const)('says why a %s build cannot update itself', async (reason, key) => {
+    mocks.state = {
+      status: 'unsupported',
+      currentVersion: '0.5.2',
+      progress: 0,
+      unsupportedReason: reason,
+    };
+    renderSettings();
+    expect(await screen.findByText(key)).toBeInTheDocument();
+    expect(screen.queryByText('settings.updater_desktop')).not.toBeInTheDocument();
+  });
+
+  test('tells the browser UI that updates belong to the desktop app', () => {
+    mocks.noBridge = true;
+    renderSettings();
+    expect(screen.getByText('settings.updater_desktop')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'updates.check_now' })).not.toBeInTheDocument();
   });
 
   test('switches to Beta and checks that channel straight away', async () => {

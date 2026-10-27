@@ -25,18 +25,25 @@ def is_backend_module(name: str) -> bool:
     return name in _BACKEND_PACKAGES or name.startswith(tuple(f"{pkg}." for pkg in _BACKEND_PACKAGES[1:]))
 
 
+# A background thread left running by an earlier test (an app worker, a
+# lazy engine import) can import while these helpers scan, and iterating
+# ``sys.modules`` itself then raises "dictionary changed size during
+# iteration" — which cascaded into ~90 unrelated CI failures. ``list()`` copies
+# the dict in one C call under the GIL, so scan that copy instead.
 def snapshot() -> dict:
-    return {name: mod for name, mod in sys.modules.items() if is_backend_module(name)}
+    return {name: mod for name, mod in list(sys.modules.items()) if is_backend_module(name)}
 
 
 def purge() -> None:
-    for name in [name for name in sys.modules if is_backend_module(name)]:
+    for name in [name for name in list(sys.modules) if is_backend_module(name)]:
         sys.modules.pop(name, None)
 
 
 def restore(before: dict) -> None:
-    for name in [name for name in sys.modules if is_backend_module(name) and name not in before]:
-        mod = sys.modules.pop(name)
+    for name in [name for name in list(sys.modules) if is_backend_module(name) and name not in before]:
+        mod = sys.modules.pop(name, None)
+        if mod is None:
+            continue
         parent, _, child = name.rpartition(".")
         owner = before.get(parent)
         # `from pkg import child` reads the package attribute before importing.

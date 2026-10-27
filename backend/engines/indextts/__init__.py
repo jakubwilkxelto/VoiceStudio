@@ -211,7 +211,9 @@ class IndexTTS2Backend(SubprocessBackend):
         return {
             "gpu_compat": compat,
             "min_vram_gb": floor,
-            **resolve_routing(compat, caps, floor),
+            # Own torch in its sidecar venv: the parent's CPU fallback does
+            # not reach it, so a kernel mismatch stays a caveat.
+            **resolve_routing(compat, caps, floor, parent_torch=False),
             "runtime_backend": None,
             "runtime_device_index": None,
             "runtime_device_name": None,

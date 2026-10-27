@@ -32,7 +32,7 @@ async function startRecording() {
   // Wait for the mount-time shortcut load so state updates stay inside act().
   await screen.findByText('Ctrl+Shift+Space');
   fireEvent.click(screen.getByRole('button', { name: 'Record shortcut' }));
-  expect(screen.getByText(/listening/)).toBeInTheDocument();
+  expect(screen.getByText(/listening/i)).toBeInTheDocument();
 }
 
 describe('HotkeyTab — recording feedback and cancel affordances', () => {
@@ -52,7 +52,7 @@ describe('HotkeyTab — recording feedback and cancel affordances', () => {
     await startRecording();
     fireEvent.keyDown(window, { key: 'Control', code: 'ControlLeft', ctrlKey: true });
     expect(screen.queryByText(/Add a modifier/)).toBeNull();
-    expect(screen.getByText(/listening/)).toBeInTheDocument();
+    expect(screen.getByText(/listening/i)).toBeInTheDocument();
   });
 
   it('a modifier+key press captures the accelerator and clears the rejection state', async () => {
@@ -67,21 +67,21 @@ describe('HotkeyTab — recording feedback and cancel affordances', () => {
   it('clicking the record button while recording cancels instead of re-arming', async () => {
     await startRecording();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByText(/listening/)).toBeNull();
+    expect(screen.queryByText(/listening/i)).toBeNull();
     expect(screen.getByRole('button', { name: 'Record shortcut' })).toBeInTheDocument();
   });
 
   it('losing window focus cancels recording (no global key-swallower left armed)', async () => {
     await startRecording();
     fireEvent(window, new Event('blur'));
-    expect(screen.queryByText(/listening/)).toBeNull();
+    expect(screen.queryByText(/listening/i)).toBeNull();
     expect(screen.getByRole('button', { name: 'Record shortcut' })).toBeInTheDocument();
   });
 
   it('Escape cancels recording', async () => {
     await startRecording();
     fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
-    expect(screen.queryByText(/listening/)).toBeNull();
+    expect(screen.queryByText(/listening/i)).toBeNull();
   });
 
   it('shows the portal effective shortcut when registration finishes', async () => {

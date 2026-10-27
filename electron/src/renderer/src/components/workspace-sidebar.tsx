@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { PanelLeftCloseIcon, PanelLeftOpenIcon, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -46,6 +47,27 @@ function useTrafficLightInset(enabled: boolean) {
   return [ref, inset] as const;
 }
 import { MAC_TRAFFIC_LIGHTS_INLINE_END } from '@shared/utils/windowChrome';
+import { paneTitleInShell } from '@/components/app-shell/workspace-header';
+
+/** Whether the page header above already shows this pane's title. */
+function useTitleInShell(row: RefObject<HTMLElement | null>, title: string): boolean {
+  const [inShell, setInShell] = useState(false);
+  useLayoutEffect(() => {
+    const node = row.current;
+    if (!node) return;
+    const check = () => setInShell(paneTitleInShell(node, title));
+    check();
+    const heading = node
+      .closest('[data-slot="workspace-content"]')
+      ?.querySelector('[data-slot="workspace-header"]');
+    if (!heading || typeof MutationObserver === 'undefined') return;
+    // Only the header is watched (its title changes with language), never the page.
+    const observer = new MutationObserver(check);
+    observer.observe(heading, { subtree: true, childList: true, characterData: true });
+    return () => observer.disconnect();
+  }, [row, title]);
+  return inShell;
+}
 
 const WIDTHS = {
   default: { minimum: 248, initial: 280, maximum: 515, reserve: 480 },
@@ -85,14 +107,14 @@ export function SecondarySidebar({
   size?: 'default' | 'wide' | 'spacious';
   variant?: 'controls' | 'navigation' | 'library';
   meta?: ReactNode;
-  /** Pinned below the scrolling content — never scrolls out of view. */
+  /** Pinned below the scrolling content; hidden while collapsed or on the library tab. */
   footer?: ReactNode;
   /** Saved items beside the controls. A render callback receives visibility so retained panes can cancel hidden work. */
   library?: ReactNode | ((active: boolean) => ReactNode);
   libraryLabel?: string;
   /** Controls the collapsed state when the parent owns a shared pane shortcut. */
   collapsed?: boolean;
-  /** Lets the page re-home the footer's content while the pane is collapsed. */
+  /** Reports each collapse or expand, so a page can re-home the footer while the pane is shut. */
   onCollapsedChange?: (collapsed: boolean) => void;
   /**
    * Show the controls/library tabs in the header row instead of the title, for
@@ -106,6 +128,7 @@ export function SecondarySidebar({
   const collapsed = controlledCollapsed ?? uncontrolledCollapsed;
   // Collapsed, the header row is an empty drag strip, so nothing needs to clear the lights.
   const [headerRef, lightsInset] = useTrafficLightInset(isMac() && !fullscreen && !collapsed);
+  const titleInShell = useTitleInShell(headerRef, title);
   const [view, setView] = useState<'controls' | 'library'>('controls');
   const [libraryVisited, setLibraryVisited] = useState(false);
   const tabsId = useId();
@@ -114,12 +137,11 @@ export function SecondarySidebar({
     setView(next);
   };
   const showLibrary = library != null && view === 'library';
-  // Notify from the event handler, never from inside a state updater: updaters
-  // must stay pure (StrictMode runs them twice, which would double-fire this).
-  const setCollapsed = (next: boolean | ((value: boolean) => boolean)) => {
+  const setCollapsed = (next: boolean | ((current: boolean) => boolean)) => {
     const resolved = typeof next === 'function' ? next(collapsed) : next;
     if (resolved === collapsed) return;
     if (controlledCollapsed === undefined) setUncontrolledCollapsed(resolved);
+    // Called from the event handler, not a state updater, so StrictMode cannot fire it twice.
     onCollapsedChange?.(resolved);
   };
   const headerTabs = tabsInHeader && library != null;
@@ -229,12 +251,19 @@ export function SecondarySidebar({
             <span className="grid size-7 shrink-0 place-items-center rounded-lg border border-border/45 bg-background/50 text-primary shadow-[inset_0_1px_0_rgb(255_255_255/7%)]">
               <Icon aria-hidden="true" className="size-4" />
             </span>
+            {/* The page header already names the page top left; a same-named pane keeps
+                its name for assistive tech only. */}
             <span
-              className="min-w-0 flex-1 truncate text-sm font-semibold tracking-[-0.014em] text-foreground/95"
+              data-slot="secondary-sidebar-title"
+              className={cn(
+                'min-w-0 flex-1 truncate text-sm font-semibold tracking-[-0.014em] text-foreground/95',
+                titleInShell && 'sr-only',
+              )}
               title={title}
             >
               {title}
             </span>
+            {titleInShell && <span className="flex-1" aria-hidden="true" />}
             {meta !== undefined && meta !== null && (
               <span className="shrink-0 rounded-md border border-border/40 bg-muted/55 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
                 {meta}
@@ -290,10 +319,12 @@ export function SecondarySidebar({
       >
         {children}
       </div>
-      {footer !== undefined && footer !== null && !collapsed && !showLibrary && (
+      {footer != null && !collapsed && !showLibrary && (
         <div
           data-slot="secondary-sidebar-footer"
-          className="flex min-h-0 max-h-[70%] flex-col space-y-3 border-t border-border/55 p-3.5 text-[13px]"
+          // shrink-[0.05]: when the pane is height-capped (stacked layout) the scrolling content gives
+          // way first and the footer only shrinks once that is exhausted.
+          className="studio-scrollbar flex max-h-[70%] min-h-0 shrink-[0.05] flex-col gap-2 overflow-y-auto overscroll-contain border-t border-border/45 p-3"
         >
           {footer}
         </div>

@@ -16,7 +16,12 @@ const mocks = vi.hoisted(() => ({
   } as UpdateState,
 }));
 
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => mocks.navigate }));
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => mocks.navigate,
+  Link: ({ to, children }: { to: string; children: unknown }) => (
+    <a href={to}>{children as never}</a>
+  ),
+}));
 vi.mock('@/components/bridge', () => ({
   getBridge: () => ({
     updates: {
@@ -53,6 +58,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 import { SystemNotifications } from './system-notifications';
+import { publishLongformActivity } from '@/lib/longform-activity';
 
 describe('SystemNotifications desktop updates', () => {
   beforeEach(() => {
@@ -68,7 +74,10 @@ describe('SystemNotifications desktop updates', () => {
       progress: 0,
     } as UpdateState;
   });
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    publishLongformActivity(null, null);
+  });
 
   test('keeps an available update actionable while the Python backend is offline', async () => {
     render(
@@ -154,6 +163,46 @@ describe('SystemNotifications desktop updates', () => {
     expect(bell).toHaveTextContent('2');
     fireEvent.click(bell);
     expect(await screen.findByRole('region', { name: 'downloads' })).toBeInTheDocument();
+    expect(screen.queryByText('logs.all_clear')).not.toBeInTheDocument();
+  });
+
+  test('lists a running Stories render with a way back to it and Stop', async () => {
+    mocks.state = {
+      status: 'idle',
+      currentVersion: '0.5.2',
+      channel: 'stable',
+      progress: 0,
+    } as UpdateState;
+    const stop = vi.fn();
+    publishLongformActivity(
+      {
+        mode: 'stories',
+        title: 'My tale',
+        stage: 'rendering',
+        completed: 2,
+        total: 5,
+        percent: 40,
+      },
+      stop,
+    );
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SystemNotifications enabled />
+      </QueryClientProvider>,
+    );
+    const bell = await screen.findByRole('button', {
+      name: /nav\.stories: audiobook\.progress_summary/,
+    });
+    expect(bell).toHaveTextContent('1');
+    fireEvent.click(bell);
+    const card = await screen.findByRole('region', { name: 'nav.stories' });
+    expect(card).toHaveTextContent('My tale');
+    expect(screen.getByRole('link', { name: /audiobook\.show_progress/ })).toHaveAttribute(
+      'href',
+      '/stories',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'common.stop' }));
+    expect(stop).toHaveBeenCalledOnce();
     expect(screen.queryByText('logs.all_clear')).not.toBeInTheDocument();
   });
 });

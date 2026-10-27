@@ -33,6 +33,8 @@ import {
   setDubTarget,
   splitDubSegment,
   undoDubEdit,
+  nextDubSpeakerId,
+  setDubSegmentsSpeaker,
 } from './dub-session';
 vi.mock('@/lib/api/client', async (load) => ({
   ...(await load<typeof import('@/lib/api/client')>()),
@@ -375,6 +377,80 @@ it('supports reversible insert, delete, merge, and split edits without losing sp
     'voice-new',
     'voice-new',
   ]);
+});
+
+it('moves lines to another or a new speaker and follows that speaker voice (#3515)', () => {
+  const original = [
+    {
+      id: 'a',
+      start: 0,
+      end: 1,
+      text: 'Hi',
+      text_original: 'Hi',
+      speaker_id: 'Speaker 1',
+      profile_id: 'auto:speaker_1',
+    },
+    {
+      id: 'b',
+      start: 1,
+      end: 2,
+      text: 'Hey',
+      text_original: 'Hey',
+      speaker_id: 'Speaker 1',
+      profile_id: 'auto:speaker_1',
+    },
+    {
+      id: 'c',
+      start: 2,
+      end: 3,
+      text: 'Yo',
+      text_original: 'Yo',
+      speaker_id: 'Speaker 2',
+      profile_id: 'voice-two',
+    },
+    {
+      id: 'd',
+      start: 3,
+      end: 4,
+      text: 'Mine',
+      text_original: 'Mine',
+      speaker_id: 'Speaker 1',
+      profile_id: 'picked',
+    },
+  ];
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: original,
+  }));
+  clearDubEditHistory();
+
+  setDubSegmentsSpeaker(new Set(['b', 'd']), 'Speaker 2');
+  expect(dubSession.state.segments.map((s) => [s.speaker_id, s.profile_id])).toEqual([
+    ['Speaker 1', 'auto:speaker_1'],
+    ['Speaker 2', 'voice-two'],
+    ['Speaker 2', 'voice-two'],
+    // An explicitly picked line voice is kept.
+    ['Speaker 2', 'picked'],
+  ]);
+  undoDubEdit();
+  expect(dubSession.state.segments).toEqual(original);
+
+  // Moving a whole speaker keeps following cast voices, not freezing the old one.
+  setDubSegmentsSpeaker(new Set(['a', 'b']), 'Speaker 2');
+  expect(dubSession.state.segments.slice(0, 2).map((s) => s.profile_id)).toEqual([
+    'voice-two',
+    'voice-two',
+  ]);
+  undoDubEdit();
+
+  expect(nextDubSpeakerId(original)).toBe('Speaker 3');
+  setDubSegmentsSpeaker(new Set(['a']), nextDubSpeakerId(original));
+  expect(dubSession.state.segments[0]).toMatchObject({ speaker_id: 'Speaker 3' });
+  // A new speaker has no voice yet: the line falls back to the default voice
+  // instead of keeping the old speaker's clone.
+  expect(dubSession.state.segments[0].profile_id).toBeUndefined();
 });
 
 it('coalesces a burst of transcript typing into one undo step', () => {

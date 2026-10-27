@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useEngines } from '@/hooks/use-engines';
+import { SetUpLink } from '@/components/engine-notice';
 import type { CloneBlocker } from '@/lib/clone-readiness';
 import { openTake } from '@/lib/store/takes';
 import { setWorkspace } from '@/lib/store/workspace';
@@ -66,20 +67,16 @@ export function CloneReadinessNotice({
           </Button>
         </div>
       )}
-      {blocker === 'cloning' && designInstead && (
-        <Link to="/design" className={buttonVariants({ variant: 'ghost', size: 'xs' })}>
-          {t('nav.design')}
-        </Link>
-      )}
-      {(blocker === 'engine' || blocker === 'cloning') && !demo && (
-        <Link
-          to="/settings/models/$family"
-          params={{ family: 'tts' }}
-          className={buttonVariants({ variant: 'ghost', size: 'xs' })}
-        >
-          {t('engineSidebar.tts')}
-        </Link>
-      )}
+      {/* One next step: Voice Design when this model designs voices, otherwise set up a cloning model. */}
+      {blocker === 'cloning' &&
+        !demo &&
+        (designInstead ? (
+          <Link to="/design" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            {t('nav.design')}
+          </Link>
+        ) : (
+          <SetUpLink family="tts" />
+        ))}
     </div>
   );
 }

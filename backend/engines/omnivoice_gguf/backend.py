@@ -207,6 +207,54 @@ def _mismatched_runtime_library(bin_dir: Path, manifest: dict[str, str]) -> str 
     return None
 
 
+#: Exit statuses meaning "this CPU cannot execute an instruction in the
+#: runtime": a negative signal number from subprocess on POSIX (SIGILL), the
+#: shell's 128+SIGILL, and Windows STATUS_ILLEGAL_INSTRUCTION in both its
+#: unsigned and signed spellings. A runtime compiled for newer CPU features
+#: than the host has (#2780) fails this way on every generate.
+_ILLEGAL_INSTRUCTION_EXITS = frozenset({-4, 132, 0xC000001D, 0xC000001D - (1 << 32)})
+
+#: Binaries that hit an illegal instruction, keyed by path, valued by the
+#: file identity they had then. Until the file changes (rebuilt/reinstalled),
+#: the engine reports itself unavailable instead of failing every generate.
+_CPU_INCOMPATIBLE: dict[str, tuple[int, int]] = {}
+
+
+def _file_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_size, st.st_mtime_ns)
+
+
+def _cpu_incompatible_reason(bin_path: Path) -> str:
+    return (
+        f"GGUF binary {bin_path.name} stopped with an illegal instruction: it "
+        f"was built for CPU features this processor does not have. Rebuild it "
+        f"with `scripts/build-omnivoice-tts.sh --platform {_platform_slug()}` "
+        f"(portable x86-64 build), reinstall VoiceStudio, or use the default "
+        f"in-process OmniVoice engine (Model Catalogue)."
+    )
+
+
+def _raise_if_illegal_instruction(bin_path: Path, returncode) -> None:
+    """Record and raise a typed error when the runtime cannot run on this CPU."""
+    if returncode not in _ILLEGAL_INSTRUCTION_EXITS:
+        return
+    identity = _file_identity(bin_path)
+    if identity is not None:
+        _CPU_INCOMPATIBLE[str(bin_path)] = identity
+    from services.binary_preflight import InvalidBinaryError
+
+    raise InvalidBinaryError(
+        bin_path,
+        "it stopped with an illegal instruction (built for CPU features this "
+        "processor does not have)",
+        _binary_repair_hint(),
+    )
+
+
 def _binary_repair_hint() -> str:
     """One actionable sentence for a broken/placeholder GGUF binary (#1172).
 
@@ -536,6 +584,11 @@ def _make_backend_class():
                         f"VoiceStudio, or use the default in-process "
                         f"OmniVoice engine (Model Catalogue)."
                     )
+                known_bad = _CPU_INCOMPATIBLE.get(str(bin_path))
+                if known_bad is not None:
+                    if _file_identity(bin_path) == known_bad:
+                        return False, _cpu_incompatible_reason(bin_path)
+                    _CPU_INCOMPATIBLE.pop(str(bin_path), None)  # replaced: re-check
                 # Manifest-based SHA-256 verification (T-04-01).
                 try:
                     manifest = _load_checksum_manifest()
@@ -761,6 +814,7 @@ def _make_backend_class():
                     bin_path, f"the OS refused to execute it ({exc})",
                     _binary_repair_hint(),
                 ) from exc
+            _raise_if_illegal_instruction(bin_path, proc.returncode)
             # `--help` typically exits 0 or 1 (some CLIs use 1 to signal
             # "help shown, no work done"). We accept both as long as the
             # binary actually emitted something.
@@ -781,12 +835,15 @@ def _make_backend_class():
               * ``ref_audio`` (str/Path) — speaker reference WAV for cloning.
               * ``ref_text`` (str) — transcript of ``ref_audio``.
               * ``language`` (str) — ISO code or omnivoice-tts lang label.
-              * ``instruct`` (str) — style instruction.
-              * ``duration`` (float) — target duration in seconds.
-              * ``seed`` (int) — deterministic sampling seed.
-              * ``denoise`` (bool) — omit denoise token when false.
-              * ``preprocess_prompt`` (bool) — skip prompt preprocessing when false.
-              * ``chunk_duration`` / ``chunk_threshold`` (float) — binary long-form controls.
+              * ``instruct`` (str) — free-text speaking-style hint.
+              * ``duration`` (float) — desired output length in seconds.
+              * ``seed`` (int) — RNG seed, to make a run repeatable.
+              * ``denoise`` (bool, default True) — False asks the binary to
+                skip denoising.
+              * ``preprocess_prompt`` (bool, default True) — False feeds the
+                reference clip through unprocessed.
+              * ``chunk_duration`` / ``chunk_threshold`` (float) — tuning of
+                how the binary splits long inputs.
             """
             import soundfile as sf  # local import keeps module import cheap
             import torch
@@ -797,24 +854,22 @@ def _make_backend_class():
             fd, out_str = tempfile.mkstemp(prefix="omnivoice-gguf-", suffix=".wav")
             os.close(fd)
             out_path = Path(out_str)
-            ref_text_path: Optional[Path] = None
+            ref_text_file: Optional[Path] = None
 
             try:
+                # The binary reads the prompt transcript from a file, so stage one.
                 ref_text = kw.get("ref_text")
                 if kw.get("ref_audio") and ref_text:
-                    text_fd, text_str = tempfile.mkstemp(
-                        prefix="omnivoice-gguf-ref-", suffix=".txt"
-                    )
-                    os.close(text_fd)
-                    ref_text_path = Path(text_str)
-                    ref_text_path.write_text(str(ref_text), encoding="utf-8")
-
+                    tfd, tname = tempfile.mkstemp(prefix="gguf-prompt-transcript-", suffix=".transcript")
+                    os.close(tfd)
+                    ref_text_file = Path(tname)
+                    ref_text_file.write_text(str(ref_text), encoding="utf-8")
                 argv = self._build_argv(
                     base=base_path,
                     tokenizer=tok_path,
                     out_path=out_path,
                     ref_audio=kw.get("ref_audio"),
-                    ref_text=str(ref_text_path) if ref_text_path else None,
+                    ref_text=str(ref_text_file) if ref_text_file else None,
                     language=kw.get("language"),
                     instruct=kw.get("instruct"),
                     duration=kw.get("duration"),
@@ -831,9 +886,9 @@ def _make_backend_class():
                     out_path.unlink()
                 except OSError:
                     pass
-                if ref_text_path is not None:
+                if ref_text_file is not None:
                     try:
-                        ref_text_path.unlink()
+                        ref_text_file.unlink()
                     except OSError:
                         pass
 
@@ -878,20 +933,22 @@ def _make_backend_class():
             lang = _iso_to_omnivoice_lang(language)
             if lang:
                 argv += ["--lang", lang]
-            if instruct:
-                argv += ["--instruct", str(instruct)]
-            if duration is not None:
-                argv += ["--duration", str(float(duration))]
-            if seed is not None:
-                argv += ["--seed", str(int(seed))]
-            if denoise is False:
-                argv += ["--no-denoise"]
-            if preprocess_prompt is False:
-                argv += ["--no-preprocess-prompt"]
-            if chunk_duration is not None:
-                argv += ["--chunk-duration", str(float(chunk_duration))]
-            if chunk_threshold is not None:
-                argv += ["--chunk-threshold", str(float(chunk_threshold))]
+            valued = (
+                ("--instruct", instruct or None, str),
+                ("--duration", duration, lambda v: str(float(v))),
+                ("--seed", seed, lambda v: str(int(v))),
+                ("--chunk-duration", chunk_duration, lambda v: str(float(v))),
+                ("--chunk-threshold", chunk_threshold, lambda v: str(float(v))),
+            )
+            for flag, value, render in valued:
+                if value is not None:
+                    argv.extend((flag, render(value)))
+            for flag, switched_off in (
+                ("--no-denoise", denoise is False),
+                ("--no-preprocess-prompt", preprocess_prompt is False),
+            ):
+                if switched_off:
+                    argv.append(flag)
             if ref_audio:
                 # Two-stage validation (defense in depth):
                 #   (a) Reject anything outside the project's voices /
@@ -925,8 +982,7 @@ def _make_backend_class():
                     )
                 argv += ["--ref-wav", str(ref_path)]
                 if ref_text:
-                    # The C++ runtime expects a transcript file path.
-                    # generate() creates this file in the system temp dir.
+                    # By this point ref_text is a path to the staged transcript file.
                     argv += ["--ref-text", str(ref_text)]
             return argv
 
@@ -972,6 +1028,7 @@ def _make_backend_class():
                     _binary_repair_hint(),
                 ) from exc
 
+            _raise_if_illegal_instruction(Path(argv[0]), proc.returncode)
             if proc.returncode != 0:
                 stderr = _mask_token(proc.stderr or "")
                 raise RuntimeError(

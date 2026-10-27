@@ -55,7 +55,7 @@ try {
   await page.getByRole('tab', { name: 'Saved voices', exact: true }).waitFor();
   assert.equal(await compactSidebar.count(), 1);
   // One click on the rail's toggle opens the full navigation.
-  await compactSidebar.getByRole('button', { name: 'Toggle Sidebar' }).click();
+  await compactSidebar.getByRole('button', { name: 'Toggle sidebar' }).click();
   await compactSidebar.waitFor({ state: 'detached' });
   const expandedSidebar = page.locator('.brand-sidebar:not([data-slot=compact-main-sidebar])');
   await expandedSidebar.waitFor();

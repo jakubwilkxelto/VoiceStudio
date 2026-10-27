@@ -18,26 +18,22 @@ The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
 
 ## Architecture
 
-The main CUDA/CPU images (`:stable`, `:latest`, ...) and the ROCm variants are
-**`linux/amd64` (x86-64) only**. The one native `linux/arm64` image is the
-NVIDIA CUDA variant for ARM servers, published under its own `-cuda-arm64`
-tags (see below). On an ARM64 host, pulling an un-suffixed tag can fail with
-`no matching manifest for linux/arm64/v8 in the manifest list entries`.
+The standard CUDA/CPU images and all ROCm variants are `linux/amd64`. The only
+native `linux/arm64` image is the NVIDIA CUDA build, identified by
+`-cuda-arm64` tags. On an ARM64 machine, pulling an unsuffixed tag may fail
+with `no matching manifest for linux/arm64/v8`.
 
-- **Apple Silicon (M-series Macs):** use the [native macOS app](macos.md),
-  which supports Apple GPU acceleration. The Linux container cannot access
-  the Mac's Apple GPU through MPS or MLX.
-- **AMD64 emulation on ARM64 (including Apple Silicon):** if your Docker
-  installation supports it, place `--platform linux/amd64` **before the image
-  name** in both `docker pull` and `docker run` from the CPU instructions
-  below. This is an emulated CPU option, not native
-  ARM64 support; inference can be much slower and is not a GPU workaround.
-  Without emulation, use an AMD64 server for this Docker deployment.
-- **ARM64 + NVIDIA GPU (DGX Spark / GB10, GH200, GB200):** use the
-  `:stable-cuda-arm64` image; see
-  [Pull and run (ARM64 NVIDIA GPU)](#pull-and-run-arm64-nvidia-gpu).
-  Jetson boards (L4T/JetPack) are not covered: they need JetPack's own PyTorch
-  builds.
+- **Apple Silicon:** use the [native macOS app](macos.md). Linux containers
+  cannot use an Apple GPU through MPS or MLX.
+- **AMD64 emulation on ARM64:** if Docker supports emulation, put
+  `--platform linux/amd64` before the image name in both `docker pull` and
+  `docker run` from the CPU instructions below. This is emulated CPU execution,
+  not native ARM64 support or a GPU workaround, and it can be much slower. Use
+  an AMD64 server when emulation is unavailable.
+- **ARM64 with an NVIDIA GPU:** run `:stable-cuda-arm64` as described in
+  [Pull and run (ARM64 NVIDIA GPU)](#pull-and-run-arm64-nvidia-gpu). Jetson
+  devices using L4T/JetPack are outside this image's support because they need
+  JetPack-specific PyTorch packages.
 
 ## Image tags
 
@@ -177,7 +173,8 @@ docker run -d --name omnivoice \
 WSL exposes AMD compute through `/dev/dxg`, not native Linux's `/dev/kfd` and
 `/dev/dri`. First install ROCm and `librocdxg` in the WSL distribution and
 confirm the host-side `rocminfo` lists the GPU. Then use the WSL-specific
-bridge flags from AMD's `librocdxg` container contract:
+bridge flags from AMD's `librocdxg` container contract (to run it in a WSL
+distro directly, without a container, see [wsl-amd-rocm.md](wsl-amd-rocm.md)):
 
 ```bash
 docker run -d --name omnivoice \
@@ -329,23 +326,21 @@ docker compose -f deploy/docker-compose.yml --profile rocm up -d
 > docker compose -f deploy/docker-compose.yml --profile cpu up -d
 > ```
 >
-> In PowerShell, set both the administrator key and the platform for the
-> session before running the same two commands:
+> In PowerShell, set both the administrator key and target platform for the
+> current session before issuing the same Compose commands. This uses .NET and
+> does not require Python on the host:
 >
 > ```powershell
-> $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+> $randomBytes = [byte[]]::new(32)
+> $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 > try {
->     $keyBytes = New-Object byte[] 32
->     $rng.GetBytes($keyBytes)
->     # URL-safe, like the `secrets.token_urlsafe` the Bash line uses: the
->     # key is also accepted as an `?api_key=` query parameter, where a
->     # raw Base64 `+` decodes to a space and silently mismatches.
->     $env:OMNIVOICE_API_KEY =
->         [Convert]::ToBase64String($keyBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+>   $generator.GetBytes($randomBytes)
+> } finally {
+>   $generator.Dispose()
 > }
-> finally {
->     $rng.Dispose()
-> }
+> # URL-safe encoding matters when the key is supplied through ?api_key=,
+> # where an unescaped plus sign would otherwise decode as a space.
+> $env:OMNIVOICE_API_KEY = [Convert]::ToBase64String($randomBytes).Replace('+', '-').Replace('/', '_').TrimEnd('=')
 > $env:DOCKER_DEFAULT_PLATFORM = 'linux/amd64'
 > docker compose -f deploy/docker-compose.yml --profile cpu pull
 > docker compose -f deploy/docker-compose.yml --profile cpu up -d
@@ -469,6 +464,7 @@ as root, so files it adds there are root-owned on the host.
 
 ## Troubleshooting
 
+- **"Enter access PIN" on the Docker host:** see [Recovering from a lost share PIN](#recovering-from-a-lost-share-pin) below.
 - **Container reports an older or newer version than expected:** `:latest`
   follows `main`, not releases. For a released version, pull `:stable` or the
   exact `:X.Y.Z` tag and recreate the container. The running version is shown
@@ -514,6 +510,48 @@ as root, so files it adds there are root-owned on the host.
   [Pull and run (AMD GPU / ROCm)](#pull-and-run-amd-gpu--rocm) above for when
   to set one by hand.
 - More entries: [docs/install/troubleshooting.md](troubleshooting.md).
+
+### Recovering from a lost share PIN
+
+If you enable **Settings → Sharing & Remote Access** and then lose the browser's
+PIN cookie, even `http://127.0.0.1:3900/` on the Docker host can ask for the PIN.
+Docker forwards that connection through its bridge, so the backend sees a
+non-loopback peer (for example, `172.17.0.1`). The host's loopback port binding
+limits who can connect; it does not make the peer inside the container loopback.
+
+The PIN lives only in the running backend process, not in `prefs.json`. The API
+key and share PIN are separate gates: signing in with `OMNIVOICE_API_KEY` does
+not bypass an active PIN gate on ordinary HTTP requests.
+
+To recover, restart the existing container. This interrupts running jobs and
+clears the in-memory sharing state and server-side administrator sessions. It
+does not erase the administrator credential stored in the browser:
+
+```bash
+docker restart omnivoice
+```
+
+Replace `omnivoice` with your container's name if different. Reopen
+`http://127.0.0.1:3900/` once startup completes and sign in with the same
+`OMNIVOICE_API_KEY` supplied when the container was created. Restarting keeps
+the existing data volume, voices, projects, settings and downloaded models;
+there is no need to delete the container or its volume.
+
+For host-only Docker use, leave in-app network sharing off and retain
+`-p 127.0.0.1:3900:3900`. For access from another device, follow
+[LAN access](#lan-access) and keep the administrator API key configured.
+
+On a host you alone use, set `OMNIVOICE_TRUST_HOST_LOOPBACK=1` to let that
+browser skip the share PIN without trusting a Docker subnet. It applies only
+to the container's default gateway on the main port, and it does not replace
+`OMNIVOICE_API_KEY`. See
+[Share PIN for the host's own browser](#trust-host-loopback).
+
+`OMNIVOICE_TRUSTED_NETWORKS` can exempt selected peer addresses from the PIN
+and API-key consumption gates, but it does **not** grant administrator access.
+Do not trust an entire Docker subnet just to dismiss the PIN prompt: other
+containers or forwarded clients may share that network identity. See
+[trusted networks](../api-auth.md#trusted-networks) before choosing this deployment policy.
 
 ### CTranslate2 compatibility
 

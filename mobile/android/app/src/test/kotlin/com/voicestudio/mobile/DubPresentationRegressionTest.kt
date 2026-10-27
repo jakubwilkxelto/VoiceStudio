@@ -68,13 +68,13 @@ class DubPresentationRegressionTest {
         content {MultiPicker("mobile.dub.target_languages",emptyList(),listOf("fr" to "French")) {}}
         compose.onNodeWithText("Target languages").performClick()
         compose.onNodeWithText("Search").performTextInput("missing")
-        compose.onNodeWithText("No matches for \"missing\"").assertExists()
+        compose.onNodeWithText("No matches for “missing”.").assertExists()
     }
     @Test fun voicesSearchWithoutMatchesShowsQuery() {
         withHost {vm ->
             content {VoicesScreen(vm)}
             compose.onNodeWithText("Search voices").performScrollTo().performTextInput("missing")
-            compose.onNodeWithText("No matches for \"missing\"").assertExists()
+            compose.onNodeWithText("No matches for “missing”.").assertExists()
         }
     }
     @Test fun speakRendersControlsWhileLanguageCatalogIsSuspended() {

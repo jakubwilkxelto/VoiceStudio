@@ -138,7 +138,10 @@ it('saves the share port and exposes explicit Tailscale controls', async () => {
 
   const port = await screen.findByRole('spinbutton', { name: 'sharing.lan_share_port' });
   expect(port).toHaveValue(3901);
+  // Nothing to save until the port actually changes.
+  expect(screen.getByRole('button', { name: 'common.save' })).toBeDisabled();
   fireEvent.change(port, { target: { value: '4101' } });
+  expect(screen.getByRole('button', { name: 'common.save' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/system/set-env', {

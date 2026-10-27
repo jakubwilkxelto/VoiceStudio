@@ -23,6 +23,10 @@ describe('take metadata', () => {
     });
     expect(takeSettings(item)).not.toHaveProperty('autoPlay');
   });
+  it('never restores a saved transcript edit with the take (#3358)', () => {
+    rememberTake('take', { ...DEFAULT_CLONE_SETTINGS, refText: 'Words from another voice.' });
+    expect(takeSettings(item).refText).toBe('');
+  });
   it('uses known history fields when metadata is malformed or absent', () => {
     localStorage.setItem('voicestudio.take-settings.v1', '{');
     expect(takeSettings(item)).toEqual({
@@ -30,6 +34,7 @@ describe('take metadata', () => {
       language: 'French',
       instruct: '',
       selectedProfileId: 'voice',
+      refText: '',
       emotionMode: 'none',
       emotionText: '',
       emotionAlpha: 0.6,

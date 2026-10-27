@@ -248,6 +248,10 @@ class IsolatedFasterWhisperBackend(SubprocessASRBackend):
         return _ctranslate2_cudnn_ok()
 
     @classmethod
+    def shares_parent_torch(cls) -> bool:
+        return True
+
+    @classmethod
     def venv_python(cls) -> Path:
         # faster-whisper lives in the parent venv — isolation is process-only.
         return Path(sys.executable)

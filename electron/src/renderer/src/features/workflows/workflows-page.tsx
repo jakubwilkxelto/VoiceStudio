@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from '@tanstack/react-router';
+import { runRendererTask } from '@/lib/global-error-recovery';
 import {
   Background,
   BackgroundVariant,
@@ -42,6 +44,7 @@ import { STEP_DRAG_TYPE, WorkflowStepPalette } from './workflow-step-palette';
 import { nodeTypes, stepSummary, type CanvasNode } from './workflow-step-node';
 import { WorkflowTemplatePicker } from './workflow-template-picker';
 import { WorkflowTitleBar } from './workflow-title-bar';
+import { FitWorkflowOnOpen } from './workflow-fit';
 
 function WorkflowCanvas({
   onCalls,
@@ -355,6 +358,7 @@ function WorkflowCanvas({
                 ),
               }))
             }
+            // Framed by FitWorkflowOnOpen once the steps are measured.
             defaultViewport={{ x: 64, y: 40, zoom: 0.95 }}
             minZoom={0.2}
             maxZoom={1.8}
@@ -366,6 +370,7 @@ function WorkflowCanvas({
               gap={20}
               size={1.2}
             />
+            <FitWorkflowOnOpen />
             <Controls showInteractive={false} />
             <MiniMap
               pannable
@@ -421,28 +426,38 @@ function WorkflowCanvas({
   );
 }
 
+/** A call step's number and brief, carried from the canvas to the Calls view. */
+let pendingCallDraft: { to: string; brief: string } | undefined;
+
 export function WorkflowsPage() {
-  const [mode, setMode] = useState<'canvas' | 'calls'>('canvas');
-  const [hasOpenedCalls, setHasOpenedCalls] = useState(false);
-  const [callDraft, setCallDraft] = useState<{ to: string; brief: string } | undefined>();
+  const navigate = useNavigate();
   return (
-    <>
-      <div className={mode === 'canvas' ? 'h-full min-h-0' : 'hidden'}>
-        <ReactFlowProvider>
-          <WorkflowCanvas
-            onCalls={(call) => {
-              if (call) setCallDraft({ to: call.phone, brief: call.text });
-              setHasOpenedCalls(true);
-              setMode('calls');
-            }}
-          />
-        </ReactFlowProvider>
-      </div>
-      {hasOpenedCalls && (
-        <div className={mode === 'calls' ? 'h-full min-h-0' : 'hidden'}>
-          <CallsPage initialDraft={callDraft} onCanvas={() => setMode('canvas')} />
-        </div>
-      )}
-    </>
+    <div className="h-full min-h-0">
+      <ReactFlowProvider>
+        <WorkflowCanvas
+          onCalls={(call) => {
+            pendingCallDraft = call ? { to: call.phone, brief: call.text } : undefined;
+            runRendererTask('Open Calls from the workflow canvas', () => navigate({ to: '/calls' }));
+          }}
+        />
+      </ReactFlowProvider>
+    </div>
+  );
+}
+
+/** The Calls view at /calls, with a way back to the workflow canvas at /workflows. */
+export function WorkflowCallsPage() {
+  const navigate = useNavigate();
+  const [draft] = useState(() => {
+    const next = pendingCallDraft;
+    pendingCallDraft = undefined;
+    return next;
+  });
+  return (
+    <div className="h-full min-h-0">
+      <CallsPage initialDraft={draft} onCanvas={() =>
+          runRendererTask('Return to the workflow canvas', () => navigate({ to: '/workflows' }))
+        } />
+    </div>
   );
 }

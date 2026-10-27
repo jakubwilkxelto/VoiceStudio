@@ -12,7 +12,9 @@
     <a href="#ドキュメント">ドキュメント</a> ·
     <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
     <a href="../../README.md">English</a> ·
-    <a href="README_CN.md">简体中文</a>
+    <a href="README_CN.md">简体中文</a> ·
+    <a href="README_KO.md">한국어</a> ·
+    <a href="README_RU.md">Русский</a>
   </p>
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main" alt="CI" /></a>
@@ -81,7 +83,9 @@ Electron パッケージを含んでいる必要があり、アーカイブ済�
 
 [Releases](https://github.com/debpalash/VoiceStudio/releases/latest) からダウンロードし、お使いのプラットフォームのガイドに従ってください：
 
-**[macOS](../../docs/install/macos.md) · [Windows](../../docs/install/windows.md) · [Linux](../../docs/install/linux.md) · [Docker](../../docs/install/docker.md)**
+**[macOS](../../docs/install/macos.md) · [Windows](../../docs/install/windows.md) · [Linux](../../docs/install/linux.md) · [Docker](../../docs/install/docker.md) · [Android と iPhone](../../docs/mobile.md#install)**
+
+Linux では Snap Store からもインストールできます：`sudo snap install voicestudio`。Android（`.apk`）と iPhone（`.ipa`、ご自身の Apple ID でサイドロード）のアプリもデスクトップ版と同じリリースで配布しています。
 
 **音声クローン**を開き、声を選ぶかクリアな参照音声を追加し、テキストを入力して生成します。求められたら必要なモデルをインストールしてください。必要なハードウェアはエンジンによって異なります。[パフォーマンス](../../docs/performance.md)を参照してください。
 

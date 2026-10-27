@@ -105,7 +105,7 @@ const osToken = platform === 'win32' ? 'win' : platform === 'darwin' ? 'mac' : '
 const artifactBrand =
   process.env.VOICESTUDIO_DISTRIBUTION === 'microsoft-store'
     ? 'VoiceStudio-MicrosoftStore'
-    : 'VoiceStudio-Electron';
+    : 'VoiceStudio';
 assert(
   fileUrl.startsWith(`${artifactBrand}-${expectedVersion}-${osToken}-${arch}.`),
   'Update artifact preserves the branded version/platform/architecture name',
@@ -134,7 +134,7 @@ if (platform === 'win32') {
   const updateRelease = channel.startsWith('electron-beta-') ? `v${version}` : 'latest';
   assert.equal(
     updateInfo,
-    `gh-releases-zsync|debpalash|VoiceStudio|${updateRelease}|VoiceStudio-Electron-*-linux-x64.AppImage.zsync`,
+    `gh-releases-zsync|debpalash|VoiceStudio|${updateRelease}|VoiceStudio-*-linux-x64.AppImage.zsync`,
     'External AppImage updaters follow the channel their image was built for',
   );
   const control = `${artifactPath}.zsync`;

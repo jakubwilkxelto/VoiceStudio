@@ -11,6 +11,7 @@ import { formatRelative } from '../clone/format';
 import { longformSession, useLongformSession } from '../longform/longform-session';
 import type { DubProject } from '../projects/project-format';
 import { dubSession, openDubProject, useDubSession } from './dub-session';
+import { DubSaveProject } from './dub-save-project';
 
 const SEARCH_ABOVE = 8;
 
@@ -104,6 +105,7 @@ export function DubProjects({ active = true }: { active?: boolean }) {
 
   return (
     <div data-slot="dub-projects" className="flex min-h-0 flex-1 flex-col">
+      <DubSaveProject />
       {rows.length > SEARCH_ABOVE && (
         <div className="relative shrink-0 px-2.5 pt-2.5">
           <SearchIcon

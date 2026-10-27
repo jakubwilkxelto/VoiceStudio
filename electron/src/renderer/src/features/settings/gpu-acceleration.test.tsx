@@ -63,6 +63,26 @@ const amdWindows = {
   ],
 };
 
+const sm52 = {
+  platform: 'linux',
+  gpus: [{ vendor: 'nvidia', name: 'NVIDIA Quadro M5000M', vram_gb: 8 }],
+  torch: { kind: 'cuda', version: '2.8.0+cu128' },
+  state: 'kernels_missing',
+  params: { gpu: 'NVIDIA Quadro M5000M', torch: '2.8.0+cu128' },
+  options: ['install_matching_torch'],
+  engines: [
+    {
+      id: 'omnivoice',
+      name: 'OmniVoice',
+      kind: 'tts',
+      available: true,
+      code: 'host_gpu_unusable',
+      params: {},
+      reason: null,
+    },
+  ],
+};
+
 function renderIt() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -71,7 +91,6 @@ function renderIt() {
     </QueryClientProvider>,
   );
 }
-
 it('tells a Radeon owner why the GPU is idle and which engines can still use it', async () => {
   mock.api.mockResolvedValue(amdWindows);
   renderIt();
@@ -88,6 +107,21 @@ it('tells a Radeon owner why the GPU is idle and which engines can still use it'
   ).toBeInTheDocument();
   expect(screen.queryByText(/settings\.gpu_report/)).not.toBeInTheDocument();
   expect(mock.api).toHaveBeenCalledWith('/api/settings/gpu-report', expect.anything());
+});
+
+it('names a card the installed PyTorch wheel has no kernels for, and never sends the user to update the driver', async () => {
+  mock.api.mockResolvedValue(sm52);
+  renderIt();
+  expect(await screen.findByText(/has no kernels for its compute architecture/)).toHaveTextContent(
+    'NVIDIA Quadro M5000M was found, but this PyTorch build (2.8.0+cu128) has no kernels for its compute architecture, so engines run on the CPU.',
+  );
+  expect(
+    screen.getByText(/Install a PyTorch build that includes kernels for this GPU architecture/),
+  ).toBeInTheDocument();
+  // The driver works on this host; only the wheel's kernel list is short.
+  expect(screen.queryByText(/Update the NVIDIA driver/)).not.toBeInTheDocument();
+  expect(screen.getByText('CPU: PyTorch cannot use your GPU')).toBeInTheDocument();
+  expect(screen.queryByText(/settings\.gpu_report/)).not.toBeInTheDocument();
 });
 
 it('renders nothing for an empty payload', async () => {

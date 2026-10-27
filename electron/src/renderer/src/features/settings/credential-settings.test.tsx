@@ -45,47 +45,46 @@ it('marks the HuggingFace token input with a placeholder', () => {
   );
 });
 
-it('stores DeepL and Microsoft credentials only after an explicit save', async () => {
+it('saves each provider with one Save, enabled only after typing', async () => {
   const client = renderSettings();
   const invalidate = vi.spyOn(client, 'invalidateQueries');
+  // One Save per provider: Google Cloud, DeepL, Microsoft Azure, AWS.
+  expect(document.querySelectorAll('form button[type="submit"]')).toHaveLength(4 + 1);
 
   const deepL = document.querySelector<HTMLInputElement>(
-    'input[aria-label="credentials.deepl_key"]',
+    'input[aria-label="DeepL · settings.llmp_api_key"]',
   )!;
-  const microsoft = document.querySelector<HTMLInputElement>(
-    'input[aria-label="credentials.microsoft_base_url"]',
-  )!;
+  const deepLSave = within(deepL.closest('form')!).getByRole('button', { name: 'common.save' });
+  expect(deepLSave).toBeDisabled();
   expect(mock.api).not.toHaveBeenCalledWith('/system/set-env', expect.anything());
 
   fireEvent.change(deepL, { target: { value: '  deepl-secret  ' } });
-  fireEvent.click(within(deepL.closest('form')!).getByRole('button', { name: 'common.save' }));
+  expect(deepLSave).toBeEnabled();
+  fireEvent.click(deepLSave);
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/system/set-env', {
       method: 'POST',
       body: JSON.stringify({ key: 'DEEPL_API_KEY', value: 'deepl-secret' }),
     }),
   );
-
-  fireEvent.change(microsoft, {
-    target: { value: '  https://translator.example  ' },
-  });
-  fireEvent.click(
-    within(microsoft.closest('form')!).getByRole('button', {
-      name: 'common.save',
-    }),
+  // Untouched fields of the same provider are not overwritten with blanks.
+  expect(mock.api).not.toHaveBeenCalledWith(
+    '/system/set-env',
+    expect.objectContaining({ body: expect.stringContaining('DEEPL_BASE_URL') }),
   );
+
+  const microsoft = document.querySelector<HTMLInputElement>(
+    'input[aria-label="Microsoft Azure · credentials.base_url"]',
+  )!;
+  fireEvent.change(microsoft, { target: { value: '  https://translator.example  ' } });
+  fireEvent.click(within(microsoft.closest('form')!).getByRole('button', { name: 'common.save' }));
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/system/set-env', {
       method: 'POST',
-      body: JSON.stringify({
-        key: 'MICROSOFT_BASE_URL',
-        value: 'https://translator.example',
-      }),
+      body: JSON.stringify({ key: 'MICROSOFT_BASE_URL', value: 'https://translator.example' }),
     }),
   );
-  expect(invalidate).toHaveBeenCalledWith({
-    queryKey: ['translation-engines'],
-  });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['translation-engines'] });
 });
 
 it('shows a valid and an invalid badge for tested tokens', async () => {

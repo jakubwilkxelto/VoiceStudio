@@ -17,7 +17,9 @@ const readiness = vi.hoisted(() => ({
   blocker: null as null | 'reference' | 'text' | 'preparing' | 'engine',
 }));
 vi.mock('@/hooks/use-clone-readiness', () => ({ useCloneReadiness: () => readiness.blocker }));
-vi.mock('./install-stt-button', () => ({ InstallSttButton: () => <button>install-stt</button> }));
+vi.mock('@/components/install-stt-button', () => ({
+  InstallSttButton: () => <button>install-stt</button>,
+}));
 vi.mock('@/hooks/use-clone-demo', () => ({ useCloneDemo: () => false }));
 vi.mock('@/hooks/use-tts-languages', () => ({
   useTtsLanguages: () => ({ names: ['English'], modelLabel: 'Test model', state: 'known' }),
@@ -129,6 +131,14 @@ describe('ActionBar', () => {
     failure.topic = 'REFERENCE_STT_MISSING';
     view.rerender(<ActionBar />);
     expect(screen.getByText('install-stt')).toBeInTheDocument();
+    // Typing the transcript is the other fix; the button opens and focuses it.
+    const focus = vi.fn();
+    window.addEventListener('voicestudio:focus-clone-transcript', focus);
+    fireEvent.click(
+      screen.getByRole('button', { name: /add transcript|failureAction.add_transcript/i }),
+    );
+    window.removeEventListener('voicestudio:focus-clone-transcript', focus);
+    expect(focus).toHaveBeenCalledOnce();
   });
   it('keeps synthesis available while the latest take is playing', () => {
     render(<ActionBar />);

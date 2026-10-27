@@ -388,3 +388,20 @@ def test_download_endpoint_explicit_env_wins(er, monkeypatch):
     })
     monkeypatch.setenv("HF_ENDPOINT", "https://custom.example")
     assert _download_endpoint() == "https://custom.example"
+
+
+def test_probe_defaults_allow_eight_seconds():
+    # Read the declared defaults from source: other tests in this module swap
+    # the probe functions for fakes, so the live objects can't be trusted.
+    import ast
+    import inspect
+
+    from services import endpoint_race
+
+    assert endpoint_race.PROBE_TIMEOUT_S == 8.0
+    tree = ast.parse(inspect.getsource(endpoint_race))
+    defaults = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in ("probe_endpoint", "throughput_probe"):
+            defaults[node.name] = ast.unparse(node.args.defaults[-1])
+    assert defaults == {"probe_endpoint": "PROBE_TIMEOUT_S", "throughput_probe": "PROBE_TIMEOUT_S"}

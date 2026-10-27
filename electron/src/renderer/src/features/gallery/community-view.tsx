@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { LanguagesIcon, SendIcon, StarIcon } from 'lucide-react';
+import { LanguagesIcon, SearchIcon, SendIcon, StarIcon } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,14 +23,8 @@ import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { selectCloneProfile } from '@/lib/store/reference';
 import { getBridge } from '@/components/bridge';
 import { STORAGE, readDraft } from '@/features/design/design-draft';
-import {
-  instructToVdStates,
-  mergeDescribedAttrs,
-} from '@shared/utils/voiceInstruct';
-import type {
-  CommunityItem,
-  CommunityPage,
-} from '@shared/api/community-types';
+import { instructToVdStates, mergeDescribedAttrs } from '@shared/utils/voiceInstruct';
+import type { CommunityItem, CommunityPage } from '@shared/api/community-types';
 import type { Profile } from '@/lib/api/types';
 import type { Mode } from '@/features/longform/longform-session';
 import { placeLongformVoice } from './place-voice';
@@ -38,6 +33,32 @@ export const communityKey = (item: CommunityItem) =>
   'community:' + (item._source_repo || item.source || 'default') + ':' + item.id;
 
 const ALL = '*';
+
+/**
+ * One card per voice: the same voice can arrive from two catalogue sources or
+ * across overlapping pages, and listing it twice reads as two different voices.
+ */
+export function uniqueCommunityItems(items: readonly CommunityItem[]): CommunityItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const keys = [
+      communityKey(item),
+      `${item.type}:${item.name.trim().toLocaleLowerCase()}:${(item.instruct || item.audio?.ref_text || '').trim()}`,
+    ];
+    if (keys.some((key) => seen.has(key))) return false;
+    for (const key of keys) seen.add(key);
+    return true;
+  });
+}
+
+/** The same search the Archetypes list offers: name, description, author or language. */
+export function matchesCommunitySearch(item: CommunityItem, query: string): boolean {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return true;
+  return [item.name, item.instruct, item.audio?.ref_text, item.author, item.language]
+    .filter((value): value is string => typeof value === 'string')
+    .some((value) => value.toLocaleLowerCase().includes(needle));
+}
 const NEW_FOR_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_HANDLE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
@@ -85,6 +106,7 @@ export function CommunityView({
   }, []);
   const [pack, setPack] = useState(ALL);
   const [language, setLanguage] = useState(ALL);
+  const [search, setSearch] = useState('');
   const catalogue = useInfiniteQuery({
     queryKey: ['community-gallery', pack, language],
     initialPageParam: 0,
@@ -191,7 +213,9 @@ export function CommunityView({
       setError(describeError(cause));
     }
   };
-  const items = catalogue.data?.pages.flatMap((page) => page.items) || [];
+  const items = uniqueCommunityItems(
+    catalogue.data?.pages.flatMap((page) => page.items) || [],
+  ).filter((item) => matchesCommunitySearch(item, search));
   return (
     <section className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-6xl space-y-5">
@@ -208,45 +232,57 @@ export function CommunityView({
             {t('gallery.submit_voice')}
           </Button>
         </div>
-        {(packs.length > 0 || languages.length > 1) && (
-          <div className="flex flex-wrap items-center gap-3">
-            {packs.length > 0 && (
-              <ToggleGroup
-                aria-label={t('gallery.community_packs')}
-                value={[pack]}
-                onValueChange={(values) => setPack(values[0] || ALL)}
-                className="flex-wrap"
-              >
-                <ToggleGroupItem value={ALL}>{t('gallery.community_all_packs')}</ToggleGroupItem>
-                {packs.map((entry) => (
-                  <ToggleGroupItem key={entry.id} value={entry.id} title={entry.description}>
-                    {entry.name}
-                    <span className="text-muted-foreground tabular-nums">{entry.count}</span>
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-            )}
-            {languages.length > 1 && (
-              <Select
-                items={languageItems}
-                value={language}
-                onValueChange={(value) => setLanguage(String(value ?? ALL))}
-              >
-                <SelectTrigger aria-label={t('gallery.community_language')} className="min-w-44">
-                  <LanguagesIcon className="size-4 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {languageItems.map(({ value, label }) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-48 flex-1 sm:max-w-72">
+            <SearchIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              type="search"
+              className="h-9 pl-8"
+              aria-label={t('common.search')}
+              placeholder={t('common.search')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
           </div>
-        )}
+          {packs.length > 0 && (
+            <ToggleGroup
+              aria-label={t('gallery.community_packs')}
+              value={[pack]}
+              onValueChange={(values) => setPack(values[0] || ALL)}
+              className="flex-wrap"
+            >
+              <ToggleGroupItem value={ALL}>{t('gallery.community_all_packs')}</ToggleGroupItem>
+              {packs.map((entry) => (
+                <ToggleGroupItem key={entry.id} value={entry.id} title={entry.description}>
+                  {entry.name}
+                  <span className="text-muted-foreground tabular-nums">{entry.count}</span>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          )}
+          {languages.length > 1 && (
+            <Select
+              items={languageItems}
+              value={language}
+              onValueChange={(value) => setLanguage(String(value ?? ALL))}
+            >
+              <SelectTrigger aria-label={t('gallery.community_language')} className="min-w-44">
+                <LanguagesIcon className="size-4 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {languageItems.map(({ value, label }) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
         {(error || catalogue.isError) && (
           <PipelineFailure
             fallback={error || describeError(catalogue.error)}
@@ -263,7 +299,7 @@ export function CommunityView({
         {catalogue.isPending && <p role="status">{t('common.loading')}</p>}
         {!catalogue.isPending && !items.length && (
           <p className="py-12 text-center text-sm text-muted-foreground">
-            {t('gallery.community_empty')}
+            {t(search.trim() ? 'gallery.no_matches' : 'gallery.community_empty')}
           </p>
         )}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

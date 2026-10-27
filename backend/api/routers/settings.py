@@ -168,7 +168,7 @@ def set_performance_profile(body: _PerformanceProfileBody):
 
 
 class _TorchCompileBody(BaseModel):
-    enabled: bool = Field(..., description="True to disable torch.compile (eager mode) for the engine")
+    enabled: bool = Field(..., description="True disables torch.compile and selects eager execution")
 
 
 def _torch_compile_state() -> dict:
@@ -181,22 +181,13 @@ def _torch_compile_state() -> dict:
 
 @router.get("/perf/torch-compile-disabled")
 def get_torch_compile_disabled():
-    """Return the current torch.compile-disabled toggle + the runtime platform.
-
-    `platform` is still reported (clients may show it), but since #2135 the
-    toggle is live on every host: it used to be rendered disabled off Windows
-    on the assumption that only #65's Windows OOM needed it, which left the
-    Linux/CUDA reporter of #2135 with no way to switch off the compile that
-    was killing their backend.
-    """
+    """Return the cross-platform compile-disable toggle and runtime platform."""
     return _torch_compile_state()
 
 
 @router.put("/perf/torch-compile-disabled")
 def set_torch_compile_disabled(body: _TorchCompileBody):
-    """Persist the toggle. Honoured by `services.engine_env.build_engine_env()`
-    (subprocess engines) and `services.engine_env.should_torch_compile()`
-    (in-process), on every platform since #2135."""
+    """Persist the toggle used by subprocess environments and in-process compile gates on every host."""
     from services import settings_store
 
     try:
@@ -1412,13 +1403,14 @@ def get_changelog(limit_versions: int = Query(5, ge=1, le=50)):
     frontend renders them safely without HTML. `available: false` when this
     install has no changelog (never an error: the viewer just hides)."""
     from core import changelog
+    from core.version import APP_VERSION
 
     path = changelog.changelog_path()
     if not path:
         return {"available": False, "releases": []}
     try:
         with open(path, encoding="utf-8") as fh:
-            releases = changelog.parse_changelog(fh.read(), limit_versions)
+            releases = changelog.parse_changelog(fh.read(), limit_versions, APP_VERSION)
     except Exception:
         logger.exception("changelog parse failed")
         return {"available": False, "releases": []}

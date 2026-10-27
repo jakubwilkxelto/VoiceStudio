@@ -5,7 +5,6 @@ import {
   ExternalLinkIcon,
   Globe2Icon,
   LoaderCircleIcon,
-  NetworkIcon,
   RefreshCwIcon,
   ShieldCheckIcon,
   TriangleAlertIcon,
@@ -17,12 +16,12 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { getBridge } from '@/components/bridge';
 import { apiJson, describeError } from '@/lib/api/client';
 import { SettingsRow, SettingsSection } from './settings-layout';
 import { McpBindingsSettings } from './mcp-bindings-settings';
 import { RemoteBackendSettings } from './remote-backend-settings';
+import { SharingPorts } from './sharing-ports';
 
 interface NetworkState {
   enabled: boolean;
@@ -36,13 +35,6 @@ interface NetworkCheck {
   bind_host: string | null;
   share_port: number | null;
   addresses: { address: string; listening: boolean }[];
-}
-
-interface PortInfo {
-  backend_port: number;
-  /** Null for the packaged app, whose UI is served from app:// rather than a port. */
-  ui_port: number | null;
-  share_port_base: number;
 }
 
 interface TailscaleStatus {
@@ -99,10 +91,6 @@ export function SharingSettings() {
     queryKey: ['network-share'],
     queryFn: ({ signal }) => apiJson<NetworkState>('/system/network/state', { signal }),
   });
-  const ports = useQuery({
-    queryKey: ['system-info'],
-    queryFn: ({ signal }) => apiJson<PortInfo>('/system/info', { signal }),
-  });
   const check = useQuery({
     queryKey: ['network-share-check'],
     queryFn: ({ signal }) => apiJson<NetworkCheck>('/system/network/check', { signal }),
@@ -115,18 +103,11 @@ export function SharingSettings() {
   const [confirming, setConfirming] = useState(false);
   const [networkBusy, setNetworkBusy] = useState(false);
   const [networkError, setNetworkError] = useState('');
-  const [sharePort, setSharePort] = useState('');
-  const [portBusy, setPortBusy] = useState(false);
-  const [portError, setPortError] = useState('');
   const [tailscaleBusy, setTailscaleBusy] = useState(false);
   const [tailscaleError, setTailscaleError] = useState('');
   const [tailscaleUrl, setTailscaleUrl] = useState('');
   const [tailscaleNote, setTailscaleNote] = useState('');
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (ports.data && !sharePort) setSharePort(String(ports.data.share_port_base));
-  }, [ports.data, sharePort]);
 
   useEffect(() => {
     const state = network.data;
@@ -197,27 +178,6 @@ export function SharingSettings() {
       setNetworkError(describeError(error));
     } finally {
       setNetworkBusy(false);
-    }
-  };
-
-  const savePort = async () => {
-    const value = Number(sharePort);
-    if (!Number.isInteger(value) || value < 1024 || value > 65535) {
-      setPortError(t('sharing.port_error'));
-      return;
-    }
-    setPortBusy(true);
-    setPortError('');
-    try {
-      await post('/system/set-env', { key: 'OMNIVOICE_SHARE_PORT', value: String(value) });
-      client.setQueryData<PortInfo>(['system-info'], (current) =>
-        current ? { ...current, share_port_base: value } : current,
-      );
-      toast.success(t('sharing.port_saved'));
-    } catch (error) {
-      setPortError(describeError(error));
-    } finally {
-      setPortBusy(false);
     }
   };
 
@@ -412,45 +372,7 @@ export function SharingSettings() {
         )}
       </SettingsSection>
 
-      {ports.data && (
-        <SettingsSection icon={NetworkIcon} title={t('sharing.ports_title')}>
-          <SettingsRow id="sharing-backend-port" title={t('sharing.backend_port')}>
-            <code className="rounded-md bg-muted px-2 py-1 text-xs">{ports.data.backend_port}</code>
-          </SettingsRow>
-          {ports.data.ui_port !== null && (
-            <SettingsRow id="sharing-ui-port" title={t('sharing.ui_port')}>
-              <code className="rounded-md bg-muted px-2 py-1 text-xs">{ports.data.ui_port}</code>
-            </SettingsRow>
-          )}
-          <SettingsRow
-            id="sharing-share-port"
-            title={t('sharing.lan_share_port')}
-            description={t('sharing.ports_note')}
-          >
-            <Input
-              type="number"
-              min={1024}
-              max={65535}
-              value={sharePort}
-              className="w-28 font-mono"
-              aria-label={t('sharing.lan_share_port')}
-              disabled={portBusy || state?.enabled}
-              onChange={(event) => {
-                setSharePort(event.target.value);
-                setPortError('');
-              }}
-            />
-            <Button size="sm" disabled={portBusy || state?.enabled} onClick={() => void savePort()}>
-              {portBusy ? t('common.saving') : t('common.save')}
-            </Button>
-          </SettingsRow>
-          {portError && (
-            <p role="alert" className="px-4 py-3 text-sm text-destructive">
-              {portError}
-            </p>
-          )}
-        </SettingsSection>
-      )}
+      <SharingPorts sharing={Boolean(state?.enabled)} />
 
       <SettingsSection icon={Globe2Icon} title={t('sharing.tailscale_title')}>
         <SettingsRow

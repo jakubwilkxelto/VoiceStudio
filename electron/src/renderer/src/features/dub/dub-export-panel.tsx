@@ -8,7 +8,13 @@ import { getBridge } from '@/components/bridge';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiPath, describeError, errorFromResponse } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
-import { BED_LEVEL_MAX, clampBedLevel, dubExportRequest, type DubExportFormat } from './dub-export';
+import {
+  BED_LEVEL_MAX,
+  clampBedLevel,
+  dubExportRequest,
+  syncDubTranscript,
+  type DubExportFormat,
+} from './dub-export';
 import { setDubExportPreferences, type DubSession } from './dub-session';
 
 export function DubExportPanel({ session, disabled }: { session: DubSession; disabled: boolean }) {
@@ -42,7 +48,10 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const pending = useRef(false);
   const tracks = ['original', ...session.tracks];
   const selected = tracks.filter((code) => !excluded.includes(code));
-  const choices = format === 'mp4' ? selected : session.tracks;
+  // Before any dub, the transcript still exports: as subtitles, or burned into
+  // the original video with its own audio (#3393).
+  const undubbed = session.tracks.length === 0;
+  const choices = format === 'mp4' ? selected : undubbed ? ['original'] : session.tracks;
   const track = choices.includes(trackChoice)
     ? trackChoice
     : choices.find((code) => code !== 'original') || choices[0] || '';
@@ -52,7 +61,9 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const ready =
     !!session.jobId &&
     !!track &&
-    (subtitles ? session.segments.length > 0 : session.tracks.length > 0);
+    (subtitles || (format === 'mp4' && undubbed)
+      ? session.segments.length > 0
+      : session.tracks.length > 0);
   const labels: Record<DubExportFormat, string> = {
     mp4: t('exportModal.mp4_h264'),
     wav: t('exportModal.wav_lossless'),
@@ -69,6 +80,8 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
     setSaving(true);
     setError(null);
     try {
+      if (undubbed && (subtitles || format === 'mp4'))
+        await syncDubTranscript(session.jobId!, session.segments);
       const request = dubExportRequest({
         jobId: session.jobId!,
         format,
@@ -173,8 +186,9 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
           </div>
         </div>
         {['mp4', 'wav', 'mp3'].includes(format) &&
+          !undubbed &&
           toggle(t('exportModal.bg_audio'), preserveBg, setPreserveBg)}
-        {['mp4', 'wav', 'mp3'].includes(format) && preserveBg && (
+        {['mp4', 'wav', 'mp3'].includes(format) && !undubbed && preserveBg && (
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between gap-3">
               <span id={bedLevelId}>{t('exportModal.bg_level')}</span>
@@ -224,6 +238,9 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         {subtitles && <p className="text-xs text-muted-foreground">{t('exportModal.subs_note')}</p>}
         {format === 'mp4' && !burnAllowed && (
           <p className="text-xs text-muted-foreground">{t('exportModal.stretch_subs_note')}</p>
+        )}
+        {undubbed && format === 'mp4' && session.segments.length > 0 && (
+          <p className="text-xs text-muted-foreground">{t('exportModal.undubbed_video_note')}</p>
         )}
         {!ready && (
           <p className="text-xs text-muted-foreground">{t('exportModal.nothing_selected')}</p>

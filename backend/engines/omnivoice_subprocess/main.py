@@ -157,7 +157,16 @@ def _skip_unused_heavy_imports():
     (image utils) whenever they are installed. Speech synthesis uses neither,
     and together they cost ~2 s of every cold start. They are blocked only for
     the omnivoice import, then unblocked, so later code can still import them.
+
+    transformers decides once per process whether each optional package is
+    installed and caches the answer. If it is already imported (the reference
+    ASR probe imports it before a clone without reference text), it may have
+    cached "installed" and would then import a blocked stub and fail every
+    later synthesis, so nothing is blocked in that case (#3551).
     """
+    if "transformers" in sys.modules:
+        yield
+        return
     blocked = [m for m in ("sklearn", "torchvision") if m not in sys.modules]
     for module in blocked:
         sys.modules[module] = None
