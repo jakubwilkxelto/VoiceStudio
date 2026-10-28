@@ -7,5 +7,9 @@
     "admin_badge": "Administratör",
     "sign_out": "Logga ut",
     "signed_in_as": "Inloggad som {{name}}"
+  },
+  "setup": {
+    "pending_title": "Servern konfigureras",
+    "pending_body": "En administratör slutför den första konfigurationen av den här VoiceStudio-servern. Sidan fortsätter av sig själv när allt är klart."
   }
 }

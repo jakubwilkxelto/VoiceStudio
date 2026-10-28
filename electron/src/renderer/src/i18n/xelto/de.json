@@ -7,5 +7,9 @@
     "admin_badge": "Admin",
     "sign_out": "Abmelden",
     "signed_in_as": "Angemeldet als {{name}}"
+  },
+  "setup": {
+    "pending_title": "Der Server wird eingerichtet",
+    "pending_body": "Ein Administrator schließt die Ersteinrichtung dieses VoiceStudio-Servers ab. Diese Seite geht automatisch weiter, sobald alles bereit ist."
   }
 }

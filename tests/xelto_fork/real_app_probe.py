@@ -71,6 +71,10 @@ with TestClient(main.app, base_url=PUBLIC_URL) as client:
     out["user_engine_select"] = client.post("/engines/select", headers=bearer(alice),
                                             json={"engine_id": "omnivoice"}).status_code
     out["admin_system_logs"] = client.get("/system/logs", headers=bearer(admin)).status_code
+    # A fresh data dir has no Hugging Face token: a notice only the admin can act on.
+    out["user_notifications"] = client.get("/system/notifications", headers=bearer(alice)).json()
+    out["admin_notification_ids"] = [n["id"] for n in client.get(
+        "/system/notifications", headers=bearer(admin)).json()["notifications"]]
     out["admin_settings_storage"] = client.get("/api/settings/storage",
                                                headers=bearer(admin)).status_code
     out["admin_network_enable"] = client.post("/system/network/enable",

@@ -7,5 +7,9 @@
     "admin_badge": "Administrador",
     "sign_out": "Pechar sesión",
     "signed_in_as": "Sesión iniciada como {{name}}"
+  },
+  "setup": {
+    "pending_title": "O servidor estase a configurar",
+    "pending_body": "Un administrador está rematando a configuración inicial deste servidor de VoiceStudio. Esta páxina continuará soa cando estea listo."
   }
 }

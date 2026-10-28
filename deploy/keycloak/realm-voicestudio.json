@@ -90,9 +90,9 @@
       "clientRoles": { "voicestudio": ["voicestudio-user"] }
     },
     {
-      "username": "admin",
+      "username": "studio-admin",
       "enabled": true,
-      "email": "admin@example.com",
+      "email": "studio-admin@example.com",
       "emailVerified": true,
       "firstName": "VoiceStudio",
       "lastName": "Admin",

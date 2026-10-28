@@ -7,5 +7,9 @@
     "admin_badge": "Admin",
     "sign_out": "Keluar",
     "signed_in_as": "Masuk sebagai {{name}}"
+  },
+  "setup": {
+    "pending_title": "Server sedang disiapkan",
+    "pending_body": "Administrator sedang menyelesaikan penyiapan awal server VoiceStudio ini. Halaman ini akan berlanjut sendiri setelah siap."
   }
 }

@@ -7,5 +7,9 @@
     "admin_badge": "Beheerder",
     "sign_out": "Afmelden",
     "signed_in_as": "Aangemeld als {{name}}"
+  },
+  "setup": {
+    "pending_title": "De server wordt ingericht",
+    "pending_body": "Een beheerder rondt de eerste configuratie van deze VoiceStudio-server af. Deze pagina gaat vanzelf verder zodra alles klaar is."
   }
 }

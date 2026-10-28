@@ -5,6 +5,20 @@ Funkcje i poprawki dodane w forku `jakubwilkxelto/VoiceStudio` ponad upstream
 
 ## Niewydane
 
+- Tryb wieloużytkownikowy, poprawki po pierwszym teście w Dockerze:
+  - **rozdzielenie danych działa na SQLite z obrazu Dockera (3.50).**
+    Wcześniej każde połączenie z bazą dla usera kończyło się błędem
+    („qualified table names are not allowed … within triggers”), bo testy
+    szły tylko na nowszym SQLite. Zapisy idą teraz na tabelę bazową, a cudze
+    wiersze są pomijane przez strażników. Do tego test DDL i skrypt
+    `scripts/xelto/test_in_image.sh`;
+  - `INSERT OR REPLACE` nie przejmuje już id wiersza demo ani wiersza bez
+    właściciela;
+  - kreator pierwszego uruchomienia przechodzi tylko admin, raz na serwer;
+    zwykły user widzi ekran czekania, dopóki serwer nie jest gotowy;
+  - powiadomienia systemowe (m.in. brak tokenu HF) widzi tylko admin;
+  - konto admina aplikacji w realmie to `studio-admin`, żeby nie myliło się
+    z kontem konsoli Keycloaka.
 - Tryb wieloużytkownikowy, faza P4 (utwardzenie):
   - pliki bez ustalonego właściciela są domyślnie odrzucane
     (`OMNIVOICE_MULTIUSER_FILES=strict`);

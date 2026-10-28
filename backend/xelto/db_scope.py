@@ -9,11 +9,11 @@ database (:mod:`xelto.store`), attached to each scoped connection.
 
 The connection also hides the two places where a view differs from a table:
 
-- ``cursor.rowcount`` of a write through a view is 0, so the cursor reports
-  the rows the scoping triggers counted instead;
-- an UPSERT cannot target a view, so ``INSERT INTO <user table> ... ON CONFLICT
-  ... DO UPDATE`` is sent to ``main.<user table>``, which the base-table
-  triggers still guard.
+- every write to a per-user table (INSERT, REPLACE, UPDATE, DELETE) is sent
+  to ``main.<user table>``, which the base-table triggers guard; the views
+  have no ``INSTEAD OF`` triggers (older SQLite cannot run them, see
+  :mod:`xelto.db_views`);
+- the cursor reports the rows the scoping triggers counted as ``rowcount``.
 
 The owner is bound when the connection opens. With no identity it is NULL:
 views show nothing and every write to a user table fails (fail closed).
@@ -79,20 +79,23 @@ def audit_enabled() -> bool:
 
 
 _TABLES = "|".join(USER_TABLES)
-# The table an UPSERT on a user table names; the alias keeps upstream's
-# "<table>.<column>" references inside DO UPDATE valid after the rewrite.
-_UPSERT_TARGET = re.compile(
-    rf"^(\s*INSERT\s+(?:OR\s+\w+\s+)?INTO\s+)({_TABLES})\b(?!\s*\.)(?!\s+AS\b)",
+# The table a write statement on a user table names, unqualified. The alias
+# keeps upstream's "<table>.<column>" references valid after the rewrite.
+_WRITE_TARGET = re.compile(
+    rf"^(\s*(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+)"
+    rf"({_TABLES})\b(?!\s*\.)(\s+AS\b)?",
     re.IGNORECASE,
 )
-_DO_UPDATE = re.compile(r"\bON\s+CONFLICT\b.*\bDO\s+UPDATE\b", re.IGNORECASE | re.DOTALL)
 
 
 def rewrite(sql: str) -> str:
-    """Send an UPSERT on a user table to the base table (views refuse UPSERT)."""
-    if not _DO_UPDATE.search(sql):
-        return sql
-    return _UPSERT_TARGET.sub(lambda m: f"{m.group(1)}main.{m.group(2)} AS {m.group(2)}", sql, count=1)
+    """Send a write on a per-user table to the base table, where its guards are."""
+    def target(m: re.Match) -> str:
+        if m.group(3):  # upstream's own alias
+            return f"{m.group(1)}main.{m.group(2)}{m.group(3)}"
+        return f"{m.group(1)}main.{m.group(2)} AS {m.group(2)}"
+
+    return _WRITE_TARGET.sub(target, sql, count=1)
 
 
 class XeltoCursor(sqlite3.Cursor):
@@ -175,6 +178,15 @@ def _scope_ddl(conn: sqlite3.Connection, path: str) -> list[str]:
         cached = _ddl_cache.get(key)
     if cached is not None:
         return cached
+    # The triggers name xelto_row_owner unqualified (older SQLite allows no
+    # other way), which would find a table of that name in main first.
+    if conn.execute(
+        "SELECT 1 FROM main.sqlite_master WHERE type = 'table' AND name = 'xelto_row_owner'"
+    ).fetchone():
+        raise sqlite3.OperationalError(
+            "xelto: omnivoice.db still holds xelto_row_owner; multi-user ownership lives in "
+            "xelto.db (restart to let the fork move it)"
+        )
     # A table that does not exist yet (a fresh install reads settings before
     # init_db) holds nothing to hide, and upstream expects "no such table"
     # errors to name its own tables. Creating a table bumps schema_version,
