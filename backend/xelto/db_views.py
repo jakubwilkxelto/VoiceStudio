@@ -32,6 +32,9 @@ USER_TABLES = (
 
 # The guard triggers' error message (the gate turns it into a 403).
 OWNERSHIP_REFUSAL = "xelto: row belongs to another user"
+# A write to a per-user table on a connection that acts for nobody: the work
+# lost its identity on the way (a thread or task the propagation patches miss).
+NO_IDENTITY_REFUSAL = "xelto: no identity for a write to a per-user table"
 
 # Rows every user may read but nobody may change through a scoped connection.
 SHARED_READ = {"voice_profiles": "is_demo = 1"}
@@ -77,6 +80,9 @@ def scope_ddl(table: str, cols: list[Column]) -> list[str]:
     return [
         # Guards on the base table, reached by INSTEAD OF bodies and by any
         # statement that names main.t explicitly.
+        f"""CREATE TEMP TRIGGER xelto_{table}_bn BEFORE INSERT ON main.{table}
+            WHEN xelto_owner() IS NULL
+            BEGIN SELECT RAISE(ABORT, '{NO_IDENTITY_REFUSAL}'); END""",
         f"""CREATE TEMP TRIGGER xelto_{table}_bi BEFORE INSERT ON main.{table}
             WHEN EXISTS (SELECT 1 FROM xelto.xelto_row_owner WHERE tbl = '{table}'
                          AND row_id = NEW.id AND owner <> xelto_owner())
@@ -144,5 +150,5 @@ def unscope_connection(conn: sqlite3.Connection, tables: tuple[str, ...] = USER_
     """Drop the scoping objects (before DDL, or to rebuild after a schema change)."""
     for table in tables:
         conn.execute(f"DROP VIEW IF EXISTS temp.{table}")
-        for suffix in ("bi", "ai", "bu", "au", "bd", "ad"):
+        for suffix in ("bn", "bi", "ai", "bu", "au", "bd", "ad"):
             conn.execute(f"DROP TRIGGER IF EXISTS temp.xelto_{table}_{suffix}")

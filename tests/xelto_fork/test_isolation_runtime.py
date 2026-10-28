@@ -51,8 +51,8 @@ def test_alice_keeps_access_to_her_own(probe):
     assert "xa-voice" in lists["voices"]
 
 
-def test_unaccounted_files_are_served_in_lenient_mode(probe):
-    assert probe["stray_for_bob"] == 200
+def test_unaccounted_files_are_refused_by_default(probe):
+    assert probe["stray_for_bob"] == 404
 
 
 def test_events_about_alices_data_reach_only_alice(probe):

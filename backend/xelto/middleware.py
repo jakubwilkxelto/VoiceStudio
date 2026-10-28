@@ -7,8 +7,9 @@ runs after it. For each request it:
 1. serves the sign-in endpoints (``/api/auth/oidc/*``) itself;
 2. resolves the caller (Keycloak JWT or session cookie; nothing upstream);
 3. applies the route policy and, for cookie callers, CSRF;
-4. checks that what the path names (a dub job, task, batch job, bundle or
-   file) belongs to the caller, answering 404 otherwise (:mod:`xelto.resolvers`);
+4. checks that what the path names (a dub job, task, batch job, bundle,
+   profile or file), and the ids a few routes take in their JSON body, belong
+   to the caller, answering 404 otherwise (:mod:`xelto.resolvers`);
 5. hands upstream an attached principal and a synthetic client address, so
    upstream gates that look at ``request.client.host`` cannot mistake a
    reverse proxy or an in-process caller for the trusted local machine;
@@ -20,7 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
+import time
 
 from starlette.requests import HTTPConnection
 from starlette.routing import Match, Mount
@@ -38,14 +41,18 @@ from xelto.authn import Authenticator, AuthResult
 from xelto.bff import PREFIX as SIGN_IN_PREFIX
 from xelto.bff import SignInEndpoints
 from xelto.config import ADMIN_PEER, USER_PEER
-from xelto.db_views import OWNERSHIP_REFUSAL
+from xelto.db_views import NO_IDENTITY_REFUSAL, OWNERSHIP_REFUSAL
 from xelto.identity import Identity, system_scope, use_identity
-from xelto.policy import Owner, RouteClass, classify, path_owner
-from xelto.resolvers import LIST_FILTERS, filter_list, visible
+from xelto.policy import BODY_OWNERS, Owner, RouteClass, classify, path_owner
+from xelto.resolvers import LIST_FILTERS, body_visible, filter_list, visible
 from xelto.resources import ResponseTap
+
+logger = logging.getLogger("omnivoice.xelto")
 
 ANONYMOUS_PEER = "192.0.2.30"
 _STATE_KEY = "auth_principal"  # core.auth._AUTH_STATE_KEY
+# Largest JSON body the gate reads to check the ids it names.
+MAX_CHECKED_BODY = 1024 * 1024
 
 
 def match_route(routes, scope: Scope) -> tuple[str | None, dict]:
@@ -130,7 +137,15 @@ class XeltoMultiUserMiddleware:
             if owner is not None and not await self._visible(owner, template, params, identity):
                 await _deny(scope, receive, send, 404, "Not Found")
                 return
+            body_owner = BODY_OWNERS.get((policy_method, template))
+            if body_owner is not None:
+                checked = await self._body_check(receive, body_owner, identity)
+                if isinstance(checked, tuple):
+                    await _deny(scope, receive, send, *checked)
+                    return
+                receive = checked
 
+        started_at = time.time()
         principal, peer = principal_and_peer(result)
         state = scope.setdefault("state", {})
         state["xelto_peer"] = scope.get("client")
@@ -143,7 +158,7 @@ class XeltoMultiUserMiddleware:
             if list_filter is not None:
                 out = _filtered(send, *list_filter, identity)
             elif route_class is not RouteClass.PUBLIC:
-                out = _tapped(send, ResponseTap(identity.sub))
+                out = _tapped(send, ResponseTap(identity.sub, started_at))
 
         async def tracked(message) -> None:
             nonlocal started
@@ -154,6 +169,15 @@ class XeltoMultiUserMiddleware:
             with use_identity(result.identity):
                 await self.app(scope, receive, tracked)
         except sqlite3.DatabaseError as exc:
+            if str(exc).startswith(NO_IDENTITY_REFUSAL):
+                # Work inside this request lost the caller's identity: a bug
+                # in the fork's propagation, never the caller's fault.
+                logger.error("xelto: %s %s wrote without an identity", method, template,
+                             exc_info=True)
+                if scope["type"] != "http" or started:
+                    raise
+                await _deny(scope, receive, send, 500, "internal error: request lost its identity")
+                return
             # The base-table guard refused a write: in practice a shared demo
             # voice, since other users' rows are not even visible.
             if scope["type"] != "http" or started or not str(exc).startswith(OWNERSHIP_REFUSAL):
@@ -166,6 +190,47 @@ class XeltoMultiUserMiddleware:
                 return visible(owner, template, params, identity, self._auth.settings.files_mode)
 
         return await asyncio.to_thread(check)
+
+    async def _body_check(self, receive: Receive, body_owner: tuple[str, Owner],
+                          identity: Identity) -> Receive | tuple[int, str]:
+        """Read the body, check the id it names, and hand upstream a replay of it."""
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                return 400, "request body incomplete"
+            chunk = message.get("body", b"")
+            size += len(chunk)
+            if size > MAX_CHECKED_BODY:
+                return 413, "request body too large"
+            chunks.append(chunk)
+            if not message.get("more_body"):
+                break
+        body = b"".join(chunks)
+        field, owner = body_owner
+        try:
+            data = json.loads(body) if body.strip() else {}
+        except ValueError:
+            data = None  # upstream answers malformed JSON itself
+        value = data.get(field) if isinstance(data, dict) else None
+
+        def check() -> bool:
+            with use_identity(identity):
+                return body_visible(owner, field, value, identity, self._auth.settings.files_mode)
+
+        if not await asyncio.to_thread(check):
+            return 404, "Not Found"
+        replayed = False
+
+        async def replay():
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        return replay
 
     def _refusal(self, route_class: RouteClass, method: str, result: AuthResult,
                  conn: HTTPConnection) -> tuple[int, str] | None:

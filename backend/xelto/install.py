@@ -27,10 +27,17 @@ def install(app, *, oidc_transport=None) -> None:
     # Users reach upstream as peers of this synthetic trusted network (see
     # xelto.config.USER_PEER); load_settings() refused any operator value.
     os.environ["OMNIVOICE_TRUSTED_NETWORKS"] = USER_PEER_NETWORK
+    from xelto import file_guard
+
+    file_guard.configured_mode = settings.files_mode
     _insert_middleware(app, settings, oidc_transport)
     _chain_migrations_after_init_db()
+    _build_as_system()
     _scope_data()
     logger.info("multi-user mode on: sign-in through %s", settings.issuer)
+    if settings.files_mode == "lenient":
+        logger.warning("multi-user mode: OMNIVOICE_MULTIUSER_FILES=lenient serves files no "
+                       "owner accounts for to every signed-in user; use it only to diagnose")
 
 
 def _check_browser_origin(settings: Settings) -> None:
@@ -100,6 +107,31 @@ def _chain_migrations_after_init_db() -> None:
     db.init_db = init_db
 
 
+def _build_as_system() -> None:
+    """Run the app build that follows ``install()`` in ``main.py`` as SYSTEM.
+
+    ``main`` calls ``_phase_a_build()`` at import time, after the hook; it
+    reads saved settings and preferences for nobody. Without a scope those
+    reads would open connections with no identity (and log as such).
+    """
+    import sys
+
+    module = sys.modules.get("main")
+    build = getattr(module, "_phase_a_build", None)
+    if build is None or getattr(build, "__xelto_wrapped__", False):
+        return
+
+    @functools.wraps(build)
+    def build_as_system(*args, __build=build, **kwargs):
+        from xelto.identity import system_scope
+
+        with system_scope():
+            return __build(*args, **kwargs)
+
+    build_as_system.__xelto_wrapped__ = True
+    module._phase_a_build = build_as_system
+
+
 def _scope_data() -> None:
     """Per-user rows (``get_db`` hook), identity carried into workers, dub job owners."""
     from services import dub_pipeline
@@ -126,7 +158,7 @@ def _scope_data() -> None:
 
 
 def _scope_routers() -> None:
-    """Owners for what two routers keep outside the database.
+    """Owners for what routers keep outside the database, and the files they open.
 
     Runs from the wrapped ``init_db`` (startup phase B): by then the deferred
     boot has imported the routers, and importing them from ``install()``
@@ -170,3 +202,42 @@ def _scope_routers() -> None:
 
         claiming.__xelto_wrapped__ = True
         project_bundles._directory = claiming
+
+    # Project bundles: an export packs the local files the client's project
+    # document names, always resolved through _asset(). Each must be one the
+    # caller may fetch, or the export fails as if the file were missing.
+    asset = project_bundles._asset
+    if not getattr(asset, "__xelto_wrapped__", False):
+        from core.safe_archive import ArchiveError
+
+        from xelto import file_guard
+
+        @functools.wraps(asset)
+        def owned_asset(value, roots, *args, __asset=asset, **kwargs):
+            path = __asset(value, roots, *args, **kwargs)
+            user = resources.acting_user()
+            if user is not None and not file_guard.path_allowed(path, user.sub):
+                raise ArchiveError(400, "Project references a missing or unsafe local asset")
+            return path
+
+        owned_asset.__xelto_wrapped__ = True
+        project_bundles._asset = owned_asset
+
+    # /ws/tts conditions on an emo_audio clip named by the client, resolved
+    # through resolve_emotion_clip(): it must be one the caller may fetch.
+    from api.routers import tts_stream
+
+    resolve = tts_stream.resolve_emotion_clip
+    if not getattr(resolve, "__xelto_wrapped__", False):
+        from xelto import file_guard
+
+        @functools.wraps(resolve)
+        def owned_clip(value, *args, __resolve=resolve, **kwargs):
+            path = __resolve(value, *args, **kwargs)
+            user = resources.acting_user()
+            if user is not None and not file_guard.path_allowed(path, user.sub):
+                raise ValueError(tts_stream.EMO_AUDIO_DETAIL)
+            return path
+
+        owned_clip.__xelto_wrapped__ = True
+        tts_stream.resolve_emotion_clip = owned_clip

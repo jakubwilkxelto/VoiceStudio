@@ -1,4 +1,5 @@
 """Who may fetch a served file, and how files learn their owners from responses."""
+import os
 import time
 
 import pytest
@@ -122,3 +123,54 @@ def test_tap_ignores_failures_and_binary_bodies(scoped_db, dirs):
     binary.start(_start(ctype=b"audio/wav"))
     binary.body(b"/audio/a.wav")
     assert resources.owner_of("audio/a.wav") is None
+
+
+def test_tap_claims_only_files_written_during_the_request(scoped_db, dirs):
+    old = dirs["outputs"] / "old.wav"
+    old.write_bytes(b"x")
+    hour_ago = time.time() - 3600
+    os.utime(old, (hour_ago, hour_ago))
+    tap = ResponseTap(ALICE.sub)
+    tap.start(_start())
+    tap.body(b'{"state": {"audio": "/audio/old.wav"}}')  # echoed from stored state
+    assert resources.owner_of("audio/old.wav") is None
+
+
+def test_tap_never_claims_voice_files(scoped_db, dirs):
+    (dirs["voices"] / "pa.wav").write_bytes(b"x")
+    tap = ResponseTap(BOB.sub)
+    tap.start(_start())
+    tap.body(b'{"ref": "/voice_audio/pa.wav"}')
+    assert resources.owner_of("voice_audio/pa.wav") is None
+
+
+def test_the_database_beats_a_wrong_claim(alice_data):
+    resources.claim("audio/gen1.wav", BOB.sub)  # e.g. learned from an echo
+    assert file_guard.verdict("audio/gen1.wav", ALICE.sub) is Verdict.MINE
+    assert file_guard.verdict("audio/gen1.wav", BOB.sub) is Verdict.OTHER
+
+
+def test_path_allowed_maps_data_folders_to_owners(alice_data, tmp_path, monkeypatch):
+    from xelto import hooks
+
+    dub = tmp_path / "dub_jobs"
+    (dub / "dj1").mkdir(parents=True)
+    monkeypatch.setattr(_config(), "DUB_DIR", str(dub))
+    for name in ("gen1.wav", "stray.wav"):
+        (alice_data["outputs"] / name).write_bytes(b"x")
+    (alice_data["voices"] / "pa.wav").write_bytes(b"x")
+    (dub / "dj1" / "original.mp4").write_bytes(b"x")
+    with use_identity(ALICE):
+        hooks.record_dub_owner("dj1")
+    try:
+        outputs, voices = alice_data["outputs"], alice_data["voices"]
+        assert file_guard.path_allowed(outputs / "gen1.wav", ALICE.sub, "strict")
+        assert not file_guard.path_allowed(outputs / "gen1.wav", BOB.sub, "strict")
+        assert file_guard.path_allowed(voices / "pa.wav", ALICE.sub, "strict")
+        assert not file_guard.path_allowed(voices / "pa.wav", BOB.sub, "lenient")
+        assert file_guard.path_allowed(dub / "dj1" / "original.mp4", ALICE.sub, "strict")
+        assert not file_guard.path_allowed(dub / "dj1" / "original.mp4", BOB.sub, "strict")
+        assert not file_guard.path_allowed(outputs / "stray.wav", ALICE.sub, "strict")
+        assert not file_guard.path_allowed(tmp_path / "elsewhere.wav", ALICE.sub, "lenient")
+    finally:
+        hooks.forget_dub_owners()

@@ -68,6 +68,13 @@ def dub_job_visible(job_id: str) -> bool:
         return True
     if identity is None:
         return False
+    # An unknown job is either not there at all (get_job returns None either
+    # way) or one nobody claimed, which no user may see.
+    return dub_job_owner(job_id) == identity.sub
+
+
+def dub_job_owner(job_id: str) -> str | None:
+    """Who created dub job ``job_id`` (live or saved); None if nobody is known."""
     key = str(job_id)
     with _dub_owners_lock:
         owner = _dub_owners.get(key)
@@ -76,9 +83,7 @@ def dub_job_visible(job_id: str) -> bool:
         if owner is not None:
             with _dub_owners_lock:
                 _dub_owners[key] = owner
-    # An unknown job is either not there at all (get_job returns None either
-    # way) or one nobody claimed, which no user may see.
-    return owner == identity.sub
+    return owner
 
 
 def forget_dub_owners() -> None:

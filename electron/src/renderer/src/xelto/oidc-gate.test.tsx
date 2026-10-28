@@ -2,7 +2,13 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import '@/i18n';
 import { XeltoOidcGate } from './oidc-gate';
-import { LAST_SUB_KEY, switchStoredUser, useXeltoUser } from './session';
+import {
+  KNOWN_DATABASES,
+  LAST_SUB_KEY,
+  clearBrowserStores,
+  switchStoredUser,
+  useXeltoUser,
+} from './session';
 
 const ALICE = {
   enabled: true,
@@ -153,5 +159,71 @@ describe('switchStoredUser', () => {
     const storage = memoryStorage({ theme: 'dark' });
     expect(switchStoredUser(storage, 'sub-alice')).toBe(false);
     expect(storage.getItem('theme')).toBe('dark');
+  });
+});
+
+function fakeDatabases(listed: string[] | null) {
+  const deleted: string[] = [];
+  const factory = {
+    deleteDatabase(name: string) {
+      deleted.push(name);
+      const request = {} as IDBOpenDBRequest;
+      queueMicrotask(() => request.onsuccess?.(new Event('success')));
+      return request;
+    },
+    ...(listed ? { databases: () => Promise.resolve(listed.map((name) => ({ name, version: 1 }))) } : {}),
+  } as unknown as IDBFactory;
+  return { factory, deleted };
+}
+
+describe('clearBrowserStores', () => {
+  it('clears sessionStorage and deletes every database', async () => {
+    const session = memoryStorage({ ov_pin: '1234' });
+    const { factory, deleted } = fakeDatabases(['voicestudio.workflow-runs', 'other-db']);
+    await clearBrowserStores({ session, databases: factory });
+    expect(session.length).toBe(0);
+    expect(deleted.sort()).toEqual(['other-db', 'voicestudio.workflow-runs']);
+  });
+
+  it('deletes the known databases where they cannot be listed', async () => {
+    const { factory, deleted } = fakeDatabases(null);
+    await clearBrowserStores({ session: null, databases: factory });
+    expect(deleted).toEqual(KNOWN_DATABASES);
+  });
+});
+
+describe('XeltoOidcGate and a previous user', () => {
+  it("clears the previous user's databases before rendering the app", async () => {
+    const { factory, deleted } = fakeDatabases(['voicestudio.workflow-runs']);
+    render(
+      <XeltoOidcGate
+        enabled
+        fetchMe={json(ALICE)}
+        redirect={vi.fn()}
+        storage={() => memoryStorage({ [LAST_SUB_KEY]: 'sub-bob', draft: 'his' })}
+        otherStores={() => ({ session: null, databases: factory })}
+      >
+        <Who />
+      </XeltoOidcGate>,
+    );
+    expect(await screen.findByText('user:alice')).toBeInTheDocument();
+    expect(deleted).toEqual(['voicestudio.workflow-runs']);
+  });
+
+  it('keeps the databases of the same user', async () => {
+    const { factory, deleted } = fakeDatabases(['voicestudio.workflow-runs']);
+    render(
+      <XeltoOidcGate
+        enabled
+        fetchMe={json(ALICE)}
+        redirect={vi.fn()}
+        storage={() => memoryStorage({ [LAST_SUB_KEY]: 'sub-alice' })}
+        otherStores={() => ({ session: null, databases: factory })}
+      >
+        <Who />
+      </XeltoOidcGate>,
+    );
+    expect(await screen.findByText('user:alice')).toBeInTheDocument();
+    await waitFor(() => expect(deleted).toEqual([]));
   });
 });

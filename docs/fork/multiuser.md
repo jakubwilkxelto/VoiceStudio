@@ -5,14 +5,14 @@ Docker. Pełny plan: `PLAN-26-10-2026.md`.
 
 ## Stan
 
-**Faza P3: logowanie i role działają, dane są rozdzielone per user.**
-Każdy widzi tylko swoje głosy, historię, dubbingi, projekty, glosariusze,
-eksporty i joby (patrz [Izolacja danych](#izolacja-danych-p2)), a także swoje
-pliki, zadania w tle, joby batch, paczki projektów i zdarzenia `/ws/events`
-(patrz [Pliki, pamięć i zdarzenia](#pliki-pamięć-i-zdarzenia-p3)).
-Pliki, których właściciela nie da się ustalić, są w trybie `lenient`
-(domyślnie do P4) **serwowane każdemu zalogowanemu** i logowane. Tryb
-`strict` je odrzuca.
+**Faza P4: tryb gotowy produkcyjnie dla ~10 userów.** Logowanie i role
+działają. Każdy widzi tylko swoje głosy, historię, dubbingi, projekty,
+glosariusze, eksporty i joby (patrz [Izolacja danych](#izolacja-danych-p2)),
+a także swoje pliki, zadania w tle, joby batch, paczki projektów i zdarzenia
+`/ws/events` (patrz [Pliki, pamięć i zdarzenia](#pliki-pamięć-i-zdarzenia-p3)).
+Domyślny jest tryb `strict`: plik, którego właściciela nie da się ustalić,
+nie jest serwowany nikomu (patrz [Utwardzenie](#utwardzenie-p4)). Dostęp
+programowy per user (MCP, back-channel logout) to P5.
 
 | Flaga | Zachowanie |
 |---|---|
@@ -75,7 +75,7 @@ Uwagi:
 | `OMNIVOICE_MULTIUSER_BOOTSTRAP_OWNER` | username albo `sub`; przy jego pierwszym logowaniu dostaje wszystkie istniejące dane bez właściciela |
 | `OMNIVOICE_MULTIUSER_DB` | opcjonalnie: ścieżka bazy forka (domyślnie `xelto.db` obok `omnivoice.db`) |
 | `OMNIVOICE_MULTIUSER_AUDIT=1` | loguje stos każdego połączenia z bazą otwartego bez tożsamości |
-| `OMNIVOICE_MULTIUSER_FILES` | `lenient` (domyślnie): plik bez ustalonego właściciela jest serwowany i logowany; `strict`: 404 |
+| `OMNIVOICE_MULTIUSER_FILES` | `strict` (domyślnie): plik bez ustalonego właściciela daje 404; `lenient`: serwowany każdemu zalogowanemu i logowany (tylko do diagnozy, ostrzeżenie przy starcie) |
 
 Serwer **nie wystartuje**, gdy brakuje którejś z wymaganych zmiennych, gdy
 ustawiono `OMNIVOICE_TRUSTED_NETWORKS` lub `OMNIVOICE_TRUST_HOST_LOOPBACK`,
@@ -83,8 +83,26 @@ gdy ustawiono `OMNIVOICE_API_KEY` bez zgody na klucz master, oraz gdy
 publiczny URL nie jest https albo nie ma go w `OMNIVOICE_ALLOWED_ORIGINS`.
 
 Uwaga dla deweloperów: `backend/main.py` wczytuje plik `.env` znaleziony
-w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
+w katalogach nadrzędnych (`dotenv.find_dotenv()` + `core/env_startup.py`,
+bez nadpisywania już ustawionych zmiennych). Jeśli jest w nim
 `OMNIVOICE_API_KEY`, tryb multiuser odmówi startu.
+
+### Lokalny test (bez TLS)
+
+Do próby na jednej maszynie służy nakładka `deploy/keycloak/docker-compose.local.yml`:
+`http://studio.localhost` i `http://auth.localhost` (przeglądarki rozwiązują
+`*.localhost` na tę maszynę), bez certyfikatów, z
+`OMNIVOICE_MULTIUSER_INSECURE_HTTP=1`. **Nie do produkcji.**
+
+```sh
+cp deploy/keycloak/.env.local.example deploy/keycloak/.env.local   # uzupełnij
+docker compose --env-file deploy/keycloak/.env.local \
+  -f deploy/docker-compose.keycloak.yml \
+  -f deploy/keycloak/docker-compose.local.yml up -d --build
+```
+
+Dwa konta naraz najłatwiej sprawdzić w dwóch profilach przeglądarki (albo
+w oknie zwykłym i incognito): ciasteczko sesji jest per profil.
 
 ## Jak to jest zbudowane
 
@@ -118,7 +136,9 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
      `ADMIN_SESSION`. Reverse proxy ani wywołanie z loopbacka nie dostaną więc
      uprawnień „lokalnej maszyny”;
   4. sprawdza właściciela tego, co wskazuje ścieżka (job dubbingu, zadanie,
-     job batch, paczka, plik), i odpowiada 404, gdy nie należy do wołającego (P3);
+     job batch, paczka, profil, plik) oraz id, które kilka tras bierze z ciała
+     JSON (`policy.BODY_OWNERS`), i odpowiada 404, gdy nie należy do
+     wołającego (P3, P4);
   5. uruchamia żądanie w kontekście tożsamości (`ContextVar`).
 - **Polityka tras** (`policy.py`) obejmuje wszystkie 360 tras. Klasy:
 
@@ -262,13 +282,68 @@ Bez nowych haków w upstreamie: wszystko robi brama i podmiana atrybutów moduł
   starcie routery importują się dopiero po `install()`.
 - `purge-user` usuwa też wpisy usera z `xelto_file_owner`. Pliki zostają na dysku.
 
+### Utwardzenie (P4)
+
+Bez nowych haków w upstreamie: brama, patche atrybutów modułów i triggery widoków.
+
+- **`strict` domyślnie.** Plik, którego nie wiąże z wołającym ani baza, ani
+  rejestr, daje 404. `lenient` zostaje jako przełącznik awaryjny do diagnozy.
+- **Brak tożsamości.** Zapis do tabeli usera bez tożsamości kończy się
+  błędem `xelto: no identity for a write to a per-user table` (trigger
+  `BEFORE INSERT`). Wcześniej też się nie udawał, ale z nieczytelnym
+  `NOT NULL constraint failed`. Brama zamienia go na 500 z logiem.
+  Każde połączenie bez tożsamości jest logowane (WARN), a
+  `OMNIVOICE_MULTIUSER_AUDIT=1` dodaje stos wywołań. Budowanie aplikacji przy
+  imporcie `main` (`_phase_a_build`, odczyt ustawień) działa w zakresie
+  SYSTEM, więc zwykły start nie loguje niczego.
+- **Id w ciele żądania** (`policy.BODY_OWNERS`): `POST /dub/ingest-url`
+  i `/dub/translate` przyjmują `job_id` od klienta. Brama czyta JSON (do
+  1 MB), a cudze id daje 404. Nowe id, którego nikt nie ma (brak
+  właściciela i katalogu), przechodzi. Naprawia to wyciek z P3: bob mógł
+  podać `job_id` alice, a upstream przy nieudanym pobraniu usuwał cały
+  katalog jej dubbingu. Pozostałe pola `*_id` tras USER są czytane przez
+  widoki (`policy.BODY_IDS_VIA_VIEWS`). Strażnik w `test_real_app.py`
+  czyta schemat OpenAPI i pada na każdym nowym polu `*_id`.
+- **Profile** (resolver `profile`): `/profiles/{id}*`, `/personas/export/{id}`,
+  `/marketplace/export/{id}`. Upstream czyta i zapisuje pliki nazwane id
+  profilu (portret, audio referencyjne) także wtedy, gdy wiersz jest
+  niewidoczny. Cudzy profil, albo pliki po nim bez wiersza, dają 404.
+- **Rejestr plików odporny na echo.** Baza decyduje przed rejestrem,
+  a `ResponseTap` rejestruje tylko pliki zapisane w trakcie żądania (mtime) i
+  nigdy pliki głosów. Wcześniej bob mógł zapisać ścieżkę pliku alice w stanie
+  swojego projektu, odczytać projekt i zostać właścicielem jej pliku.
+- **Pliki wskazane przez klienta**:
+  - eksport paczki projektu (`project_bundles._asset`): obcy plik jest
+    pomijany jak brakujący (pole dokumentu) albo eksport kończy się 400
+    (zasoby `handoff`);
+  - `emo_audio` w `/ws/tts` (`tts_stream.resolve_emotion_clip`) przyjmuje
+    tylko pliki wołającego.
+
+  Oba sprawdza `file_guard.path_allowed`.
+- **Preferencje dyktowania** (`/dictation/prefs`) są w globalnym `prefs.json`,
+  więc zapis jest dla admina, a odczyt dla wszystkich.
+- **Przeglądarka.** Przy zmianie usera, poza `localStorage`, czyszczone są
+  też `sessionStorage` i bazy IndexedDB. Upstream trzyma w
+  `voicestudio.workflow-runs` przebiegi workflow razem z audio.
+- **Ryzyka przyjęte świadomie**:
+  - `/dub/upload` z `job_id` istniejącego joba daje 409, więc zdradza, że
+    takie id istnieje. Id to 8 znaków hex, a odpowiedź nie daje dostępu;
+  - `sweep_retired_voice_files` sprawdza „czy plik jest jeszcze używany”
+    tylko w profilach wołającego. Pliki głosów mają prefiks id profilu, więc
+    wspólny plik praktycznie nie występuje;
+  - okładki audiobooków (`outputs/audiobook_covers/<12 hex>`) nie są
+    serwowane przez `/audio`. Ich ścieżkę zna tylko autor, a nazwa jest losowa;
+  - joby batch i ich właściciele są tylko w pamięci, tak jak w upstreamie,
+    więc restart serwera je kończy.
+
 ### Frontend (`electron/src/renderer/src/xelto/`, tylko build web)
 
 - `oidc-gate.tsx`: pyta `/api/auth/oidc/me`. 404 (brak trybu multiuser)
   oznacza zachowanie jak upstream. Bez sesji przekierowuje do logowania
   (z powrotem na tę samą stronę). Po 401 (sesja wygasła) loguje ponownie.
-  Przy zmianie użytkownika w tej samej przeglądarce czyści `localStorage`
-  poprzedniego (klucze `xelto_*` zostają).
+  Przy zmianie użytkownika w tej samej przeglądarce, zanim wyrenderuje
+  aplikację, czyści `localStorage` poprzedniego (klucze `xelto_*` zostają),
+  `sessionStorage` i bazy IndexedDB.
 - `user-menu.tsx`: nazwa, odznaka admina, „Wyloguj” (kończy też sesję w Keycloaku).
 - `admin-visibility.ts`: zwykły user widzi w Ustawieniach tylko białą listę
   (Ogólne, Wygląd, Wymowa, Wsparcie); nowe strony upstreamu są domyślnie ukryte.
@@ -294,8 +369,26 @@ Bez nowych haków w upstreamie: wszystko robi brama i podmiana atrybutów moduł
   - sonda `isolation_runtime_probe.py` na prawdziwej `main.app`: bob dostaje 404
     na pliki, zadania, joby batch, paczki i dubbing alice, jego listy są puste,
     a na `/ws/events` nie słyszy jej zdarzeń.
+- P4:
+  - `isolation_matrix_probe.py` (`test_isolation_matrix.py`): bob woła
+    **każdą** trasę USER z parametrem (65 za resolverami, 15 za widokami)
+    z id alice. Trasy za resolverami dają 404, żadna odpowiedź nie zawiera
+    danych alice, a jej wiersze i pliki są potem identyczne. Do tego id
+    w ciele, eksport paczek (zawartość zipa), echo ścieżek, `/dictation/prefs`,
+    `/v1/audio/speech` z jej głosem, `emo_audio` i każdy rodzaj zdarzenia
+    o danych usera;
+  - `e2e_probe.py` (`test_e2e_strict.py`), tryb `strict` + audyt, fałszywe
+    modele z testów upstreamu (silnik, ASR, demucs, licencje):
+    generowanie, klonowanie, dubbing (upload → przygotowanie → transkrypcja
+    → generowanie → pobranie), batch i audiobook. Alice dostaje swoje pliki,
+    bob 404, a log nie zawiera żadnego wpisu o braku tożsamości ani pliku
+    bez właściciela (kolektor ma test własny);
+  - wycieki, które naprawia P4, sprawdzone na kodzie z P3: sonda macierzy
+    pada tam na `ingest-url`, eksporcie paczek, echu ścieżek, preferencjach
+    dyktowania i `emo_audio`.
 - `electron/src/renderer/src/xelto/*.test.ts(x)`: stany bramki, zmiana
-  użytkownika, filtr admina, parytet tłumaczeń.
+  użytkownika (`localStorage`, `sessionStorage`, IndexedDB), filtr admina,
+  parytet tłumaczeń.
 - Smoke test 2026-10-27 na prawdziwym Keycloaku 26.4 z importem realmu:
   logowanie z wymuszoną zmianą hasła, role, CSRF, wylogowanie, konto
   serwisowe `voicestudio-cli` (Bearer). Wszystko zgodnie z oczekiwaniami.

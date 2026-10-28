@@ -7,7 +7,7 @@ from fastapi import HTTPException
 import core.db as db_module
 from core.db import db_conn, ensure_schema, get_db
 from xelto import db_scope, hooks
-from xelto.db_views import OWNERSHIP_REFUSAL
+from xelto.db_views import NO_IDENTITY_REFUSAL, OWNERSHIP_REFUSAL
 from xelto.identity import system_scope, use_identity
 
 from .conftest import ALICE, BOB
@@ -58,7 +58,8 @@ def test_no_identity_fails_closed(scoped_db):
         try:
             assert isinstance(conn, db_scope.XeltoConnection)
             assert conn.execute("SELECT COUNT(*) FROM voice_profiles WHERE is_demo = 0").fetchone()[0] == 0
-            with pytest.raises(sqlite3.IntegrityError):
+            # A clear refusal, not an orphan row nobody could see.
+            with pytest.raises(sqlite3.IntegrityError, match=NO_IDENTITY_REFUSAL):
                 conn.execute("INSERT INTO voice_profiles(id, name) VALUES ('x', 'x')")
         finally:
             conn.close()
@@ -150,6 +151,12 @@ def test_dub_job_cache_answers_only_its_owner(scoped_db):
         assert dub_pipeline.get_job("saved") is None
     with use_identity(None):
         assert dub_pipeline.get_job("live") is None
+
+
+def test_connections_without_identity_are_always_logged(scoped_db, caplog):
+    with use_identity(None):
+        get_db().close()
+    assert "opened with no identity" in caplog.text
 
 
 def test_audit_logs_connections_without_identity(scoped_db, monkeypatch, caplog):
