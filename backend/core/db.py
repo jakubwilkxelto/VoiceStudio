@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from core.config import DB_PATH
 from core import db_backup
 from core.version import APP_VERSION
+from xelto import db_scope as _xelto_db_scope  # XELTO: multi-user row scoping
 
 logger = logging.getLogger("omnivoice.db")
 
@@ -13,10 +14,11 @@ _TYPE_RE = re.compile(r"^[A-Za-z0-9_ '\"\(\)\-\.]+$")
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, factory=_xelto_db_scope.connection_class())  # XELTO: multi-user row scoping
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    _xelto_db_scope.on_connect(conn)  # XELTO: multi-user row scoping
     return conn
 
 

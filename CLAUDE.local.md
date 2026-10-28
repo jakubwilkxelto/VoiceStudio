@@ -72,3 +72,6 @@ git checkout dev && git merge main
 | `electron/src/renderer/src/features/settings/settings-page.tsx` | import + `useXeltoVisibleSettings(...)` wokół `extras` | tryb multiuser: ukrycie stron admina |
 | `electron/src/renderer/src/features/settings/settings-nav.tsx` | import + `useXeltoPinned(...)` wokół `pinned` | tryb multiuser: ukrycie modeli/narzędzi/logów |
 | `electron/src/renderer/src/components/command-palette.tsx` | import + `useXeltoCommands(...)` wokół `items` | tryb multiuser: ukrycie poleceń admina |
+| `backend/core/db.py` (`get_db`) | import + `factory=` w `sqlite3.connect` + `on_connect(conn)` | tryb multiuser: rozdzielenie wierszy (`xelto/db_scope.py`) |
+| `backend/core/tasks.py` (`add_task`, `worker`) | import + `capture()` w `add_task` + `enter(t)` w `worker` | tryb multiuser: tożsamość zadań w kolejce |
+| `backend/services/dub_pipeline.py` (`get_job`) | import + `dub_job_visible(job_id)` na początku | tryb multiuser: właściciel jobów dubbingu w pamięci |

@@ -15,6 +15,7 @@ runs after it. For each request it:
 from __future__ import annotations
 
 import json
+import sqlite3
 
 from starlette.requests import HTTPConnection
 from starlette.routing import Match, Mount
@@ -32,7 +33,8 @@ from xelto.authn import Authenticator, AuthResult
 from xelto.bff import PREFIX as SIGN_IN_PREFIX
 from xelto.bff import SignInEndpoints
 from xelto.config import ADMIN_PEER, USER_PEER
-from xelto.identity import use_identity
+from xelto.db_views import OWNERSHIP_REFUSAL
+from xelto.identity import system_scope, use_identity
 from xelto.policy import RouteClass, classify
 
 ANONYMOUS_PEER = "192.0.2.30"
@@ -78,6 +80,13 @@ class XeltoMultiUserMiddleware:
         self._sign_in = SignInEndpoints(auth)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "lifespan":
+            # Startup and shutdown act for nobody: sweeps, migrations and the
+            # workers started here use plain connections. Each queued task
+            # takes its submitter's identity (xelto.hooks, xelto.propagation).
+            with system_scope():
+                await self.app(scope, receive, send)
+            return
         if scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
             return
@@ -101,8 +110,22 @@ class XeltoMultiUserMiddleware:
         state["xelto_peer"] = scope.get("client")
         state[_STATE_KEY] = principal
         scope["client"] = (peer, 0)
-        with use_identity(result.identity):
-            await self.app(scope, receive, send)
+        started = False
+
+        async def tracked(message) -> None:
+            nonlocal started
+            started = started or message["type"] == "http.response.start"
+            await send(message)
+
+        try:
+            with use_identity(result.identity):
+                await self.app(scope, receive, tracked)
+        except sqlite3.DatabaseError as exc:
+            # The base-table guard refused a write: in practice a shared demo
+            # voice, since other users' rows are not even visible.
+            if scope["type"] != "http" or started or not str(exc).startswith(OWNERSHIP_REFUSAL):
+                raise
+            await _deny(scope, receive, send, 403, "This item is shared and read-only.")
 
     def _refusal(self, route_class: RouteClass, method: str, result: AuthResult,
                  conn: HTTPConnection) -> tuple[int, str] | None:

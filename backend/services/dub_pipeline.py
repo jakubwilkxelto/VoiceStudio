@@ -69,6 +69,7 @@ from services.proc_registry import (  # noqa: F401 — re-exports
     unregister_proc,
 )
 from core.db import db_conn
+from xelto import hooks as _xelto_hooks  # XELTO: multi-user dub job owners
 from core import event_bus
 from core import failure
 from core.logging_utils import log_safe
@@ -383,6 +384,7 @@ def get_job(job_id: str) -> Optional[dict]:
     """Look up a job. Checks the in-memory cache first, then falls back to
     `dub_history.job_data` so saved projects still resolve after restart.
     """
+    if not _xelto_hooks.dub_job_visible(job_id): return None  # XELTO: multi-user dub job owners
     with _dub_jobs_lock:
         if job_id in _dub_jobs:
             return _dub_jobs[job_id]

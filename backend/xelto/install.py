@@ -29,6 +29,7 @@ def install(app, *, oidc_transport=None) -> None:
     os.environ["OMNIVOICE_TRUSTED_NETWORKS"] = USER_PEER_NETWORK
     _insert_middleware(app, settings, oidc_transport)
     _chain_migrations_after_init_db()
+    _scope_data()
     logger.info("multi-user mode on: sign-in through %s", settings.issuer)
 
 
@@ -84,12 +85,39 @@ def _chain_migrations_after_init_db() -> None:
 
     @functools.wraps(original)
     def init_db(*args, **kwargs):
-        result = original(*args, **kwargs)
         from xelto import migrate
+        from xelto.identity import system_scope
 
-        # The same module's DB_PATH that init_db just used (tests repoint it).
-        migrate.upgrade(db.DB_PATH)
+        # Schema work acts for nobody, and must see the real tables.
+        with system_scope():
+            result = original(*args, **kwargs)
+            # The same module's DB_PATH that init_db just used (tests repoint it).
+            migrate.upgrade(db.DB_PATH)
         return result
 
     init_db.__xelto_wrapped__ = True
     db.init_db = init_db
+
+
+def _scope_data() -> None:
+    """Per-user rows (``get_db`` hook), identity carried into workers, dub job owners."""
+    from services import dub_pipeline
+
+    from xelto import db_scope, hooks, propagation
+
+    db_scope.activate()
+    propagation.install()
+    for name in ("put_job", "put_and_save_job"):
+        original = getattr(dub_pipeline, name)
+        if getattr(original, "__xelto_wrapped__", False):
+            continue
+
+        # Callers reach these through the module (dub_pipeline's own globals,
+        # dub_export's call-time import), so wrapping the attribute is enough.
+        def recording(job_id, *args, __original=original, **kwargs):
+            hooks.record_dub_owner(job_id)
+            return __original(job_id, *args, **kwargs)
+
+        functools.update_wrapper(recording, original)
+        recording.__xelto_wrapped__ = True
+        setattr(dub_pipeline, name, recording)
