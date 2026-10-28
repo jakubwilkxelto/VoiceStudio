@@ -4,10 +4,11 @@ Upstream serves these straight from disk to anyone allowed in. In multi-user
 mode a file is served when, in this order:
 
 1. it lies in a shared library subtree (gallery, archetype previews, marketplace);
-2. its claim in ``xelto_file_owner`` names the caller (see :mod:`xelto.resources`);
-3. the database ties it to the caller: a generation's ``audio_path``, a
+2. the database ties it to the caller: a generation's ``audio_path``, a
    longform render's job, or a voice profile's reference audio (shared demo
-   voices included).
+   voices included);
+3. failing that, its claim in ``xelto_file_owner`` names the caller (see
+   :mod:`xelto.resources`).
 
 A file owned by someone else is a 404. A file nothing accounts for is served
 and logged in ``lenient`` mode and refused in ``strict`` mode
@@ -16,6 +17,7 @@ and logged in ``lenient`` mode and refused in ``strict`` mode
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sqlite3
 from enum import Enum
@@ -41,13 +43,18 @@ def verdict(key: str, sub: str) -> Verdict:
     prefix, rel = key.split("/", 1)
     if rel.startswith(SHARED_SUBTREES.get(prefix, ())):
         return Verdict.SHARED
+    # The database first: a claim learned from a response can be wrong (an
+    # echoed path), a row's owner cannot.
+    try:
+        known = _from_database(prefix, rel, sub)
+    except sqlite3.Error:
+        logger.warning("xelto file guard: lookup failed for %s", key, exc_info=True)
+        known = Verdict.UNKNOWN
+    if known is not Verdict.UNKNOWN:
+        return known
     owner = resources.owner_of(key)
     if owner is None:
-        try:
-            return _from_database(prefix, rel, sub)
-        except sqlite3.Error:
-            logger.warning("xelto file guard: lookup failed for %s", key, exc_info=True)
-            return Verdict.UNKNOWN
+        return Verdict.UNKNOWN
     return Verdict.MINE if owner == sub else Verdict.OTHER
 
 
@@ -61,6 +68,39 @@ def allowed(key: str | None, sub: str, mode: str) -> bool:
         logger.warning("xelto file guard (lenient): serving unowned %s", key)
         return True
     return result is not Verdict.OTHER
+
+
+# The mode install() configured, for checks that run outside the gate.
+configured_mode = "strict"
+
+
+def path_allowed(path, sub: str, mode: str | None = None) -> bool:
+    """May ``sub`` use the file at ``path`` (any data folder, not only served ones)?
+
+    For upstream code that opens files a client names, such as a project bundle
+    export collecting a project's assets.
+    """
+    from core.config import DUB_DIR, OUTPUTS_DIR, VOICES_DIR
+
+    from xelto import hooks
+
+    mode = mode or configured_mode
+    real = os.path.realpath(str(path))
+
+    def under(root: str) -> str | None:
+        root = os.path.realpath(root)
+        return os.path.relpath(real, root).replace(os.sep, "/") if real.startswith(root + os.sep) else None
+
+    if (rel := under(DUB_DIR)) is not None:
+        return hooks.dub_job_owner(rel.split("/", 1)[0]) == sub
+    if (rel := under(VOICES_DIR)) is not None:
+        return allowed(resources.file_key("voice_audio", rel), sub, mode)
+    if (rel := under(OUTPUTS_DIR)) is not None:
+        if rel.startswith("project_handoff/"):
+            bundle = rel.split("/", 2)[1]
+            return resources.owner_of(f"bundle/{bundle}") == sub
+        return allowed(resources.file_key("audio", rel), sub, mode)
+    return False
 
 
 def _mine(owner: str | None, sub: str) -> Verdict:

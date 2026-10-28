@@ -157,7 +157,8 @@ def file_key(prefix: str, rel: str) -> str | None:
     return f"{prefix}/{'/'.join(parts)}"
 
 
-def existing_file_key(prefix: str, rel: str) -> str | None:
+def existing_file_key(prefix: str, rel: str, *, since: float | None = None) -> str | None:
+    """The key of an existing served file; with ``since``, only one written after it."""
     key = file_key(prefix, rel)
     if key is None:
         return None
@@ -165,7 +166,18 @@ def existing_file_key(prefix: str, rel: str) -> str | None:
     path = os.path.realpath(os.path.join(root, key[len(prefix) + 1:]))
     if not path.startswith(root + os.sep) or not os.path.isfile(path):
         return None
+    if since is not None:
+        try:
+            if os.path.getmtime(path) < since:
+                return None
+        except OSError:
+            return None
     return key
+
+
+# How far before the request a file may have been written and still count as
+# its output (coarse filesystem timestamps, clock steps).
+CLAIM_SLACK_SECONDS = 2.0
 
 
 class ResponseTap:
@@ -175,10 +187,16 @@ class ResponseTap:
     by chunk (keeping a tail so a URL split across chunks is still seen). Only
     files that exist are claimed, so API paths that look like file URLs
     (``/audio/voices``) are not.
+
+    A response may echo what the client stored (a project's state), so a path
+    in it proves nothing by itself. Only files written while the request ran
+    are claimed, and never voice files, whose owners come from their profiles.
+    The database wins over a claim either way (:func:`xelto.file_guard.verdict`).
     """
 
-    def __init__(self, owner: str) -> None:
+    def __init__(self, owner: str, started: float | None = None) -> None:
         self.owner = owner
+        self.since = (time.time() if started is None else started) - CLAIM_SLACK_SECONDS
         self.scan = False
         self._tail = ""
         self._seen: set[str] = set()
@@ -189,9 +207,10 @@ class ResponseTap:
             path = headers.get(b"x-audio-path")
             audio_id = headers.get(b"x-audio-id")
             if path:
-                self._claim(existing_file_key("audio", path.decode("latin-1")))
+                self._claim(existing_file_key("audio", path.decode("latin-1"), since=self.since))
             elif audio_id:
-                self._claim(existing_file_key("audio", audio_id.decode("latin-1") + ".wav"))
+                self._claim(existing_file_key("audio", audio_id.decode("latin-1") + ".wav",
+                                              since=self.since))
             ctype = headers.get(b"content-type", b"")
             self.scan = any(ctype.startswith(t) for t in _TEXT_TYPES)
 
@@ -200,9 +219,10 @@ class ResponseTap:
             return
         text = self._tail + chunk.decode("utf-8", "ignore")
         for prefix, rel in _URL.findall(text):
-            self._claim(existing_file_key(prefix, rel))
+            if prefix != "voice_audio":
+                self._claim(existing_file_key(prefix, rel, since=self.since))
         for rel in _OUTPUT.findall(text):
-            self._claim(existing_file_key("audio", rel))
+            self._claim(existing_file_key("audio", rel, since=self.since))
         self._tail = text[-_CARRY:]
 
     def _claim(self, key: str | None) -> None:

@@ -5,6 +5,23 @@ Funkcje i poprawki dodane w forku `jakubwilkxelto/VoiceStudio` ponad upstream
 
 ## Niewydane
 
+- Tryb wieloużytkownikowy, faza P4 (utwardzenie):
+  - pliki bez ustalonego właściciela są domyślnie odrzucane
+    (`OMNIVOICE_MULTIUSER_FILES=strict`);
+  - zapis bez tożsamości daje czytelny błąd i jest logowany;
+  - wersja web po zmianie usera czyści też `sessionStorage` i IndexedDB;
+  - lokalna nakładka do prób `deploy/keycloak/docker-compose.local.yml`;
+  - katalog tłumaczeń forka dla galicyjskiego (nowy język upstreamu).
+
+  Naprawione wycieki między userami:
+  - `POST /dub/ingest-url` z cudzym `job_id` mógł usunąć katalog cudzego dubbingu;
+  - eksport paczki projektu pakował cudze pliki;
+  - echo ścieżki w stanie własnego projektu dawało dostęp do cudzego pliku;
+  - `emo_audio` w `/ws/tts` czytał cudze pliki głosów;
+  - preferencje dyktowania były wspólne i każdy mógł je zmieniać (teraz tylko admin).
+
+  Nowe testy: pełna macierz izolacji (każda trasa per user) i E2E w trybie
+  `strict` na fałszywych modelach.
 - Tryb wieloużytkownikowy, faza P3: rozdzielone są pliki (`/audio`,
   `/voice_audio`, `/preview`), zadania w tle (`/tasks/*`), joby batch, paczki
   projektów, lista wznawialnych audiobooków i zdarzenia `/ws/events`. Cudze

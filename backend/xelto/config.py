@@ -51,7 +51,7 @@ class Settings:
     allow_master_key: bool
     insecure_http: bool
     bootstrap_owner: str
-    files_mode: str = "lenient"  # files nothing accounts for: "lenient" serves, "strict" refuses
+    files_mode: str = "strict"  # files nothing accounts for: "strict" refuses, "lenient" serves
 
     @property
     def secure_cookies(self) -> bool:
@@ -109,7 +109,7 @@ def load_settings() -> Settings:
             "OMNIVOICE_PUBLIC_URL must use https (set OMNIVOICE_MULTIUSER_INSECURE_HTTP=1 "
             "only for local testing)"
         )
-    files_mode = _env("OMNIVOICE_MULTIUSER_FILES").lower() or "lenient"
+    files_mode = _env("OMNIVOICE_MULTIUSER_FILES").lower() or "strict"
     if files_mode not in FILES_MODES:
         problems.append("OMNIVOICE_MULTIUSER_FILES must be one of: " + ", ".join(FILES_MODES))
     secret = _env("OMNIVOICE_MULTIUSER_SECRET")

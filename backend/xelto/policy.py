@@ -110,6 +110,9 @@ RULES: list[tuple[str, str, RouteClass]] = [
     (_ANY, "/community/*", U),
     (_ANY, "/pronunciation*", R),
     (_ANY, "/personalities", U),
+    # Dictation preferences live in the global prefs.json: one set for the
+    # server, which the admin chooses.
+    ("POST", "/dictation/prefs", A),
 
     # ── Per-user work.
     *((_ANY, glob, U) for glob in (
@@ -128,6 +131,7 @@ class Owner(str, Enum):
     DB_VIEW = "db-view"  # the handler reads it through the scoped views
     SHARED = "shared"  # a shared catalogue entry (gallery, models, ...)
     DUB = "dub"
+    PROFILE = "profile"
     TASK = "task"
     JOB = "job"
     BATCH = "batch"
@@ -150,15 +154,48 @@ PATH_OWNERS: list[tuple[str, str, Owner]] = [
     (_ANY, "/audiobook/resume/*", Owner.JOB),
     (_ANY, "/batch/*", Owner.BATCH),
     (_ANY, "/project-bundles/*", Owner.BUNDLE),
+    # Profile routes also touch files named after the id (portrait, reference
+    # audio) whether or not the row is visible, so the views are not enough.
+    *((_ANY, glob, Owner.PROFILE) for glob in (
+        "/profiles/*", "/personas/export/*", "/marketplace/export/*",
+    )),
     *((_ANY, glob, Owner.DB_VIEW) for glob in (
-        "/profiles/*", "/history/*", "/projects/*", "/glossary/*", "/jobs/*",
-        "/export/history/*", "/longform/jobs/*", "/personas/export/*", "/marketplace/export/*",
+        "/history/*", "/projects/*", "/glossary/*", "/jobs/*",
+        "/export/history/*", "/longform/jobs/*",
     )),
     *((_ANY, glob, Owner.SHARED) for glob in (
         "/archetypes/*", "/community/*", "/gallery/*", "/models/*", "/v1/models/*",
         "/pronunciation/*",
     )),
 ]
+
+
+# Ids a USER route takes in its body or query instead of its path:
+# (method, template) -> (field, owner check). Only JSON bodies are read.
+# Every *_id field of a USER route is listed here or in BODY_IDS_VIA_VIEWS:
+# tests/xelto_fork/test_real_app.py fails otherwise.
+BODY_OWNERS: dict[tuple[str, str], tuple[str, Owner]] = {
+    # Creates DUB_DIR/<job_id> and the prep task for an id the client picks.
+    ("POST", "/dub/ingest-url"): ("job_id", Owner.DUB),
+    ("POST", "/dub/translate"): ("job_id", Owner.DUB),
+}
+
+# Body or query ids that need no gate check: the handler looks them up only
+# through the scoped views, they name shared catalogue entries (models), or,
+# for /dub/upload, an existing job directory is refused with 409.
+BODY_IDS_VIA_VIEWS: dict[tuple[str, str], str] = {
+    ("GET", "/dictation/readiness"): "model_id",
+    ("GET", "/models/access/status"): "repo_id",
+    ("POST", "/dub/upload"): "job_id",
+    ("GET", "/jobs"): "project_id",
+    ("POST", "/batch/enqueue"): "voice_id",
+    ("POST", "/convert"): "profile_id",
+    ("POST", "/generate"): "profile_id",
+    ("POST", "/dub/generate/{job_id}"): "segment_ids",
+    ("POST", "/dub/preview-segment/{job_id}"): "profile_id,segment_id",
+    ("POST", "/profiles/{profile_id}/lock"): "history_id",
+    ("POST", "/project-bundles/export"): "project_id",
+}
 
 
 def path_owner(method: str, template: str) -> Owner | None:

@@ -13,7 +13,15 @@ _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "scripts" / "xelto"))
 from dump_unclassified_routes import UNCLASSIFIED, snapshot_routes, unclassified  # noqa: E402
 
-from xelto.policy import DEFAULT_CLASS, Owner, RouteClass, classify, path_owner  # noqa: E402
+from xelto.policy import (  # noqa: E402
+    BODY_IDS_VIA_VIEWS,
+    BODY_OWNERS,
+    DEFAULT_CLASS,
+    Owner,
+    RouteClass,
+    classify,
+    path_owner,
+)
 from xelto.resolvers import RESOLVERS  # noqa: E402
 
 _REGEN = "uv run python scripts/xelto/dump_unclassified_routes.py"
@@ -77,3 +85,23 @@ def test_file_mounts_and_file_routes_are_guarded():
 
 def test_every_owner_check_except_views_and_shared_has_a_resolver():
     assert set(Owner) - set(RESOLVERS) == {Owner.DB_VIEW, Owner.SHARED}
+
+
+def test_body_id_tables_name_live_user_routes():
+    routes = set(snapshot_routes())
+    for method, path in [*BODY_OWNERS, *BODY_IDS_VIA_VIEWS]:
+        assert (method, path) in routes, f"{method} {path} is not in the route snapshot"
+        assert classify(method, path)[0] is RouteClass.USER, f"{method} {path}"
+    assert all(owner in RESOLVERS for _, owner in BODY_OWNERS.values())
+
+
+def test_profile_routes_check_the_profile_owner():
+    for method, path in (("DELETE", "/profiles/{profile_id}"), ("PUT", "/profiles/{profile_id}/image"),
+                         ("GET", "/profiles/{profile_id}/audio"),
+                         ("POST", "/personas/export/{profile_id}")):
+        assert path_owner(method, path) is Owner.PROFILE, path
+
+
+def test_dictation_preferences_are_the_admins():
+    assert classify("POST", "/dictation/prefs")[0] is RouteClass.ADMIN
+    assert classify("GET", "/dictation/prefs")[0] is RouteClass.USER

@@ -1,0 +1,29 @@
+# ──────────────────────────────────────────────────────────────
+#  Local trial of the multi-user server (XELTO fork): plain http on
+#  studio.localhost and auth.localhost, which browsers resolve to this machine.
+#  Not for production: no TLS, insecure-http switch on. Guide: docs/fork/multiuser.md
+#
+#    cp deploy/keycloak/.env.local.example deploy/keycloak/.env.local   # fill in
+#    docker compose --env-file deploy/keycloak/.env.local \
+#      -f deploy/docker-compose.keycloak.yml \
+#      -f deploy/keycloak/docker-compose.local.yml up -d --build
+# ──────────────────────────────────────────────────────────────
+
+services:
+  voicestudio:
+    environment:
+      - OMNIVOICE_PUBLIC_URL=http://studio.localhost
+      - OMNIVOICE_ALLOWED_ORIGINS=http://studio.localhost
+      - OMNIVOICE_MULTIUSER_INSECURE_HTTP=1
+      - OIDC_ISSUER=http://auth.localhost/realms/voicestudio
+
+  keycloak:
+    environment:
+      - KC_HOSTNAME=http://auth.localhost
+      - VOICESTUDIO_PUBLIC_URL=http://studio.localhost
+
+  proxy:
+    ports: !override
+      - "80:80"
+    volumes:
+      - ./keycloak/Caddyfile.local:/etc/caddy/Caddyfile:ro

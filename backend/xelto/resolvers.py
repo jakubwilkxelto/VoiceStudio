@@ -16,9 +16,10 @@ The same owners filter the three lists upstream builds outside the database
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 
-from xelto import file_guard, hooks, resources
+from xelto import file_guard, hooks, resources, store
 from xelto.identity import Identity
 from xelto.policy import Owner
 
@@ -32,6 +33,59 @@ def _param(params: dict, *names: str) -> str:
 
 def _dub(params: dict, identity: Identity, _mode: str, _template: str) -> bool:
     return hooks.dub_job_visible(_param(params, "job_id", "history_id"))
+
+
+def _dub_body(params: dict, identity: Identity, _mode: str, _template: str) -> bool:
+    """A job id the client picks: its own job, or one nobody holds yet."""
+    from core.config import DUB_DIR
+
+    job_id = _param(params, "job_id")
+    if not job_id or hooks.dub_job_visible(job_id):
+        return True
+    if hooks.dub_job_owner(job_id) is not None:
+        return False
+    # Nobody is recorded, but a directory by that name is someone's work.
+    return not os.path.lexists(os.path.join(DUB_DIR, job_id))
+
+
+_PROFILE_SEPARATORS = (".", "-", "_")
+
+
+def _profile(params: dict, identity: Identity, _mode: str, _template: str) -> bool:
+    """The caller's profile, a shared demo voice, or an id that names nothing.
+
+    Upstream's profile routes read and write files named after the id
+    (``<id>.portrait.jpg``, reference audio) even when the scoped row is not
+    visible, so another user's id must stop at the gate.
+    """
+    from core.config import VOICES_DIR
+
+    profile_id = _param(params, "profile_id")
+    if not profile_id:
+        return True
+    conn = store.connect_both()
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(p.is_demo, 0), o.owner FROM main.voice_profiles AS p "
+            "LEFT JOIN xelto.xelto_row_owner AS o ON o.tbl = 'voice_profiles' AND o.row_id = p.id "
+            "WHERE p.id = ?",
+            (profile_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is not None:
+        is_demo, owner = row
+        return bool(is_demo) or owner == identity.sub
+    # No such profile: upstream answers 404 itself, unless files by that name
+    # remain (another user's leftovers), which the handler would touch.
+    try:
+        names = os.listdir(VOICES_DIR)
+    except OSError:
+        return True
+    return not any(
+        name.startswith(profile_id) and name[len(profile_id):len(profile_id) + 1] in _PROFILE_SEPARATORS
+        for name in names
+    )
 
 
 def _task(params: dict, identity: Identity, _mode: str, _template: str) -> bool:
@@ -75,6 +129,7 @@ def _file(params: dict, identity: Identity, mode: str, template: str) -> bool:
 
 RESOLVERS: dict[Owner, Callable[[dict, Identity, str, str], bool]] = {
     Owner.DUB: _dub,
+    Owner.PROFILE: _profile,
     Owner.TASK: _task,
     Owner.JOB: _job,
     Owner.BATCH: _batch,
@@ -89,6 +144,22 @@ def visible(owner: Owner, template: str, params: dict, identity: Identity, mode:
     if resolver is None or not params:  # DB_VIEW / SHARED, or nothing named
         return True
     return resolver(params, identity, mode, template)
+
+
+# Body ids get their own checks where "new" is legitimate (the client picks it).
+BODY_RESOLVERS: dict[Owner, Callable[[dict, Identity, str, str], bool]] = {
+    Owner.DUB: _dub_body,
+}
+
+
+def body_visible(owner: Owner, field: str, value, identity: Identity, mode: str) -> bool:
+    """May ``identity`` name ``value`` in the body field ``field``?"""
+    if value is None or value == "":
+        return True
+    if not isinstance(value, (str, int)):
+        return False  # an id in an unexpected shape: refuse rather than guess
+    resolver = BODY_RESOLVERS.get(owner) or RESOLVERS[owner]
+    return resolver({field: str(value)}, identity, mode, "")
 
 
 # ── Lists built outside the database ────────────────────────────────────────

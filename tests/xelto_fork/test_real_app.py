@@ -50,3 +50,18 @@ def test_admin_passes_the_real_upstream_admin_gates(probe):
     assert probe["admin_system_logs"] == 200
     assert probe["admin_settings_storage"] == 200
     assert probe["admin_network_enable"] == 403  # DISABLED for everyone
+
+
+def test_every_id_a_user_route_takes_outside_its_path_is_accounted_for(probe):
+    """A new body or query id upstream adds must be checked by the gate or known safe."""
+    from xelto.policy import BODY_IDS_VIA_VIEWS, BODY_OWNERS
+
+    known = {f"{m} {p}": {field} for (m, p), (field, _) in BODY_OWNERS.items()}
+    for (m, p), names in BODY_IDS_VIA_VIEWS.items():
+        known.setdefault(f"{m} {p}", set()).update(names.split(","))
+    missing = {route: sorted(set(ids) - known.get(route, set()))
+               for route, ids in probe["body_ids"].items() if set(ids) - known.get(route, set())}
+    assert not missing, (
+        "USER routes take ids outside their path that the gate does not know about; add them "
+        f"to BODY_OWNERS or BODY_IDS_VIA_VIEWS in backend/xelto/policy.py: {missing}"
+    )

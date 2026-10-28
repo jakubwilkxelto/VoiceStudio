@@ -10,8 +10,10 @@ import { useXt } from './i18n';
 import {
   ME_PATH,
   XeltoUserContext,
+  clearBrowserStores,
   signInUrl,
   switchStoredUser,
+  type BrowserStores,
   type XeltoUser,
 } from './session';
 
@@ -30,6 +32,8 @@ export interface OidcGateProps {
   fetchMe?: () => Promise<Response>;
   redirect?: (url: string) => void;
   storage?: () => Storage | null;
+  /** What else a previous user left in this browser (sessionStorage, IndexedDB). */
+  otherStores?: () => BrowserStores;
 }
 
 const fetchMeDefault = () => fetch(apiPath(ME_PATH), { credentials: 'include' });
@@ -43,12 +47,29 @@ function browserStorage(): Storage | null {
   }
 }
 
+function browserOtherStores(): BrowserStores {
+  let session: Storage | null = null;
+  let databases: IDBFactory | null = null;
+  try {
+    session = window.sessionStorage;
+  } catch {
+    // Blocked storage.
+  }
+  try {
+    databases = window.indexedDB ?? null;
+  } catch {
+    // Blocked storage.
+  }
+  return { session, databases };
+}
+
 export function XeltoOidcGate({
   children,
   enabled = __WEB_DEPLOYMENT__,
   fetchMe = fetchMeDefault,
   redirect = redirectDefault,
   storage = browserStorage,
+  otherStores = browserOtherStores,
 }: OidcGateProps) {
   const xt = useXt();
   const [state, setState] = useState<GateState>(enabled ? { kind: 'checking' } : { kind: 'off' });
@@ -73,13 +94,16 @@ export function XeltoOidcGate({
           return;
         }
         const store = storage();
+        let switched = false;
         if (store) {
           try {
-            switchStoredUser(store, me.sub);
+            switched = switchStoredUser(store, me.sub);
           } catch {
             // Blocked storage: nothing of a previous user to clear either.
           }
         }
+        if (switched) await clearBrowserStores(otherStores());
+        if (cancelled) return;
         setState({ kind: 'signed-in', user: me });
       })
       .catch(() => {
@@ -89,7 +113,7 @@ export function XeltoOidcGate({
     return () => {
       cancelled = true;
     };
-  }, [enabled, fetchMe, redirect, storage]);
+  }, [enabled, fetchMe, redirect, storage, otherStores]);
 
   useEffect(() => {
     if (state.kind !== 'signed-in') return;

@@ -197,11 +197,17 @@ def on_connect(conn: sqlite3.Connection) -> None:
         return
     identity = current_identity.get()
     owner = identity.sub if identity is not None else None
-    if owner is None and audit_enabled():
-        logger.warning(
-            "xelto audit: database connection opened with no identity\n%s",
-            "".join(traceback.format_stack(limit=12)[:-1]),
-        )
+    if owner is None:
+        # Always worth knowing: the work lost its identity, so it sees nothing
+        # and cannot write. The audit flag adds where it happened.
+        if audit_enabled():
+            logger.warning(
+                "xelto audit: database connection opened with no identity\n%s",
+                "".join(traceback.format_stack(limit=12)[:-1]),
+            )
+        else:
+            logger.warning("xelto: database connection opened with no identity "
+                           "(OMNIVOICE_MULTIUSER_AUDIT=1 logs where)")
     path = conn.execute("PRAGMA database_list").fetchone()[2]
     conn._xelto_path = path
     conn._xelto_owner = owner

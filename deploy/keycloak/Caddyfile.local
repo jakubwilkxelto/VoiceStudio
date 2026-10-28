@@ -1,0 +1,10 @@
+# Local trial (docker-compose.local.yml): plain http, no certificates.
+
+http://studio.localhost {
+	encode zstd gzip
+	reverse_proxy voicestudio:3900
+}
+
+http://auth.localhost {
+	reverse_proxy keycloak:8080
+}

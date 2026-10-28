@@ -21,7 +21,42 @@ def bearer(user):
     return {"authorization": f"Bearer {idp.access_token(user)}"}
 
 
+def body_ids(app) -> dict[str, list[str]]:
+    """``*_id`` fields of USER routes' JSON/form bodies and query strings."""
+    import re
+
+    from xelto.policy import RouteClass, classify
+
+    spec = app.openapi()
+    schemas = spec.get("components", {}).get("schemas", {})
+
+    def fields(schema, depth=0) -> set[str]:
+        if depth > 4 or not isinstance(schema, dict):
+            return set()
+        if "$ref" in schema:
+            return fields(schemas.get(schema["$ref"].rsplit("/", 1)[-1], {}), depth + 1)
+        names = set(schema.get("properties") or {})
+        for key in ("allOf", "anyOf", "oneOf"):
+            for child in schema.get(key, []):
+                names |= fields(child, depth + 1)
+        return names
+
+    found = {}
+    for path, ops in spec["paths"].items():
+        for method, op in ops.items():
+            if classify(method.upper(), path)[0] is not RouteClass.USER:
+                continue
+            names = {p["name"] for p in op.get("parameters", []) if p.get("in") == "query"}
+            for content in op.get("requestBody", {}).get("content", {}).values():
+                names |= fields(content.get("schema", {}))
+            ids = sorted(n for n in names if re.search(r"(^|_)ids?$", n))
+            if ids:
+                found[f"{method.upper()} {path}"] = ids
+    return found
+
+
 out = {}
+out["body_ids"] = body_ids(main.app)
 snapshot = {ln.strip() for ln in SNAPSHOT.read_text(encoding="utf-8").splitlines()
             if ln.strip() and not ln.startswith("#")}
 out["routes_unchanged"] = set(route_lines(main.app)) == snapshot

@@ -53,3 +53,47 @@ export function switchStoredUser(storage: Storage, sub: string): boolean {
   storage.setItem(LAST_SUB_KEY, sub);
   return cleared;
 }
+
+/** IndexedDB databases upstream creates, for browsers without `indexedDB.databases()`. */
+export const KNOWN_DATABASES = ['voicestudio.workflow-runs'];
+
+export interface BrowserStores {
+  session: Storage | null;
+  databases: IDBFactory | null;
+}
+
+/**
+ * The rest of a previous user's browser state, after `switchStoredUser` found
+ * a different user: sessionStorage and every IndexedDB database (upstream keeps
+ * workflow runs, rendered audio included, in one). Runs before the app renders,
+ * so nothing holds a database open; a blocked or failed delete is skipped.
+ */
+export async function clearBrowserStores({ session, databases }: BrowserStores): Promise<void> {
+  try {
+    session?.clear();
+  } catch {
+    // Blocked storage holds nothing to clear.
+  }
+  if (!databases) return;
+  const names = new Set(KNOWN_DATABASES);
+  try {
+    if (typeof databases.databases === 'function') {
+      for (const info of await databases.databases()) if (info.name) names.add(info.name);
+    }
+  } catch {
+    // Listing is optional; the known names are still deleted.
+  }
+  await Promise.all(
+    [...names].map(
+      (name) =>
+        new Promise<void>((resolve) => {
+          try {
+            const request = databases.deleteDatabase(name);
+            request.onsuccess = request.onerror = request.onblocked = () => resolve();
+          } catch {
+            resolve();
+          }
+        }),
+    ),
+  );
+}
