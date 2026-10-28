@@ -51,8 +51,7 @@ def _insert_middleware(app, settings: Settings, oidc_transport) -> None:
     preflights and the gate's own refusals carrying CORS and the backend marker
     (#1385), while every upstream auth gate still runs after it.
     """
-    from core import db
-
+    from xelto import store
     from xelto.authn import Authenticator
     from xelto.middleware import XeltoMultiUserMiddleware
     from xelto.oidc import OidcClient
@@ -63,7 +62,7 @@ def _insert_middleware(app, settings: Settings, oidc_transport) -> None:
     auth = Authenticator(
         settings,
         OidcClient(settings, transport=oidc_transport),
-        SessionStore(lambda: db.DB_PATH, settings.secret),
+        SessionStore(store.db_path, settings.secret),
     )
     entry = Middleware(XeltoMultiUserMiddleware, routes_app=app, auth=auth)
     stack = app.user_middleware
@@ -91,8 +90,9 @@ def _chain_migrations_after_init_db() -> None:
         # Schema work acts for nobody, and must see the real tables.
         with system_scope():
             result = original(*args, **kwargs)
-            # The same module's DB_PATH that init_db just used (tests repoint it).
-            migrate.upgrade(db.DB_PATH)
+            # The fork's own database next to the one init_db just used
+            # (tests repoint core.db.DB_PATH).
+            migrate.upgrade_for(db.DB_PATH)
         return result
 
     init_db.__xelto_wrapped__ = True

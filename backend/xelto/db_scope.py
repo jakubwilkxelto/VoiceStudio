@@ -4,7 +4,8 @@ The target of the hook in ``get_db``. While multi-user mode is active, a
 connection opened for a user (or for nobody) is a :class:`XeltoConnection`
 whose per-user tables are shadowed by the views from :mod:`xelto.db_views`;
 one opened in the :data:`~xelto.identity.SYSTEM` scope, or with the mode off,
-is a plain ``sqlite3.Connection``.
+is a plain ``sqlite3.Connection``. Ownership is kept in the fork's own
+database (:mod:`xelto.store`), attached to each scoped connection.
 
 The connection also hides the two places where a view differs from a table:
 
@@ -26,6 +27,7 @@ import sqlite3
 import threading
 import traceback
 
+from xelto import store
 from xelto.db_views import USER_TABLES, RowCounter, columns, schema_version, scope_ddl
 from xelto.identity import current_identity
 
@@ -206,5 +208,6 @@ def on_connect(conn: sqlite3.Connection) -> None:
     conn._xelto_counter = RowCounter()
     conn.create_function("xelto_owner", 0, lambda: owner)
     conn.create_function("xelto_count", 0, conn._xelto_counter)
+    store.attach(conn, path)  # ownership lives in the fork's own database
     for stmt in _scope_ddl(conn, path):
         sqlite3.Connection.execute(conn, stmt)

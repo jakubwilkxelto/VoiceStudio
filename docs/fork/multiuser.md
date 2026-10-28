@@ -52,8 +52,9 @@ Uwagi:
   noszą publiczny issuer `https://auth…/realms/voicestudio`.
 - Konsola admina Keycloaka (`/admin`) jest dostępna z internetu. Jeśli to
   niepożądane, ogranicz ją w Caddyfile (np. `@admin path /admin*` + lista IP).
-- Kopia zapasowa: wolumen `voicestudio-data` (`omnivoice.db` + pliki) oraz
-  baza Keycloaka (`keycloak-db`).
+- Kopia zapasowa: wolumen `voicestudio-data` (`omnivoice.db`, `xelto.db`
+  i pliki) oraz baza Keycloaka (`keycloak-db`). Obie bazy SQLite kopiuj
+  razem: `xelto.db` mówi, czyje są wiersze w `omnivoice.db`.
 
 ### Zmienne środowiskowe backendu
 
@@ -70,6 +71,7 @@ Uwagi:
 | `OMNIVOICE_MULTIUSER_ALLOW_MASTER_KEY=1` | awaryjnie: `OMNIVOICE_API_KEY` jako Bearer admina |
 | `OMNIVOICE_MULTIUSER_INSECURE_HTTP=1` | tylko testy lokalne: zezwala na `http://` |
 | `OMNIVOICE_MULTIUSER_BOOTSTRAP_OWNER` | username albo `sub`; przy jego pierwszym logowaniu dostaje wszystkie istniejące dane bez właściciela |
+| `OMNIVOICE_MULTIUSER_DB` | opcjonalnie: ścieżka bazy forka (domyślnie `xelto.db` obok `omnivoice.db`) |
 | `OMNIVOICE_MULTIUSER_AUDIT=1` | loguje stos każdego połączenia z bazą otwartego bez tożsamości |
 
 Serwer **nie wystartuje**, gdy brakuje którejś z wymaganych zmiennych, gdy
@@ -132,9 +134,20 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
 - **Tożsamość** (`identity.py`): `ContextVar`. `None` oznacza brak
   tożsamości (fail-closed), `SYSTEM` to start aplikacji i migracje.
   `asyncio.to_thread` przenosi ją sam; resztę załatwia `propagation.py` (P2).
+- **Osobna baza forka** (`store.py`): wszystkie tabele `xelto_*` (konta,
+  sesje, własność wierszy, metadane, historia migracji) są w pliku `xelto.db`
+  obok `omnivoice.db` (albo w `OMNIVOICE_MULTIUSER_DB`). W `omnivoice.db` nie
+  ma żadnej tabeli forka, więc wyłączenie trybu albo porzucenie forka zostawia
+  ją dokładnie taką, jaką zrobił upstream. Połączenia, które potrzebują obu
+  (widoki, bootstrap, CLI), dołączają `xelto.db` przez `ATTACH … AS xelto`.
+  Transakcja obejmująca oba pliki w trybie WAL nie jest atomowa między nimi:
+  po awarii w pół zapisu wiersz może zostać bez właściciela (czyli
+  niewidoczny, fail-closed) albo wpis własności bez wiersza (bez skutków).
 - **Migracje forka** (`migrations/`, tabela wersji `xelto_alembic_version`):
-  osobny łańcuch, więc nie tworzy drugiego heada w łańcuchu upstreamu.
-  Uruchamia je opakowanie `core.db.init_db`.
+  osobny łańcuch na `xelto.db`, więc nie tworzy drugiego heada w łańcuchu
+  upstreamu. Uruchamia je opakowanie `core.db.init_db`. Przy starcie tabele
+  forka, które wcześniejsze wersje założyły w `omnivoice.db`, są przenoszone
+  do `xelto.db` i usuwane z `omnivoice.db` (jedna transakcja, jednorazowo).
 
 ### Izolacja danych (P2)
 
@@ -143,8 +156,8 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
   `glossary_terms`, `jobs`. Pozostałe są wspólne (`db_scope.GLOBAL_TABLES`:
   ustawienia, wymowa, galeria, telefonia, zdalne workery, cloud sync,
   `job_events`, dostępne tylko przez swój job).
-- **Własność** w tabeli `xelto_row_owner(tbl, row_id, owner)`; tabele upstreamu
-  są nietknięte. Głosy demo (`is_demo=1`) nie mają właściciela: widzą je
+- **Własność** w tabeli `xelto_row_owner(tbl, row_id, owner)` w `xelto.db`;
+  tabele upstreamu są nietknięte. Głosy demo (`is_demo=1`) nie mają właściciela: widzą je
   wszyscy, nikt nie może ich zmienić (brama odpowiada 403).
 - **Hak w `core/db.py` `get_db`** (`db_scope.py`): połączenie otwarte dla usera
   to `XeltoConnection`, w którym każda tabela per user jest przesłonięta
@@ -173,7 +186,7 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
   ```sh
   python -m xelto.cli assign-unowned --to <user>   # przypisz dane bez właściciela
   python -m xelto.cli purge-user <user>            # usuń wiersze usera (pliki zostają)
-  python -m xelto.cli --db /ścieżka/omnivoice.db ...
+  python -m xelto.cli --db /ścieżka/omnivoice.db ...  # xelto.db obok niej
   ```
 
   `<user>` to username albo `sub` kogoś, kto choć raz się zalogował.

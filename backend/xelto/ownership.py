@@ -1,6 +1,7 @@
 """Bulk ownership changes: first-login bootstrap and the admin CLI.
 
-All of it runs on plain connections (the SYSTEM scope), because it has to see
+All of it runs on plain connections to ``omnivoice.db`` with the fork's
+database attached (:func:`xelto.store.connect_both`), because it has to see
 rows across owners.
 """
 from __future__ import annotations
@@ -17,7 +18,7 @@ BOOTSTRAP_KEY = "bootstrap_owner"
 
 def _unowned_where(table: str) -> str:
     shared = SHARED_READ.get(table)
-    clause = (f"NOT EXISTS (SELECT 1 FROM xelto_row_owner o WHERE o.tbl = '{table}' "
+    clause = (f"NOT EXISTS (SELECT 1 FROM xelto.xelto_row_owner o WHERE o.tbl = '{table}' "
               f"AND o.row_id = t.id)")
     # Shared rows (demo voices) stay unowned, so every user keeps seeing them.
     return f"{clause} AND NOT COALESCE(t.{shared}, 0)" if shared else clause
@@ -28,8 +29,8 @@ def assign_unowned(conn: sqlite3.Connection, owner: str) -> dict[str, int]:
     counts = {}
     for table in USER_TABLES:
         cur = conn.execute(
-            f"INSERT INTO xelto_row_owner(tbl, row_id, owner) "
-            f"SELECT '{table}', t.id, ? FROM {table} AS t WHERE {_unowned_where(table)}",
+            f"INSERT INTO xelto.xelto_row_owner(tbl, row_id, owner) "
+            f"SELECT '{table}', t.id, ? FROM main.{table} AS t WHERE {_unowned_where(table)}",
             (owner,),
         )
         counts[table] = cur.rowcount
@@ -45,12 +46,12 @@ def purge_user(conn: sqlite3.Connection, owner: str) -> dict[str, int]:
     counts = {}
     for table in USER_TABLES:
         cur = conn.execute(
-            f"DELETE FROM {table} WHERE id IN (SELECT row_id FROM xelto_row_owner "
+            f"DELETE FROM main.{table} WHERE id IN (SELECT row_id FROM xelto.xelto_row_owner "
             f"WHERE tbl = '{table}' AND owner = ?)",
             (owner,),
         )
         counts[table] = cur.rowcount
-    conn.execute("DELETE FROM xelto_row_owner WHERE owner = ?", (owner,))
+    conn.execute("DELETE FROM xelto.xelto_row_owner WHERE owner = ?", (owner,))
     hooks.forget_dub_owners()
     return counts
 
@@ -63,13 +64,13 @@ def bootstrap(connect: Callable[[], sqlite3.Connection], owner: str) -> dict[str
     conn = connect()
     try:
         conn.execute("BEGIN IMMEDIATE")
-        done = conn.execute("SELECT value FROM xelto_meta WHERE key = ?", (BOOTSTRAP_KEY,)).fetchone()
+        done = conn.execute("SELECT value FROM xelto.xelto_meta WHERE key = ?", (BOOTSTRAP_KEY,)).fetchone()
         if done is not None:
             conn.rollback()
             return None
         counts = assign_unowned(conn, owner)
         conn.execute(
-            "INSERT INTO xelto_meta(key, value) VALUES (?, ?)",
+            "INSERT INTO xelto.xelto_meta(key, value) VALUES (?, ?)",
             (BOOTSTRAP_KEY, f"{owner} {time.time():.0f}"),
         )
         conn.commit()

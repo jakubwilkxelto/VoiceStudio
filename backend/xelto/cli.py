@@ -4,6 +4,8 @@
     purge-user <user>            delete <user>'s rows (files stay on disk)
 
 <user> is a username or a Keycloak ``sub`` known from a previous sign-in.
+``--db`` names the app's ``omnivoice.db``; the fork's ``xelto.db`` is the one
+next to it (or ``OMNIVOICE_MULTIUSER_DB``).
 Stop the server first or run it against a copy: these write the database
 directly.
 """
@@ -18,7 +20,7 @@ from xelto import ownership
 
 def _resolve(conn: sqlite3.Connection, user: str) -> str:
     rows = conn.execute(
-        "SELECT sub FROM xelto_users WHERE sub = ? OR username = ?", (user, user)
+        "SELECT sub FROM xelto.xelto_users WHERE sub = ? OR username = ?", (user, user)
     ).fetchall()
     subs = {r[0] for r in rows}
     if len(subs) != 1:
@@ -28,7 +30,7 @@ def _resolve(conn: sqlite3.Connection, user: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m xelto.cli", description=__doc__.splitlines()[0])
-    parser.add_argument("--db", help="database file (default: the app's omnivoice.db)")
+    parser.add_argument("--db", help="the app's omnivoice.db (default: the configured one)")
     commands = parser.add_subparsers(dest="command", required=True)
     assign = commands.add_parser("assign-unowned", help="give a user every unowned row")
     assign.add_argument("--to", required=True, metavar="USER")
@@ -40,10 +42,10 @@ def main(argv: list[str] | None = None) -> int:
         db_path = args.db
     else:
         from core.config import DB_PATH as db_path
-    from xelto import migrate
+    from xelto import migrate, store
 
-    migrate.upgrade(db_path)
-    conn = sqlite3.connect(db_path)
+    migrate.upgrade_for(db_path)
+    conn = store.connect_both(db_path)
     try:
         if args.command == "assign-unowned":
             counts = ownership.assign_unowned(conn, _resolve(conn, args.to))

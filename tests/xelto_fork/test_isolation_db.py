@@ -74,3 +74,8 @@ def test_alice_keeps_full_use_of_her_data(probe):
     assert writes["profile_delete"] == 200 and writes["history_delete"] == 200
     after = probe["after_alice"]
     assert after["voice_profiles"] == after["generation_history"] == after["glossary_terms"] == 0
+
+
+def test_fork_data_stays_out_of_upstreams_database(probe):
+    assert probe["fork_tables_in_upstream_db"] == []
+    assert probe["fork_db_is_separate"] is True

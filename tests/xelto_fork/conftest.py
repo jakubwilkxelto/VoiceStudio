@@ -143,10 +143,17 @@ def multiuser_env(monkeypatch, keep_init_db):
 
 @pytest.fixture
 def db_path(tmp_path, monkeypatch):
+    """The app's database (``omnivoice.db``); the fork's ``xelto.db`` sits next to it."""
     path = tmp_path / "omnivoice.db"
     monkeypatch.setattr(db_module, "DB_PATH", str(path))
-    migrate.upgrade(str(path))
+    monkeypatch.delenv("OMNIVOICE_MULTIUSER_DB", raising=False)
+    migrate.upgrade()
     return path
+
+
+def fork_db(core_path):
+    """The fork's database next to ``core_path``."""
+    return core_path.with_name("xelto.db")
 
 
 ALICE = Identity(sub="alice-sub", username="alice")

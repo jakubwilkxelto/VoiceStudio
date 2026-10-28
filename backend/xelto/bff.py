@@ -21,6 +21,7 @@ from starlette.types import Receive, Scope, Send
 
 from core.csrf import cookie_csrf_allowed
 from xelto import ownership
+from xelto.store import connect_both
 from xelto.authn import Authenticator
 from xelto.crypto import InvalidToken, fernet
 from xelto.oidc import InvalidGrant, OidcError, TokenRejected
@@ -136,7 +137,7 @@ class SignInEndpoints:
             return self._refuse("Your VoiceStudio account is disabled.", 403)
         owner = self.settings.bootstrap_owner
         if owner and owner in (identity.username, identity.sub):
-            counts = await asyncio.to_thread(ownership.bootstrap, store._connect, identity.sub)
+            counts = await asyncio.to_thread(ownership.bootstrap, connect_both, identity.sub)
             if counts is not None:
                 logger.info("bootstrap: existing data assigned to %s: %s",
                             identity.username or identity.sub, counts)

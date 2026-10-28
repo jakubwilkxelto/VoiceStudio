@@ -7,7 +7,7 @@ from starlette.websockets import WebSocketDisconnect
 from xelto import sessions
 from xelto.config import ADMIN_PEER, USER_PEER
 
-from .conftest import CSRF, MARKER, PUBLIC_URL, new_client, sign_in
+from .conftest import CSRF, MARKER, PUBLIC_URL, fork_db, new_client, sign_in
 
 
 @pytest.fixture
@@ -166,7 +166,7 @@ def test_master_key_only_with_explicit_opt_in(multiuser_env, db_path, idp):
 def _age_sessions(db_path, seconds):
     """Move every session's clocks into the past (patching time.time would also
     age the fake provider's tokens)."""
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(fork_db(db_path)))
     try:
         with conn:
             conn.execute(

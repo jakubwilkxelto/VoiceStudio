@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from core import db  # noqa: E402
 from services import dub_pipeline  # noqa: E402
+from xelto import store  # noqa: E402
 from xelto.identity import Identity, system_scope, use_identity  # noqa: E402
 
 A = {
@@ -86,14 +87,16 @@ with TestClient(main.app, base_url=PUBLIC_URL, raise_server_exceptions=False) as
     term = client.post("/glossary/shared-project", headers=ha, json={"source": "hi", "target": "hej"})
     out["alice_create_term"] = term.status_code
     A["term"] = term.json()["id"]
-    with system_scope(), db.db_conn() as conn:
+    conn = store.connect_both()
+    with conn:
         # Name alice's API-made rows like the seeded ones, so counts() sees them.
         for table, key in (("studio_projects", "project"), ("glossary_terms", "term")):
             new = "xa-" + key
-            conn.execute(f"UPDATE {table} SET id = ? WHERE id = ?", (new, A[key]))
-            conn.execute("UPDATE xelto_row_owner SET row_id = ? WHERE tbl = ? AND row_id = ?",
+            conn.execute(f"UPDATE main.{table} SET id = ? WHERE id = ?", (new, A[key]))
+            conn.execute("UPDATE xelto.xelto_row_owner SET row_id = ? WHERE tbl = ? AND row_id = ?",
                          (new, table, A[key]))
             A[key] = new
+    conn.close()
     out["before"] = counts()
 
     # bob: lists
@@ -170,5 +173,14 @@ with TestClient(main.app, base_url=PUBLIC_URL, raise_server_exceptions=False) as
         "history_delete": client.delete(f"/history/{A['history']}", headers=ha).status_code,
     }
     out["after_alice"] = counts()
+
+import os  # noqa: E402
+import sqlite3  # noqa: E402
+
+core = sqlite3.connect(db.DB_PATH)
+out["fork_tables_in_upstream_db"] = [r[0] for r in core.execute(
+    "SELECT name FROM sqlite_master WHERE name LIKE 'xelto%'")]
+core.close()
+out["fork_db_is_separate"] = os.path.exists(store.db_path()) and store.db_path() != db.DB_PATH
 
 print(json.dumps(out))
