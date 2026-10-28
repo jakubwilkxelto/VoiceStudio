@@ -37,14 +37,33 @@ programowy per user (MCP, back-channel logout) to P5.
    (`deploy/keycloak/realm-voicestudio.json`). Później zmiany wprowadza się
    w konsoli `https://auth.example.com/admin`, bo ponowny import pomija
    istniejący realm.
-5. Konta startowe `admin`, `alice` i `bob` mają hasło
+5. Konta startowe `studio-admin`, `alice` i `bob` mają hasło
    `VOICESTUDIO_INITIAL_PASSWORD`, zmieniane przy pierwszym logowaniu.
    **Na produkcji usuń `alice` i `bob`.** Nowym osobom nadaj w Keycloaku rolę
    klienta `voicestudio` → `voicestudio-user` (albo `voicestudio-admin`).
    Konto bez żadnej z tych ról nie wejdzie („not enrolled”).
 
+   Są dwa różne konta administracyjne, każde z własnym hasłem:
+
+   | Konto | Do czego | Hasło |
+   |---|---|---|
+   | `studio-admin` (realm `voicestudio`) | logowanie do VoiceStudio z rolą admina | `VOICESTUDIO_INITIAL_PASSWORD`, zmieniane przy pierwszym logowaniu |
+   | `KEYCLOAK_ADMIN_USER` (domyślnie `admin`, realm `master`) | konsola Keycloaka `https://auth…/admin` | `KEYCLOAK_ADMIN_PASSWORD` |
+
+6. **Pierwszą konfigurację robi `studio-admin`**: po zalogowaniu przechodzi
+   kreator (sprawdzenie systemu, pakiety modeli, prywatność) raz dla całego
+   serwera. Zwykli użytkownicy kreatora nie widzą; dopóki admin go nie
+   skończy (modele zainstalowane, decyzja o analityce zapisana), widzą ekran
+   „Serwer jest konfigurowany”, który sam przechodzi dalej. Token Hugging
+   Face jest jeden dla całego serwera: ustawia go admin w Ustawienia →
+   Poświadczenia albo `HF_TOKEN` w pliku `.env` wdrożenia.
+
 Uwagi:
 
+- Buduj z czystego klonu repo (na serwerze: `git clone`). `.dockerignore`
+  upstreamu wyklucza tylko `node_modules/` w katalogu głównym, więc
+  `electron/node_modules` z kopii roboczej dewelopera trafia do obrazu
+  i psuje build (`vite: not found`). Lokalnie: `git worktree add`.
 - Compose jest samodzielny, a nie nakładką na `deploy/docker-compose.yml`.
   Plik upstreamu wymaga `OMNIVOICE_API_KEY`, którego tryb multiuser nie przyjmuje.
 - Obraz budowany jest z tego repo (`build: ..`): obraz upstreamu nie zawiera forka.
@@ -185,13 +204,26 @@ w oknie zwykłym i incognito): ciasteczko sesji jest per profil.
   tabele upstreamu są nietknięte. Głosy demo (`is_demo=1`) nie mają właściciela: widzą je
   wszyscy, nikt nie może ich zmienić (brama odpowiada 403).
 - **Hak w `core/db.py` `get_db`** (`db_scope.py`): połączenie otwarte dla usera
-  to `XeltoConnection`, w którym każda tabela per user jest przesłonięta
-  widokiem TEMP filtrowanym po właścicielu, z triggerami INSTEAD OF do zapisu
-  i triggerami na tabeli bazowej (stemplowanie właściciela, blokada cudzych
-  wierszy). Połączenie dodatkowo:
-  - zwraca poprawne `cursor.rowcount` dla zapisów przez widok;
-  - przepisuje UPSERT na tabeli usera na `main.<tabela>`;
-  - wykonuje `executescript` (DDL z `ensure_schema`) na osobnym połączeniu systemowym.
+  to `XeltoConnection`, w którym każda tabela per user jest do odczytu
+  przesłonięta widokiem TEMP filtrowanym po właścicielu. Każdy zapis
+  (`INSERT`, `REPLACE`, `UPDATE`, `DELETE`) kursor kieruje na `main.<tabela>`
+  (`db_scope.rewrite`), gdzie pilnują go triggery na tabeli bazowej:
+  - nowy wiersz dostaje właściciela;
+  - cudzy wiersz jest przy `UPDATE`/`DELETE` pomijany (`RAISE(IGNORE)`),
+    czyli zachowuje się jak niewidoczny;
+  - zapis do wiersza wspólnego (demo) albo przejęcie cudzego id przez
+    `INSERT OR REPLACE` jest odrzucane.
+
+  `cursor.rowcount` liczy tylko wiersze wołającego. `executescript` (DDL
+  z `ensure_schema`) idzie osobnym połączeniem systemowym.
+- **Zgodność z SQLite.** Triggery nie mają `INSTEAD OF` ani celu zapisu
+  z nazwą schematu: SQLite przed 3.51 (obraz Dockera ma 3.50.3) odrzuca oba
+  („qualified table names are not allowed … within triggers”). Do wersji z
+  2026-10-28 rozdzielenie danych nie działało przez to w ogóle w Dockerze, bo
+  testy szły tylko na Windows z SQLite 3.53. Pilnuje tego test DDL w
+  `test_db_scope.py`, a pełne testy forka na SQLite z obrazu uruchamia
+  `sh scripts/xelto/test_in_image.sh` (po zmianach w `backend/xelto/` i po
+  merge'ach upstreamu ruszających bazę).
 - **Fail-closed**: połączenie bez tożsamości widzi puste tabele per user,
   a zapis do nich się nie udaje. `SYSTEM` (lifespan, `init_db`, CLI) dostaje
   zwykłe połączenie i widzi wszystko.
@@ -322,6 +354,16 @@ Bez nowych haków w upstreamie: brama, patche atrybutów modułów i triggery wi
   Oba sprawdza `file_guard.path_allowed`.
 - **Preferencje dyktowania** (`/dictation/prefs`) są w globalnym `prefs.json`,
   więc zapis jest dla admina, a odczyt dla wszystkich.
+- **Powiadomienia systemowe** (`/system/notifications`: brak tokenu HF, brak
+  ffmpeg, mało miejsca, GPU, crash poprzedniej sesji) dotyczą serwera, więc
+  widzi je tylko admin. Zwykły user dostaje pustą listę (filtr w bramie).
+- **Kreator pierwszego uruchomienia** (`xelto/setup.tsx`, hak w
+  `components/setup-gate.tsx`): o tym, czy konfiguracja jest skończona,
+  decyduje serwer (`/setup/status` → `models_ready` i odpowiedź na pytanie
+  o analitykę), nie localStorage przeglądarki. Admin przechodzi kreator raz,
+  a user go nie widzi. Dopóki serwer nie jest gotowy, user widzi ekran
+  czekania sprawdzany co 30 s. Gdy serwer nie odpowiada, user jest
+  wpuszczany, a admin wraca do zachowania upstreamu.
 - **Przeglądarka.** Przy zmianie usera, poza `localStorage`, czyszczone są
   też `sessionStorage` i bazy IndexedDB. Upstream trzyma w
   `voicestudio.workflow-runs` przebiegi workflow razem z audio.

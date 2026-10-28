@@ -29,6 +29,7 @@ import {
   setupWasStarted,
 } from '@/lib/setup-progress';
 import { AudioLinesIcon, CpuIcon, SparklesIcon, ShieldCheckIcon } from 'lucide-react';
+import { XeltoSetupPending, useXeltoSetup } from '@/xelto/setup'; // XELTO: setup once per server
 
 interface SetupStatus {
   models_ready: boolean;
@@ -68,9 +69,11 @@ export function SetupGate({ children }: { children: ReactNode }) {
     enabled: needed === true && step === 0,
     retry: false,
   });
+  const xelto = useXeltoSetup(); // XELTO: setup once per server
   useEffect(() => {
     if (needed !== null || !status.data) return;
-    const completed = setupWasCompleted();
+    if (xelto.completed === undefined) return; // XELTO: setup once per server
+    const completed = xelto.completed ?? setupWasCompleted(); // XELTO: setup once per server
     if (!setupInProgress && !completed) {
       // This marker belongs to the Electron shell. A populated shared model
       // cache does not prove that this installation has completed permissions,
@@ -79,7 +82,8 @@ export function SetupGate({ children }: { children: ReactNode }) {
       setSetupInProgress(true);
     }
     setNeeded(!completed);
-  }, [needed, setupInProgress, status.data]);
+  }, [needed, setupInProgress, status.data, xelto.completed]); // XELTO: setup once per server
+  if (xelto.pending) return <XeltoSetupPending />; // XELTO: setup once per server
   if (needed === false) return <>{children}</>;
   if (needed === null)
     return (

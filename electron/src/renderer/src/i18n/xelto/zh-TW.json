@@ -7,5 +7,9 @@
     "admin_badge": "管理員",
     "sign_out": "登出",
     "signed_in_as": "已登入為 {{name}}"
+  },
+  "setup": {
+    "pending_title": "正在設定伺服器",
+    "pending_body": "管理員正在完成此 VoiceStudio 伺服器的初次設定。準備就緒後，此頁面將自動繼續。"
   }
 }

@@ -7,5 +7,9 @@
     "admin_badge": "管理者",
     "sign_out": "サインアウト",
     "signed_in_as": "{{name}} としてサインイン中"
+  },
+  "setup": {
+    "pending_title": "サーバーをセットアップしています",
+    "pending_body": "管理者がこの VoiceStudio サーバーの初期セットアップを完了しています。準備ができると、このページは自動的に続行します。"
   }
 }

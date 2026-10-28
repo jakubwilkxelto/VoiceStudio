@@ -1,16 +1,20 @@
-"""Merge guard: SQL on per-user tables that the scoping views cannot serve.
+"""Merge guard: SQL on per-user tables that the scoping cannot serve as-is.
 
-The per-user tables are TEMP views on a scoped connection. Through a view,
-``RETURNING`` echoes the input instead of stored DEFAULTs, ``lastrowid`` is
-lost after the INSTEAD OF trigger, an UPSERT is refused (db_scope rewrites the
-known one), ``CREATE VIRTUAL TABLE`` cannot be shadowed, and ``executescript``
-runs on a system connection. A new upstream use of any of these fails here
-until someone checks it and adds it to ``ALLOWED`` with a reason.
+On a scoped connection the per-user tables are TEMP views for reads, and every
+write is retargeted to ``main.<t>`` by ``xelto.db_scope.rewrite``, which only
+recognises a write at the start of a statement. A write it would miss (after
+a ``WITH`` clause or a comment) hits the read-only view and fails. The rest
+needs a look: ``RETURNING`` and ``lastrowid`` (correct on the base table, but
+worth checking), an UPSERT (its DO UPDATE runs on the base table),
+``CREATE VIRTUAL TABLE`` (cannot be shadowed) and ``executescript`` (runs on a
+system connection). A new upstream use of any of these fails here until
+someone checks it and adds it to ``ALLOWED`` with a reason.
 """
 import ast
 import re
 from pathlib import Path
 
+from xelto.db_scope import rewrite
 from xelto.db_views import USER_TABLES
 
 BACKEND = Path(__file__).resolve().parents[2] / "backend"
@@ -21,6 +25,11 @@ _RISKY = {
     "virtual": re.compile(r"\bCREATE\s+VIRTUAL\s+TABLE\b", re.IGNORECASE),
 }
 _INSERT = re.compile(r"\bINSERT\b", re.IGNORECASE)
+_WRITE = re.compile(
+    r"\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+("
+    + "|".join(USER_TABLES) + r")\b(?!\s*\.)",
+    re.IGNORECASE,
+)
 
 # (file, function, kind): why it is safe.
 ALLOWED = {
@@ -63,6 +72,8 @@ def findings() -> set[tuple[str, str, str]]:
             for kind, pattern in _RISKY.items():
                 if any(pattern.search(s) for s in sql):
                     found.add((rel, func.name, kind))
+            if any(_WRITE.search(s) and rewrite(s) == s for s in sql):
+                found.add((rel, func.name, "unretargeted-write"))
             attrs = {n.attr for n in ast.walk(body) if isinstance(n, ast.Attribute)}
             if "lastrowid" in attrs and any(_INSERT.search(s) for s in sql):
                 found.add((rel, func.name, "lastrowid"))
@@ -86,3 +97,8 @@ def test_no_unreviewed_sql_on_user_tables():
 def test_allowlist_has_no_stale_entries():
     stale = sorted(set(ALLOWED) - findings())
     assert not stale, f"ALLOWED entries no longer found upstream; remove them: {stale}"
+
+
+def test_the_scan_reports_a_write_the_rewrite_misses():
+    sql = "WITH x AS (SELECT 1) UPDATE voice_profiles SET name = 'n'"
+    assert _WRITE.search(sql) and rewrite(sql) == sql

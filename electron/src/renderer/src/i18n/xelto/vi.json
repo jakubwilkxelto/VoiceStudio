@@ -7,5 +7,9 @@
     "admin_badge": "Quản trị viên",
     "sign_out": "Đăng xuất",
     "signed_in_as": "Đã đăng nhập với tên {{name}}"
+  },
+  "setup": {
+    "pending_title": "Máy chủ đang được thiết lập",
+    "pending_body": "Quản trị viên đang hoàn tất thiết lập ban đầu cho máy chủ VoiceStudio này. Trang sẽ tự tiếp tục khi đã sẵn sàng."
   }
 }

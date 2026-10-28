@@ -75,6 +75,9 @@ def test_scope_routers_is_idempotent(scoped_routers):
 @pytest.mark.parametrize("body, key, expected", [
     (b'[{"id": "a"}, {"id": "b"}]', None, b'[{"id": "a"}]'),
     (b'{"jobs": [{"id": "a"}, {"id": "b"}], "n": 2}', "jobs", b'{"jobs": [{"id": "a"}], "n": 2}'),
+    # A count next to the list follows it.
+    (b'{"notifications": [{"id": "a"}, {"id": "b"}], "count": 2}', "notifications",
+     b'{"notifications": [{"id": "a"}], "count": 1}'),
     # Unexpected shapes fail closed.
     (b'{"items": [{"id": "a"}]}', None, b"[]"),
     (b'[{"id": "a"}]', "jobs", b'{"jobs": []}'),

@@ -241,12 +241,21 @@ with TestClient(main.app, base_url=PUBLIC_URL, raise_server_exceptions=False) as
         for _, kw in FakeEngine.calls)
 
     def stream(task_id):
-        """Follow a task to its end; returns the event types seen."""
-        with client.stream("GET", f"/tasks/stream/{task_id}", headers=ha) as response:
-            if response.status_code != 200:
-                return [f"http {response.status_code}"]
-            return [json.loads(line[5:]).get("type", "?") for line in response.iter_lines()
-                    if line.startswith("data:")][-3:]
+        """Follow a task to its end; returns the last event types seen."""
+        types = []
+        for _ in range(20):
+            with client.stream("GET", f"/tasks/stream/{task_id}", headers=ha) as response:
+                if response.status_code != 200:
+                    return [f"http {response.status_code}"]
+                types = [json.loads(line[5:]).get("type", "?") for line in response.iter_lines()
+                         if line.startswith("data:")]
+            # Upstream's stream replays what job_events holds and stops once the
+            # live task reads finished, which can be before its last events are
+            # stored; a later replay has them all.
+            if types and types[-1] in ("done", "ready", "error"):
+                break
+            time.sleep(0.5)
+        return types[-3:]
 
     # 3. Dubbing: upload, prepare, transcribe, generate, download.
     if out["ffmpeg"]:

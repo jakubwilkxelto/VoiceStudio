@@ -7,5 +7,9 @@
     "admin_badge": "Admin",
     "sign_out": "Sign out",
     "signed_in_as": "Signed in as {{name}}"
+  },
+  "setup": {
+    "pending_title": "The server is being set up",
+    "pending_body": "An administrator is finishing the first-run setup of this VoiceStudio server. This page will continue on its own when it is ready."
   }
 }

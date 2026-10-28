@@ -65,3 +65,8 @@ def test_every_id_a_user_route_takes_outside_its_path_is_accounted_for(probe):
         "USER routes take ids outside their path that the gate does not know about; add them "
         f"to BODY_OWNERS or BODY_IDS_VIA_VIEWS in backend/xelto/policy.py: {missing}"
     )
+
+
+def test_server_notices_reach_only_the_admin(probe):
+    assert probe["user_notifications"] == {"notifications": [], "count": 0}
+    assert "hf-token-missing" in probe["admin_notification_ids"]

@@ -7,5 +7,9 @@
     "admin_badge": "Yönetici",
     "sign_out": "Oturumu kapat",
     "signed_in_as": "{{name}} olarak oturum açıldı"
+  },
+  "setup": {
+    "pending_title": "Sunucu yapılandırılıyor",
+    "pending_body": "Bir yönetici bu VoiceStudio sunucusunun ilk kurulumunu tamamlıyor. Hazır olduğunda bu sayfa kendiliğinden devam edecek."
   }
 }

@@ -182,11 +182,18 @@ def _job_ids(identity: Identity) -> Callable[[object], bool]:
     return lambda item: str(item.get("job_id", "")) in ids
 
 
+def _admins_only(identity: Identity) -> Callable[[object], bool]:
+    # Server notices (no Hugging Face token, no ffmpeg, low disk, GPU, last
+    # crash): only the admin can act on them.
+    return lambda item: identity.is_admin
+
+
 # (method, template) -> (key holding the list, or None for a bare list; predicate factory)
 LIST_FILTERS: dict[tuple[str, str], tuple[str | None, Callable[[Identity], Callable[[object], bool]]]] = {
     ("GET", "/batch/jobs"): (None, _batch_ids),
     ("GET", "/project-bundles"): (None, _bundle_ids),
     ("GET", "/audiobook/jobs"): ("jobs", _job_ids),
+    ("GET", "/system/notifications"): ("notifications", _admins_only),
 }
 
 
@@ -204,6 +211,8 @@ def filter_list(body: bytes, key: str | None, keep: Callable[[object], bool]) ->
     if key:
         data = data if isinstance(data, dict) else {}
         data[key] = kept
+        if "count" in data:
+            data["count"] = len(kept)
     else:
         data = kept
     return json.dumps(data).encode()

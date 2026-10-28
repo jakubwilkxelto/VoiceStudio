@@ -1,4 +1,5 @@
 """Row scoping through ``core.db.get_db``, on upstream's real schema and code paths."""
+import re
 import sqlite3
 
 import pytest
@@ -109,13 +110,74 @@ def test_upstream_upsert_is_rewritten_and_still_guarded(scoped_db):
         assert conn.execute("SELECT filename FROM dub_history WHERE id = 'd1'").fetchone()[0] == "b.mp4"
 
 
-def test_rewrite_only_touches_upserts_on_user_tables():
-    upsert = "INSERT INTO dub_history (id) VALUES (?) ON CONFLICT(id) DO UPDATE SET id=excluded.id"
-    assert db_scope.rewrite(upsert).startswith("INSERT INTO main.dub_history AS dub_history (id)")
-    plain = "INSERT INTO dub_history (id) VALUES (?)"
-    assert db_scope.rewrite(plain) == plain
-    other = "INSERT INTO settings (key) VALUES (?) ON CONFLICT(key) DO UPDATE SET key=excluded.key"
-    assert db_scope.rewrite(other) == other
+@pytest.mark.parametrize("sql, expected", [
+    ("INSERT INTO dub_history (id) VALUES (?) ON CONFLICT(id) DO UPDATE SET id=excluded.id",
+     "INSERT INTO main.dub_history AS dub_history (id) VALUES (?) ON CONFLICT(id) DO UPDATE SET id=excluded.id"),
+    ("INSERT INTO dub_history (id) VALUES (?)", "INSERT INTO main.dub_history AS dub_history (id) VALUES (?)"),
+    ("  insert or replace into voice_profiles(id) values (?)",
+     "  insert or replace into main.voice_profiles AS voice_profiles(id) values (?)"),
+    ("REPLACE INTO jobs (id) VALUES (?)", "REPLACE INTO main.jobs AS jobs (id) VALUES (?)"),
+    ("UPDATE voice_profiles SET name=? WHERE id=?",
+     "UPDATE main.voice_profiles AS voice_profiles SET name=? WHERE id=?"),
+    ("UPDATE OR IGNORE jobs SET status=?", "UPDATE OR IGNORE main.jobs AS jobs SET status=?"),
+    ("UPDATE jobs AS j SET status=? WHERE j.id=?", "UPDATE main.jobs AS j SET status=? WHERE j.id=?"),
+    ("DELETE FROM glossary_terms WHERE id=?", "DELETE FROM main.glossary_terms AS glossary_terms WHERE id=?"),
+])
+def test_rewrite_sends_every_write_on_a_user_table_to_the_base_table(sql, expected):
+    assert db_scope.rewrite(sql) == expected
+
+
+@pytest.mark.parametrize("sql", [
+    "INSERT INTO settings (key) VALUES (?) ON CONFLICT(key) DO UPDATE SET key=excluded.key",
+    "UPDATE settings SET value=?",
+    "DELETE FROM job_events WHERE job_id=?",
+    "SELECT * FROM voice_profiles",
+    "INSERT INTO main.voice_profiles (id) VALUES (?)",  # already explicit
+    "INSERT INTO voice_profiles_fts (id) VALUES (?)",  # a different table
+])
+def test_rewrite_leaves_everything_else_alone(sql):
+    assert db_scope.rewrite(sql) == sql
+
+
+_QUALIFIED_WRITE = re.compile(
+    r"\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+\w+\s*\.",
+    re.IGNORECASE,
+)
+
+
+def test_scoping_ddl_runs_on_sqlite_before_3_51():
+    """SQLite before 3.51 (the Docker image has 3.50) refuses, inside a trigger,
+    a schema-qualified INSERT/UPDATE/DELETE target and has no way for an
+    INSTEAD OF trigger to reach a base table its view shadows. Newer SQLite
+    accepts both, so only this check fails here when they creep back in."""
+    from xelto.db_views import Column, USER_TABLES, scope_ddl
+
+    for table in USER_TABLES:
+        for stmt in scope_ddl(table, [Column("id", None), Column("name", None), Column("is_demo", "0")]):
+            if not stmt.lstrip().upper().startswith("CREATE TEMP TRIGGER"):
+                continue
+            assert "INSTEAD OF" not in stmt.upper(), stmt
+            body = stmt[stmt.upper().index("BEGIN"):]
+            assert not _QUALIFIED_WRITE.search(body), body
+
+
+def test_shared_rows_refuse_writes_and_other_rows_are_skipped(scoped_db):
+    _insert_profile(ALICE, "a1", "alice's")
+    with use_identity(BOB), db_conn() as conn:
+        # Not his: untouched, and reported as no row at all.
+        assert conn.execute("UPDATE voice_profiles SET name = 'x' WHERE id = 'a1'").rowcount == 0
+        assert conn.execute("DELETE FROM voice_profiles WHERE id = 'a1'").rowcount == 0
+        # Taking alice's id over through REPLACE is refused.
+        with pytest.raises(sqlite3.IntegrityError, match=OWNERSHIP_REFUSAL):
+            conn.execute("INSERT OR REPLACE INTO voice_profiles(id, name) VALUES ('a1', 'mine')")
+        # The shared demo voice: refused loudly, by every route there is.
+        for sql in ("DELETE FROM voice_profiles WHERE id = 'demo'",
+                    "INSERT OR REPLACE INTO voice_profiles(id, name) VALUES ('demo', 'mine')"):
+            with pytest.raises(sqlite3.IntegrityError, match=OWNERSHIP_REFUSAL):
+                conn.execute(sql)
+    with system_scope(), db_conn() as conn:
+        assert conn.execute("SELECT name FROM voice_profiles WHERE id = 'a1'").fetchone()[0] == "alice's"
+        assert conn.execute("SELECT COUNT(*) FROM voice_profiles WHERE id = 'demo'").fetchone()[0] == 1
 
 
 def test_ensure_schema_works_for_a_user(scoped_db):
