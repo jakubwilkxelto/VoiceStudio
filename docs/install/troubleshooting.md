@@ -1445,6 +1445,14 @@ Per-engine receive overrides include `OMNIVOICE_CONFUCIUS4_RECV_TIMEOUT_S`, `OMN
 
 When FFprobe is not on PATH, VoiceStudio also checks beside the selected FFmpeg binary. Parent folders named `ffmpeg` remain unchanged; only the executable name becomes `ffprobe` (or `ffprobe.exe` on Windows).
 
+### Environment file encoding
+
+Project `.env` files may use UTF-8 or BOM-marked UTF-16 or UTF-32. If a file
+cannot be decoded, VoiceStudio skips it for that launch and logs a warning;
+save it as UTF-8 to restore its settings. The saved per-user environment file
+uses UTF-8 and is left untouched if it cannot be read. Check the log and correct
+the file before relying on its settings.
+
 ### Subtitle and manuscript encodings
 
 Electron and web imports accept UTF-8, UTF-16 with a byte-order mark, and Windows-1252 text. The same decoder rules apply to uploaded subtitles and audiobook manuscripts; legacy punctuation is preserved.
