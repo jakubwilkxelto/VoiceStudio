@@ -3,9 +3,9 @@ import sqlite3
 
 import pytest
 
-from xelto import cli, install, ownership
+from xelto import cli, install, ownership, store
 
-from .conftest import build_app, new_client, sign_in
+from .conftest import build_app, fork_db, new_client, sign_in
 
 
 def _seed_unowned(path, *ids):
@@ -18,7 +18,7 @@ def _seed_unowned(path, *ids):
 
 
 def _owners(path):
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(fork_db(path)))
     try:
         return dict(conn.execute("SELECT row_id, owner FROM xelto_row_owner"))
     finally:
@@ -27,8 +27,8 @@ def _owners(path):
 
 def test_assign_unowned_skips_owned_rows_and_shared_demo(scoped_db):
     _seed_unowned(scoped_db, "p1")
-    conn = sqlite3.connect(str(scoped_db))
-    conn.execute("INSERT INTO xelto_row_owner VALUES ('voice_profiles', 'p0', 'bob')")
+    conn = store.connect_both(str(scoped_db))
+    conn.execute("INSERT INTO xelto.xelto_row_owner VALUES ('voice_profiles', 'p0', 'bob')")
     conn.execute("INSERT INTO voice_profiles(id, name) VALUES ('p0', 'bob voice')")
     counts = ownership.assign_unowned(conn, "alice")
     conn.commit()
@@ -56,7 +56,7 @@ def test_bootstrap_owner_gets_existing_data_once(multiuser_env, scoped_db, idp):
 
 
 def _register(path, sub, username):
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(fork_db(path)))
     conn.execute("INSERT INTO xelto_users(sub, username, created_at) VALUES (?, ?, 0)", (sub, username))
     conn.commit()
     conn.close()

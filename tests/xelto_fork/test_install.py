@@ -54,9 +54,15 @@ def test_init_db_runs_fork_migrations(gated_app, tmp_path, monkeypatch):
 
     db_module.init_db()
 
-    conn = sqlite3.connect(str(db))
+    conn = sqlite3.connect(str(db.with_name("xelto.db")))
     try:
         assert conn.execute("SELECT version_num FROM xelto_alembic_version").fetchone() == ("x0001",)
+    finally:
+        conn.close()
+    conn = sqlite3.connect(str(db))
+    try:
+        # Upstream's file holds no fork table.
+        assert not conn.execute("SELECT name FROM sqlite_master WHERE name LIKE 'xelto%'").fetchall()
     finally:
         conn.close()
 

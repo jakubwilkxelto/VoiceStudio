@@ -5,7 +5,7 @@ import pytest
 
 from xelto.bff import safe_next
 
-from .conftest import CSRF, PUBLIC_URL, query, sign_in
+from .conftest import CSRF, PUBLIC_URL, fork_db, query, sign_in
 from .fake_idp import ISSUER
 
 
@@ -35,7 +35,7 @@ def test_callback_signs_in_and_lands_on_next(client, idp, db_path):
     assert me["authenticated"] and me["username"] == "alice" and not me["is_admin"]
     assert me["roles"] == ["voicestudio-user"]
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(fork_db(db_path)))
     try:
         stored = conn.execute("SELECT id_hash, refresh_token_enc FROM xelto_sessions").fetchone()
     finally:

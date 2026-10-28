@@ -8,7 +8,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 
-from xelto import db_scope
+from xelto import db_scope, store
 from xelto.identity import Identity, current_identity
 
 # ── core/tasks.py: TaskManager runs every task in its long-lived worker ─────
@@ -46,9 +46,7 @@ def record_dub_owner(job_id: str) -> None:
 
 
 def _saved_dub_owner(job_id: str) -> str | None:
-    from core import db
-
-    conn = sqlite3.connect(db.DB_PATH)
+    conn = store.connect()
     try:
         row = conn.execute(
             "SELECT owner FROM xelto_row_owner WHERE tbl = 'dub_history' AND row_id = ?",

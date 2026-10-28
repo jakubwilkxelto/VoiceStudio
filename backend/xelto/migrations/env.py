@@ -1,19 +1,20 @@
 """Alembic environment for the XELTO fork's chain.
 
-Mirrors ``backend/migrations/env.py`` but records its revision in
+Mirrors ``backend/migrations/env.py`` but runs on the fork's own database
+(``xelto.db``, see :mod:`xelto.store`) and records its revision in
 ``xelto_alembic_version``, so it never shares a head with upstream's chain.
 Hand-written migrations only; no SQLAlchemy models.
 """
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from core.config import DB_PATH
+from xelto import store
 
 VERSION_TABLE = "xelto_alembic_version"
 
 config = context.config
 if not config.get_main_option("sqlalchemy.url"):
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{store.db_path()}")
 
 
 def run_migrations_offline() -> None:

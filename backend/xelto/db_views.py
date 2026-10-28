@@ -3,7 +3,8 @@
 For each per-user table ``t`` a scoped connection gets, in the temp schema:
 
 - ``TEMP VIEW t`` that shadows ``main.t`` (temp resolves first) and shows only
-  rows the current owner holds in ``xelto_row_owner`` (plus shared demo rows);
+  rows the current owner holds in ``xelto.xelto_row_owner`` (plus shared demo
+  rows); the ``xelto`` schema is the fork's own database, attached;
 - ``INSTEAD OF`` triggers that forward writes on the view to ``main.t``;
 - triggers on ``main.t`` itself that stamp ownership on insert and refuse
   writes to another owner's row, so a statement that names ``main.t`` directly
@@ -53,7 +54,7 @@ def schema_version(conn: sqlite3.Connection) -> int:
 
 def _owned(table: str, row: str) -> str:
     return (
-        f"EXISTS (SELECT 1 FROM main.xelto_row_owner WHERE tbl = '{table}' "
+        f"EXISTS (SELECT 1 FROM xelto.xelto_row_owner WHERE tbl = '{table}' "
         f"AND row_id = {row}.id AND owner = xelto_owner())"
     )
 
@@ -77,12 +78,12 @@ def scope_ddl(table: str, cols: list[Column]) -> list[str]:
         # Guards on the base table, reached by INSTEAD OF bodies and by any
         # statement that names main.t explicitly.
         f"""CREATE TEMP TRIGGER xelto_{table}_bi BEFORE INSERT ON main.{table}
-            WHEN EXISTS (SELECT 1 FROM main.xelto_row_owner WHERE tbl = '{table}'
+            WHEN EXISTS (SELECT 1 FROM xelto.xelto_row_owner WHERE tbl = '{table}'
                          AND row_id = NEW.id AND owner <> xelto_owner())
             BEGIN SELECT RAISE(ABORT, '{OWNERSHIP_REFUSAL}'); END""",
         f"""CREATE TEMP TRIGGER xelto_{table}_ai AFTER INSERT ON main.{table}
             BEGIN
-              INSERT OR REPLACE INTO main.xelto_row_owner(tbl, row_id, owner)
+              INSERT OR REPLACE INTO xelto.xelto_row_owner(tbl, row_id, owner)
               VALUES ('{table}', NEW.id, xelto_owner());
               SELECT xelto_count();
             END""",
@@ -96,7 +97,7 @@ def scope_ddl(table: str, cols: list[Column]) -> list[str]:
             BEGIN SELECT RAISE(ABORT, '{OWNERSHIP_REFUSAL}'); END""",
         f"""CREATE TEMP TRIGGER xelto_{table}_ad AFTER DELETE ON main.{table}
             BEGIN
-              DELETE FROM main.xelto_row_owner WHERE tbl = '{table}' AND row_id = OLD.id;
+              DELETE FROM xelto.xelto_row_owner WHERE tbl = '{table}' AND row_id = OLD.id;
               SELECT xelto_count();
             END""",
         f"CREATE TEMP VIEW {table} AS SELECT b.* FROM main.{table} AS b WHERE {visible}",

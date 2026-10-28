@@ -1,4 +1,4 @@
-"""The fork's alembic chain lives beside upstream's and never disturbs it."""
+"""The fork's alembic chain runs on its own file (xelto.db) and never disturbs upstream's."""
 import sqlite3
 
 import pytest
@@ -46,29 +46,59 @@ def _upstream_cfg(db):
     return cfg
 
 
-def test_upgrade_creates_fork_tables_and_own_version_table(upstream_db):
+def _fork(db):
+    return db.with_name("xelto.db")
+
+
+def test_upgrade_creates_fork_tables_in_their_own_file(upstream_db):
+    upstream_before = _tables(upstream_db)
     upstream_head = _scalar(upstream_db, "SELECT version_num FROM alembic_version")
 
-    migrate.upgrade(str(upstream_db))
+    migrate.upgrade_for(str(upstream_db))
 
-    assert XELTO_TABLES <= _tables(upstream_db)
-    assert _scalar(upstream_db, "SELECT version_num FROM xelto_alembic_version") == "x0001"
-    # Upstream's chain is untouched and still considers itself at head.
+    assert XELTO_TABLES <= _tables(_fork(upstream_db))
+    assert _scalar(_fork(upstream_db), "SELECT version_num FROM xelto_alembic_version") == "x0001"
+    # Upstream's file is untouched: no fork table, its chain still at head.
+    assert _tables(upstream_db) == upstream_before
     assert _scalar(upstream_db, "SELECT version_num FROM alembic_version") == upstream_head
     assert _plan_alembic(_upstream_cfg(upstream_db)) == "up_to_date"
 
 
+def test_fork_db_location_can_be_overridden(upstream_db, tmp_path, monkeypatch):
+    elsewhere = tmp_path / "data" / "accounts.db"
+    elsewhere.parent.mkdir()
+    monkeypatch.setenv("OMNIVOICE_MULTIUSER_DB", str(elsewhere))
+    migrate.upgrade_for(str(upstream_db))
+    assert XELTO_TABLES <= _tables(elsewhere)
+    assert not _fork(upstream_db).exists()
+
+
 def test_upgrade_is_idempotent(upstream_db):
+    migrate.upgrade_for(str(upstream_db))
+    migrate.upgrade_for(str(upstream_db))
+    assert _scalar(_fork(upstream_db), "SELECT COUNT(*) FROM xelto_alembic_version") == 1
+
+
+def test_downgrade_empties_the_fork_db(upstream_db):
+    migrate.upgrade_for(str(upstream_db))
+    migrate.downgrade("base", str(_fork(upstream_db)))
+    assert not (XELTO_TABLES & _tables(_fork(upstream_db)))
+
+
+def test_tables_from_before_the_split_move_out_of_upstreams_file(upstream_db):
+    # Earlier fork versions created their tables inside omnivoice.db.
+    upstream_before = _tables(upstream_db)
     migrate.upgrade(str(upstream_db))
-    migrate.upgrade(str(upstream_db))
-    assert _scalar(upstream_db, "SELECT COUNT(*) FROM xelto_alembic_version") == 1
+    conn = sqlite3.connect(str(upstream_db))
+    conn.execute("INSERT INTO xelto_users(sub, username, created_at) VALUES ('s1', 'alice', 0)")
+    conn.execute("INSERT INTO xelto_row_owner VALUES ('voice_profiles', 'p1', 's1')")
+    conn.commit()
+    conn.close()
 
+    migrate.upgrade_for(str(upstream_db))
 
-def test_downgrade_removes_only_fork_tables(upstream_db):
-    before = _tables(upstream_db)
-    migrate.upgrade(str(upstream_db))
-
-    migrate.downgrade("base", str(upstream_db))
-
-    assert not (XELTO_TABLES & _tables(upstream_db))
-    assert before <= _tables(upstream_db)
+    assert _tables(upstream_db) == upstream_before
+    assert _scalar(_fork(upstream_db), "SELECT username FROM xelto_users") == "alice"
+    assert _scalar(_fork(upstream_db), "SELECT owner FROM xelto_row_owner") == "s1"
+    assert _scalar(_fork(upstream_db), "SELECT COUNT(*) FROM xelto_alembic_version") == 1
+    assert migrate.adopt_legacy_tables(str(upstream_db)) == {}  # nothing left to move

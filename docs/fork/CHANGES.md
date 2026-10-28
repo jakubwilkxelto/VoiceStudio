@@ -5,6 +5,11 @@ Funkcje i poprawki dodane w forku `jakubwilkxelto/VoiceStudio` ponad upstream
 
 ## Niewydane
 
+- Tryb wieloużytkownikowy: dane forka (konta, sesje, własność wierszy,
+  historia migracji) w osobnym pliku `xelto.db` obok `omnivoice.db`
+  (`OMNIVOICE_MULTIUSER_DB` zmienia ścieżkę). `omnivoice.db` nie zawiera już
+  żadnej tabeli forka; tabele z wcześniejszych wersji są przy starcie
+  przenoszone automatycznie.
 - Tryb wieloużytkownikowy, faza P2: rozdzielenie danych w bazie. Głosy,
   historia, dubbingi, projekty, glosariusze, eksporty i joby są widoczne tylko
   dla właściciela (widoki TEMP w SQLite, hak w `get_db`), głosy demo są wspólne

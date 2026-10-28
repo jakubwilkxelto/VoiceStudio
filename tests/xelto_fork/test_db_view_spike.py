@@ -35,17 +35,28 @@ def db(tmp_path):
     path = tmp_path / "omnivoice.db"
     conn = sqlite3.connect(str(path))
     conn.executescript(_BASE_SCHEMA)
-    conn.execute(OWNER_TABLE)
     conn.execute("INSERT INTO voice_profiles(id, name, is_demo) VALUES ('demo', 'Demo', 1)")
     conn.commit()
     conn.close()
+    # Ownership lives in the fork's own database, attached as "xelto".
+    fork = sqlite3.connect(str(path.with_name("xelto.db")))
+    fork.execute(OWNER_TABLE)
+    fork.commit()
+    fork.close()
     return path
+
+
+def _open(db):
+    """A connection on the app's DB with the fork's DB attached, as db_scope opens it."""
+    conn = sqlite3.connect(str(db))
+    conn.execute("ATTACH DATABASE ? AS xelto", (str(db.with_name("xelto.db")),))
+    return conn
 
 
 @pytest.fixture
 def scoped(db):
     """One connection whose owner can be switched between alice and bob."""
-    conn = sqlite3.connect(str(db))
+    conn = _open(db)
     who = Who("alice")
     counter = scope_connection(conn, who)
     conn.execute("INSERT INTO voice_profiles(id, name) VALUES ('a1', 'Alice voice')")
@@ -176,7 +187,7 @@ def test_ddl_fails_on_scoped_connection_and_works_on_system(db, scoped):
 
 
 def test_new_upstream_column_is_picked_up_after_rebuild(db):
-    conn = sqlite3.connect(str(db))
+    conn = _open(db)
     try:
         scope_connection(conn, Who("alice"))
         seen = schema_version(conn)
@@ -197,7 +208,7 @@ def test_new_upstream_column_is_picked_up_after_rebuild(db):
 
 
 def test_every_user_table_can_be_scoped(db):
-    conn = sqlite3.connect(str(db))
+    conn = _open(db)
     try:
         scope_connection(conn, Who("alice"), USER_TABLES)
         for table in USER_TABLES:
