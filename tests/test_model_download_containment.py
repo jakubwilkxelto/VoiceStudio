@@ -33,29 +33,29 @@ def download():
 
 
 def _drive_segmented(
-    download,
-    monkeypatch,
-    tmp_path,
-    files,
-    *,
-    etag=GOOD_ETAG,
-    endpoint=None,
-    resolved=None,
+    download, monkeypatch, tmp_path, files, *,
+    etag=GOOD_ETAG, endpoint=None, resolved=None,
     default_endpoint="https://huggingface.co",
 ):
+    """Run ``_segmented_snapshot`` with the hub listing, the per-file metadata
+    lookup and the byte transfer all faked. Returns ``(cache, seen, result)``;
+    ``seen`` records which token each faked call received."""
     import huggingface_hub
     from huggingface_hub import constants, file_download
-    from services import segmented_download, token_resolver
+    import services.segmented_download as seg
+    import services.token_resolver as token_resolver
 
     cache = tmp_path / "hub"
-    cache.mkdir()
-    seen = {}
-    monkeypatch.setattr(token_resolver, "resolve", lambda: resolved)
+    cache.mkdir(parents=True, exist_ok=True)
+    seen: dict = {}
+
+    monkeypatch.setattr(token_resolver, "resolve", lambda *a, **k: resolved)
     monkeypatch.setattr(constants, "HF_HUB_CACHE", str(cache))
     monkeypatch.setattr(constants, "ENDPOINT", default_endpoint)
 
-    class FakeHubApi:
-        def __init__(self, *, endpoint, token):
+    class _StubApi:
+        def __init__(self, *, endpoint=None, token=None):
+            self.endpoint = endpoint
             seen["hf_api"] = token
 
         def repo_info(self, repo_id, repo_type=None, revision=None):
@@ -64,20 +64,21 @@ def _drive_segmented(
                 siblings=[SimpleNamespace(rfilename=name) for name in files],
             )
 
-    def metadata(url, token=None, **_kw):
+    def _stub_metadata(url, token=None, **_kw):
         seen["file_metadata"] = token
         return SimpleNamespace(etag=f'"{etag}"', location=url, size=4)
 
-    async def transfer(url, blob_path, *, token=None, **_kw):
+    async def _stub_transfer(url, blob_path, *, token=None, **_kw):
         seen["segmented"] = token
-        os.makedirs(os.path.dirname(blob_path), exist_ok=True)
-        with open(blob_path, "wb") as handle:
-            handle.write(b"data")
+        os.makedirs(os.path.dirname(str(blob_path)), exist_ok=True)
+        with open(blob_path, "wb") as fh:
+            fh.write(b"data")
         return blob_path
 
-    monkeypatch.setattr(huggingface_hub, "HfApi", FakeHubApi)
-    monkeypatch.setattr(file_download, "get_hf_file_metadata", metadata)
-    monkeypatch.setattr(segmented_download, "segmented_download", transfer)
+    monkeypatch.setattr(huggingface_hub, "HfApi", _StubApi)
+    monkeypatch.setattr(file_download, "get_hf_file_metadata", _stub_metadata)
+    monkeypatch.setattr(seg, "segmented_download", _stub_transfer)
+
     result = download._segmented_snapshot(REPO, endpoint=endpoint, revision=REVISION)
     return cache, seen, result
 

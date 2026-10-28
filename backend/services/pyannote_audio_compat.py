@@ -46,21 +46,39 @@ def _legacy_encoding(container: str, subtype: str) -> str:
 
 
 def _soundfile_info(uri, format=None, buffer_size=4096, backend=None):
+    """Describe an audio file the way legacy ``torchaudio.info`` did.
+
+    ``format`` and ``buffer_size`` exist only so old call sites keep working;
+    soundfile works both out on its own.
+    """
     del format, buffer_size
     if backend not in (None, "soundfile"):
-        raise ValueError(f"Audio metadata backend {backend!r} is not supported by this adapter")
+        raise ValueError(f"This adapter cannot read metadata with backend {backend!r}")
 
     import soundfile
 
     details = soundfile.info(uri)
     subtype = details.subtype or ""
+    container = details.format or ""
     return AudioMetaData(
         int(details.samplerate),
         int(details.frames),
         int(details.channels),
         _sample_width(subtype),
-        _legacy_encoding(details.format or "", subtype),
+        _legacy_encoding(container, subtype),
     )
+
+
+# Read dtype used for unnormalised WAV input, keyed by soundfile subtype.
+# Unsigned 8-bit has no soundfile dtype, so it is read as int16 and unpacked.
+_NATIVE_WAV_DTYPES = {
+    "PCM_16": "int16",
+    "PCM_24": "int32",
+    "PCM_32": "int32",
+    "FLOAT": "float32",
+    "DOUBLE": "float64",
+    "PCM_U8": "int16",
+}
 
 
 def _soundfile_load(
@@ -73,46 +91,46 @@ def _soundfile_load(
     buffer_size=4096,
     backend=None,
 ):
+    """Decode audio through soundfile with the legacy ``torchaudio.load`` contract.
+
+    Returns ``(waveform, sample_rate)``. ``format`` and ``buffer_size`` are
+    accepted but have no effect.
+    """
     del format, buffer_size
     if backend not in (None, "soundfile"):
-        raise ValueError(f"Audio decoding backend {backend!r} is not supported by this adapter")
+        raise ValueError(f"This adapter cannot decode audio with backend {backend!r}")
     if not isinstance(frame_offset, Integral) or frame_offset < 0:
-        raise ValueError("frame_offset must be a non-negative integer")
+        raise ValueError(f"frame_offset must be a non-negative integer, got {frame_offset!r}")
     if not isinstance(num_frames, Integral) or num_frames < -1:
-        raise ValueError("num_frames must be -1 or a non-negative integer")
+        raise ValueError(f"num_frames must be an integer of at least -1, got {num_frames!r}")
 
     import soundfile
     import torch
 
-    with soundfile.SoundFile(uri) as stream:
-        subtype = stream.subtype or ""
-        native_wav = stream.format == "WAV" and not normalize
-        if native_wav:
-            dtype_by_subtype = {
-                "PCM_16": "int16",
-                "PCM_24": "int32",
-                "PCM_32": "int32",
-                "FLOAT": "float32",
-                "DOUBLE": "float64",
-                "PCM_U8": "int16",
-            }
+    with soundfile.SoundFile(uri) as handle:
+        subtype = handle.subtype
+        native = handle.format == "WAV" and not normalize
+        if native:
             try:
-                read_dtype = dtype_by_subtype[subtype]
+                dtype = _NATIVE_WAV_DTYPES[subtype]
             except KeyError as exc:
-                raise ValueError(f"Unnormalized WAV subtype {subtype!r} is not supported") from exc
+                raise ValueError(
+                    f"Unnormalised loading is not available for WAV subtype {subtype!r}"
+                ) from exc
         else:
-            read_dtype = "float32"
+            dtype = "float32"
 
-        start = min(int(frame_offset), int(stream.frames))
-        if stream.seekable() or start:
-            stream.seek(start)
-        remaining = int(stream.frames) - start
+        total = int(handle.frames)
+        start = min(int(frame_offset), total)
+        if handle.seekable() or start:
+            handle.seek(start)
+        remaining = total - start
         count = remaining if num_frames == -1 else min(int(num_frames), remaining)
-        samples = stream.read(frames=count, dtype=read_dtype, always_2d=True)
-        sample_rate = int(stream.samplerate)
+        samples = handle.read(frames=count, dtype=dtype, always_2d=True)
+        sample_rate = int(handle.samplerate)
 
     waveform = torch.from_numpy(samples)
-    if native_wav and subtype == "PCM_U8":
+    if native and subtype == "PCM_U8":
         waveform = ((waveform.to(torch.int32) >> 8) + 128).to(torch.uint8)
     if channels_first:
         waveform = waveform.transpose(0, 1)
@@ -120,6 +138,7 @@ def _soundfile_load(
 
 
 def _backends():
+    """Report the only decoding backend this adapter provides."""
     return ["soundfile"]
 
 

@@ -5,7 +5,6 @@ import React from 'react';
 import { it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-
 import Header from '../components/Header';
 
 vi.mock('@tauri-apps/api/window', () => ({

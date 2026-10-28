@@ -156,10 +156,14 @@ class ExpressiveOptions:
 
     @classmethod
     def from_manifest(cls, data: Optional[dict]) -> "ExpressiveOptions":
-        """Rebuild from a resume manifest dict (unknown keys ignored)."""
+        """Rebuild options saved by :meth:`to_manifest`; empty input gives defaults.
+
+        Keys the manifest does not know about are ignored, so older and newer
+        manifests both load.
+        """
         if not data:
             return cls()
-        ev = data.get("emo_vector")
+        vector = data.get("emo_vector")
         return cls(
             num_step=data.get("num_step"),
             guidance_scale=data.get("guidance_scale"),
@@ -167,7 +171,7 @@ class ExpressiveOptions:
             class_temperature=data.get("class_temperature"),
             postprocess_output=data.get("postprocess_output"),
             seed=data.get("seed"),
-            emo_vector=tuple(ev) if ev else None,
+            emo_vector=tuple(vector) if vector else None,
             emo_text=data.get("emo_text"),
             emo_alpha=data.get("emo_alpha"),
             vary_repeats=bool(data.get("vary_repeats", False)),

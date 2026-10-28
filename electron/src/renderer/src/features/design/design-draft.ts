@@ -177,36 +177,32 @@ export function designRequestSeed(
 }
 
 /**
- * Reconcile details inferred from a description with the user's explicit picks.
- * New wording replaces an older pick when it changes that detail (or its
- * mutually exclusive counterpart); otherwise the pick is reapplied over the
- * inferred values. Picks made for the current wording also survive a late map.
+ * Fold the details inferred from a description into the draft. Explicit picks
+ * are replayed over the inferred values; a pick gives way only when it was
+ * made under other wording and the new text now says something different
+ * about its category (or about the exclusive category the pick would reset).
  */
 export function applyDescription(
   current: DesignDraft,
   mapping: Record<string, string>,
   described: string,
 ): DesignDraft {
-  const mapped = mergeDescribedAttrs(mapping);
-  const changed = (category: string) =>
-    (mapped[category] ?? 'Auto') !== (current.mapped[category] ?? 'Auto');
-  const reconciled = Object.entries(current.picks).reduce<{
-    attrs: Record<string, string>;
-    picks: Record<string, DesignPick>;
-  }>(
-    (state, [category, pick]) => {
-      const applied = applyVdState(state.attrs, category, pick.value);
-      const textOverridesPick =
-        changed(category) || (applied.clearedCategory !== null && changed(applied.clearedCategory));
-      if (pick.description !== described && textOverridesPick) return state;
-      return {
-        attrs: applied.vdStates,
-        picks: { ...state.picks, [category]: pick },
-      };
-    },
-    { attrs: mapped, picks: {} },
-  );
-  return { ...current, ...reconciled, mapped };
+  const inferred = mergeDescribedAttrs(mapping);
+  const textMoved = (category: string) =>
+    (inferred[category] ?? 'Auto') !== (current.mapped[category] ?? 'Auto');
+
+  let attrs: Record<string, string> = { ...inferred };
+  const picks: Record<string, DesignPick> = {};
+  for (const [category, pick] of Object.entries(current.picks)) {
+    const trial = applyVdState(attrs, category, pick.value);
+    const overridden =
+      textMoved(category) || (trial.clearedCategory !== null && textMoved(trial.clearedCategory));
+    if (overridden && pick.description !== described) continue;
+    attrs = trial.vdStates;
+    picks[category] = pick;
+  }
+
+  return { ...current, attrs, picks, mapped: inferred };
 }
 
 /**

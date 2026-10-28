@@ -135,9 +135,10 @@ export interface ResumableAudiobookJob {
   created_at: number | null;
 }
 
-/** Read the server's inventory of saved long-form work. */
+/** Fetch the renders the backend has on disk that can still be resumed. */
 export async function audiobookListJobs(): Promise<{ jobs: ResumableAudiobookJob[] }> {
-  return (await apiFetch('/audiobook/jobs', { method: 'GET' })).json();
+  const res = await apiFetch('/audiobook/jobs', { method: 'GET' });
+  return res.json();
 }
 
 /** Ask the backend to continue one render; consumers read events from the response body. */

@@ -159,9 +159,9 @@ export function UninstallSettings() {
             </div>
           )}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
+            <span className="text-sm text-muted-foreground">
               {t('settings.uninstall_total', { count: selected.length, size: fmtBytes(bytes) })}
-            </p>
+            </span>
             <Button
               variant="destructive"
               disabled={busy || scanFailed || present.length === 0}

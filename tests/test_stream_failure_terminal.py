@@ -50,12 +50,15 @@ def test_oom_stays_retryable():
     assert p["retryable"] is True and "terminal" not in p
 
 
-@pytest.mark.parametrize("msg", [
-    "The read operation timed out", "Connection reset by peer",
-    "[Errno 32] Broken pipe", "Permission denied",
+@pytest.mark.parametrize("message", [
+    "httpx.ReadTimeout: The read operation timed out",
+    "ConnectionResetError: [Errno 104] Connection reset by peer",
+    "BrokenPipeError: [Errno 32] Broken pipe",
+    "PermissionError: [Errno 13] Permission denied: 'output.wav'",
 ])
-def test_generic_errors_get_no_hint(msg):
-    assert "hint" not in stream_generation_failure(RuntimeError(msg))
+def test_ordinary_failures_carry_no_hint(message):
+    payload = stream_generation_failure(RuntimeError(message))
+    assert "hint" not in payload
 
 
 def test_no_exception_text_leaks():

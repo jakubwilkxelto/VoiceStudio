@@ -42,9 +42,13 @@ export function splitIntoChunks(text, maxChars) {
 
 export const SPLIT_MODES = ['sentences', 'paragraphs', 'chapters'];
 export const DEFAULT_SPLIT_MODE = 'paragraphs';
+// Character cap per produced line, by mode.
 export const DEFAULT_SPLIT_MAX = { sentences: 180, paragraphs: 500, chapters: 500 };
 
-const trimmed = (items) => items.map((x) => x.trim()).filter((x) => x.length > 0);
+// Trim each piece and keep only the ones with something left.
+function keepFilled(pieces) {
+  return pieces.map((piece) => piece.trim()).filter((piece) => piece.length > 0);
+}
 
 // Walk the lines once, starting a fresh block at every chapter heading.
 // Each block is { heading, body } where body is the trimmed text under it.
@@ -66,8 +70,8 @@ function toBlocks(text) {
 
 // Blank-line paragraphs; a lone block with hard line breaks degrades to one entry per line.
 function byParagraph(body) {
-  const paras = trimmed(body.split(/\n[ \t]*\n+/));
-  return paras.length === 1 && body.indexOf('\n') >= 0 ? trimmed(body.split('\n')) : paras;
+  const paras = keepFilled(body.split(/\n[ \t]*\n+/));
+  return paras.length === 1 && body.indexOf('\n') >= 0 ? keepFilled(body.split('\n')) : paras;
 }
 
 const BODY_SPLITTERS = {

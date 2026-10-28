@@ -82,9 +82,13 @@ _LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
 
 
 def _serve_config(cli):
-    """Read the machine-wide Tailscale serve configuration safely."""
+    """Read the machine's current ``tailscale serve`` configuration.
+
+    Returns the parsed dict (empty when nothing is served), or ``None`` when
+    the config could not be read; callers must then leave the config alone.
+    """
     try:
-        result = subprocess.run(
+        r = subprocess.run(
             [cli, "serve", "status", "--json"],
             capture_output=True,
             text=True,
@@ -92,15 +96,16 @@ def _serve_config(cli):
             errors="replace",
             timeout=10,
         )
-        if result.returncode != 0:
-            logger.warning("Tailscale serve status exited with code %s", result.returncode)
+        if r.returncode != 0:
+            logger.warning("tailscale serve status exited with code %s", r.returncode)
             return None
-        output = result.stdout or ""
-        first_object = output.find("{")
-        data = {} if first_object < 0 else json.loads(output[first_object:])
-        return data if isinstance(data, dict) else None
-    except Exception:  # noqa: BLE001
-        logger.exception("Tailscale serve configuration could not be read")
+        out = r.stdout or ""
+        # Some versions print a version-mismatch notice before the JSON.
+        brace = out.find("{")
+        config = json.loads(out[brace:]) if brace >= 0 else {}
+        return config if isinstance(config, dict) else None
+    except Exception:
+        logger.exception("Could not read the tailscale serve configuration")
         return None
 
 

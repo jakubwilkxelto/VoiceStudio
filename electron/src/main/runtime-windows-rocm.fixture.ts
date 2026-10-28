@@ -5,14 +5,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, vi } from 'vitest';
 import { runtimePython } from './runtime-project';
-
-vi.mock('node:child_process', async (original) => ({
-  ...(await original<typeof import('node:child_process')>()),
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
   execFile: vi.fn(),
 }));
-vi.mock('node:fs/promises', async (original) => ({
-  ...(await original<typeof import('node:fs/promises')>()),
-  statfs: vi.fn(async () => ({ bavail: 100 * 1024 ** 3, bsize: 1 })),
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  // 25 Mi blocks of 4 KiB: roughly 100 GiB free, so disk checks never block.
+  statfs: vi.fn(async () => ({ bavail: 25 * 1024 * 1024, bsize: 4096 })),
 }));
 const roots: string[] = [];
 export const recipe = '{"python":{"version":"3.12","abi":"cp312","platform":"win-amd64"}}';

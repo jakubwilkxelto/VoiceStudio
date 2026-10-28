@@ -275,21 +275,33 @@ class _TextExtractor(HTMLParser):
 
 
 def _html_to_title_body(xhtml: str) -> tuple[str, str]:
+    """Title and narratable text of one XHTML document."""
     _types, title, body = _html_extract(xhtml)
     return title, body
 
 
 def _html_extract(xhtml: str) -> tuple[set[str], str, str]:
-    p = _TextExtractor()
+    """Parse one XHTML entry into its structural epub types, title and body.
+
+    Malformed markup is tolerated: whatever was read before the parser gave up
+    is still returned.
+    """
+    extractor = _TextExtractor()
     try:
-        p.feed(xhtml)
+        extractor.feed(xhtml)
+        extractor.close()
     except Exception:
-        logger.warning("HTML parsing failed for EPUB entry; using partial text", exc_info=True)
-    body = p.text()
-    body_lines = body.splitlines()
-    if p.title and body_lines and body_lines[0] == p.title:
-        body = "\n".join(body_lines[1:]).lstrip("\n")
-    return p.epub_types, p.title, body
+        logger.warning(
+            "EPUB entry: HTML parsing failed part-way; importing the text read before the error",
+            exc_info=True,
+        )
+    body = extractor.text()
+    title = extractor.title
+    if title:
+        first, newline, rest = body.partition("\n")
+        if first == title:
+            body = rest.lstrip("\n") if newline else ""
+    return extractor.epub_types, title, body
 
 
 _OPF_NS = {"opf": "http://www.idpf.org/2007/opf", "c": "urn:oasis:names:tc:opendocument:xmlns:container"}
@@ -327,11 +339,12 @@ _BODY_TYPES = {
     "bodymatter", "chapter", "part", "prologue", "epilogue", "introduction",
     "preface", "foreword", "volume",
 }
+# EPUB 3 structural-semantics values for matter that is not read aloud.
 _ANCILLARY_TYPES = {
     "frontmatter", "backmatter", "cover", "titlepage", "halftitlepage",
     "copyright-page", "toc", "landmarks", "dedication", "acknowledgments",
-    "imprint", "colophon", "contributors", "other-credits", "epigraph", "loi",
-    "lot", "index", "glossary", "bibliography", "appendix",
+    "imprint", "colophon", "contributors", "other-credits", "epigraph",
+    "loi", "lot", "index", "glossary", "bibliography", "appendix",
 }
 _ANCILLARY_TITLE_RE = re.compile(
     r"^(?:"

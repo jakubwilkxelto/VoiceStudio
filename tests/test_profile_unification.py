@@ -158,40 +158,53 @@ def test_native_voice_design_profile_keeps_full_description(app_client):
     )["diverged"]
 
 
-def test_native_profile_preview_uses_its_authoring_engine(app_client, monkeypatch):
-    """A saved VoxCPM2 voice must not silently render an OmniVoice sample."""
-    client, _ = app_client
-    import api.routers.profiles as profiles_router
+def test_native_profile_preview_renders_with_its_authoring_engine(app_client, monkeypatch):
+    """A pending VoxCPM2 profile sample is rendered by VoxCPM2, once."""
+    import wave
+    from pathlib import Path
 
-    recipe = {"description": "a soft warm narrator", "picks": {}}
+    from api.routers import profiles as profiles_router
+    from core.db import db_conn
+
+    client, _ = app_client
+    recipe = {"description": "A gravelly lighthouse keeper with a slow drawl.", "picks": {}}
     created = client.post("/profiles", data={
-        "name": "Native Preview", "kind": "design", "engine": "voxcpm2",
+        "name": "Lighthouse keeper", "kind": "design", "engine": "voxcpm2",
         "vd_states": json.dumps(_VD), "design_recipe": json.dumps(recipe),
     })
     assert created.status_code == 200, created.text
-    profile_id = created.json()["id"]
-    called = []
+    pid = created.json()["id"]
 
-    async def fake_render(row, path, engine_id):
-        """Write a stub identity WAV while recording the chosen model."""
-        import wave
-        called.append((row["design_recipe"], engine_id))
-        with wave.open(str(path), "wb") as wav:
+    renders = []
+
+    async def _fake_native(row, path, engine_id):
+        renders.append({"recipe": json.loads(row["design_recipe"]), "engine": engine_id})
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(target), "wb") as wav:
             wav.setnchannels(1)
             wav.setsampwidth(2)
             wav.setframerate(24000)
-            wav.writeframes(b"\\x01\\x00" * 24000)
+            wav.writeframes(b"\x00\x01" * 24000)
 
-    monkeypatch.setattr(profiles_router, "_render_native_design_sample", fake_render)
-    audio = client.get(f"/profiles/{profile_id}/audio")
-    assert audio.status_code == 200, audio.text[:300] if audio.status_code != 200 else ""
-    assert audio.headers["content-type"].startswith("audio/")
-    assert len(called) == 1 and called[0][1] == "voxcpm2"
-    assert json.loads(called[0][0])["description"] == recipe["description"]
-    profile = client.get(f"/profiles/{profile_id}").json()
-    assert profile["ref_audio_path"] == profile_id + ".wav"
-    assert client.get(f"/profiles/{profile_id}/audio").status_code == 200
-    assert len(called) == 1
+    monkeypatch.setattr(profiles_router, "_render_native_design_sample", _fake_native)
+
+    first = client.get(f"/profiles/{pid}/audio")
+    assert first.status_code == 200, first.text
+    assert first.headers["content-type"].startswith("audio/")
+    assert len(renders) == 1
+    assert renders[0]["engine"] == "voxcpm2"
+    assert renders[0]["recipe"]["description"] == recipe["description"]
+
+    with db_conn() as conn:
+        stored = conn.execute(
+            "SELECT ref_audio_path FROM voice_profiles WHERE id=?", (pid,)
+        ).fetchone()
+    assert stored["ref_audio_path"] == f"{pid}.wav"
+
+    again = client.get(f"/profiles/{pid}/audio")
+    assert again.status_code == 200
+    assert len(renders) == 1
 
 
 def _write_identity_wave(path, amplitude: int) -> None:

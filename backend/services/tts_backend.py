@@ -3606,38 +3606,39 @@ class GPTSoVITSBackend(TTSBackend):
 
 
 def _sherpa_model_file(model_dir: str) -> Optional[str]:
-    """Find the single VITS model that can be loaded from ``model_dir``.
+    """Locate the ONNX graph inside a sherpa-onnx voice directory.
 
-    Piper archives commonly name the ONNX file after the voice instead of
-    using ``model.onnx``.  Accepting that layout is important because Piper is
-    the only sherpa-onnx voice available for many languages, while refusing
-    directories with several candidates keeps model selection deterministic.
+    ``model.onnx`` wins when present. Otherwise a directory holding exactly
+    one ``*.onnx`` file (how Piper voices are packaged, named after the voice)
+    uses that file. Nothing found, or several candidates, gives ``None``
+    rather than a guess.
     """
     if not model_dir or not os.path.isdir(model_dir):
         return None
-
-    conventional = os.path.join(model_dir, "model.onnx")
-    if os.path.isfile(conventional):
-        return conventional
-
+    preferred = os.path.join(model_dir, "model.onnx")
+    if os.path.isfile(preferred):
+        return preferred
     candidates = [
         os.path.join(model_dir, name)
-        for name in os.listdir(model_dir)
-        if name.lower().endswith(".onnx")
-        and os.path.isfile(os.path.join(model_dir, name))
+        for name in sorted(os.listdir(model_dir))
+        if name.lower().endswith(".onnx") and os.path.isfile(os.path.join(model_dir, name))
     ]
     return candidates[0] if len(candidates) == 1 else None
 
 
 def _sherpa_vits_extras(model_dir: str) -> dict[str, str]:
-    """Return optional phonemizer inputs present beside a VITS model."""
-    if not model_dir:
-        return {}
+    """Optional phonemizer resources found next to a VITS/Piper model.
+
+    Keys match sherpa-onnx's VITS config fields: ``data_dir`` for an
+    ``espeak-ng-data`` folder and ``lexicon`` for a ``lexicon.txt`` file.
+    """
     extras: dict[str, str] = {}
-    data_dir = os.path.join(model_dir, "espeak-ng-data")
+    if not model_dir:
+        return extras
+    espeak_data = os.path.join(model_dir, "espeak-ng-data")
+    if os.path.isdir(espeak_data):
+        extras["data_dir"] = espeak_data
     lexicon = os.path.join(model_dir, "lexicon.txt")
-    if os.path.isdir(data_dir):
-        extras["data_dir"] = data_dir
     if os.path.isfile(lexicon):
         extras["lexicon"] = lexicon
     return extras

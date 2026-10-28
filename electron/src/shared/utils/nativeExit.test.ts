@@ -34,8 +34,14 @@ describe.each(NT_TABLE)('%s', (name, unsigned, signed) => {
   });
 });
 
-describe('codes that are not native faults', () => {
-  test.each([0, 2, 137, 139, 3221225781])('%i is described as itself', (code) => {
+describe.each([
+  ['clean exit', 0],
+  ['ordinary failure', 2],
+  ['POSIX SIGKILL (128 + 9)', 137],
+  ['POSIX SIGSEGV (128 + 11)', 139],
+  ['NTSTATUS outside the fault table (STATUS_DLL_NOT_FOUND)', 0xc0000135],
+] as const)('%s is not a native fault', (_label, code) => {
+  test('has no symbolic name, is not a fault, and is described as the bare number', () => {
     expect(ntStatusName(code)).toBeNull();
     expect(isNativeFaultExit({ exitCode: code })).toBe(false);
     expect(describeExitCode(code)).toBe(String(code));

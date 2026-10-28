@@ -171,25 +171,25 @@ it('keeps distinct model names visible in the compact pack summary', async () =>
   expect(screen.getAllByText(/engineSidebar\.dictation/)).toHaveLength(2);
 });
 
-it('allows an installed pack to be selected when disk space is low', async () => {
-  serveBalancedPack({ installed: true, freeGb: 0.5 });
+it('lets an already installed pack be chosen even when the disk is nearly full', async () => {
+  serveBalancedPack({ installed: true, freeGb: 0.2 });
   render(
     <QueryClientProvider client={new QueryClient()}>
       <PerformanceModelPacks />
     </QueryClientProvider>,
   );
+  const choose = await screen.findByRole('button', { name: /models\.pack_use/ });
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  const action = await screen.findByRole('button', { name: /models\.pack_use/ });
-  expect(action).toBeEnabled();
-  fireEvent.click(action);
+  expect(choose).toBeEnabled();
+  fireEvent.click(choose);
   await waitFor(() =>
     expect(mock.api).toHaveBeenCalledWith('/api/settings/performance-profile', {
       method: 'PUT',
       body: JSON.stringify({ tier: 'balanced', family: null }),
     }),
   );
-  expect(action).toBeEnabled();
-  expect(mock.api).not.toHaveBeenCalledWith('/models/install', expect.anything());
+  expect(choose).toBeEnabled();
+  expect(mock.api.mock.calls.some(([path]) => path === '/models/install')).toBe(false);
 });
 
 it('disables a pack that still needs downloads when reserve space is missing', async () => {

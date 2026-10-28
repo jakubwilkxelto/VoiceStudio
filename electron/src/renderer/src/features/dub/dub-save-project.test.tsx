@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   dub: {
     jobId: 'job' as string | null,
     filename: 'take.wav',
-    project: null as { id: string; name: string } | null,
+    project: null as null | { id: string; name: string },
     phase: 'editing',
     recovery: null,
   },

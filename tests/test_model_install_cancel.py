@@ -71,15 +71,17 @@ def _seed_previous_install(cache):
 
 
 def _patch_install(download, monkeypatch, snapshot_download=None):
-    import huggingface_hub
+    """Stub everything around the transfer so an install goes straight to it."""
     from services import hf_revisions, performance_profiles
 
-    monkeypatch.setattr(download, "revision_for", lambda _repo: COMMIT)
-    monkeypatch.setattr(download, "disk_space_error", lambda *_a, **_k: None)
-    monkeypatch.setattr(download, "_segmented_enabled", lambda: False)
-    monkeypatch.setattr(hf_revisions, "remember_revision", lambda *_a: None)
-    monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda: None)
+    monkeypatch.setattr(download, "revision_for", lambda *a, **k: COMMIT)
+    monkeypatch.setattr(download, "disk_space_error", lambda *a, **k: None)
+    monkeypatch.setattr(download, "_segmented_enabled", lambda *a, **k: False)
+    monkeypatch.setattr(hf_revisions, "remember_revision", lambda *a, **k: None)
+    monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda *a, **k: None)
     if snapshot_download is not None:
+        import huggingface_hub
+
         monkeypatch.setattr(huggingface_hub, "snapshot_download", snapshot_download)
 
 

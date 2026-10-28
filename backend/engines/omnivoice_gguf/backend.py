@@ -870,48 +870,50 @@ def _make_backend_class():
         # ── generation ────────────────────────────────────────────────
 
         def generate(self, text: str, **kw):
-            """Synthesize ``text`` and return a ``torch.Tensor`` of shape (1, n_samples).
+            """Synthesise ``text`` by running the GGUF CLI once.
 
-            Recognized kwargs (others are silently ignored — keeps the
-            API surface lean and prevents accidental misuse):
-              * ``ref_audio`` (str/Path) — speaker reference WAV for cloning.
-              * ``ref_text`` (str) — transcript of ``ref_audio``.
-              * ``language`` (str) — ISO code or omnivoice-tts lang label.
-              * ``instruct`` (str) — free-text speaking-style hint.
-              * ``duration`` (float) — desired output length in seconds.
-              * ``seed`` (int) — RNG seed, to make a run repeatable.
-              * ``denoise`` (bool, default True) — False asks the binary to
-                skip denoising.
-              * ``preprocess_prompt`` (bool, default True) — False feeds the
-                reference clip through unprocessed.
-              * ``chunk_duration`` / ``chunk_threshold`` (float) — tuning of
-                how the binary splits long inputs.
+            Keyword arguments understood (anything else is ignored):
+
+            * ``ref_audio`` – path of a voice prompt clip to clone from.
+            * ``ref_text`` – transcript of that clip; only used together with
+              ``ref_audio`` and passed to the CLI through a temporary file.
+            * ``language`` – ISO code or name; unknown values let the CLI guess.
+            * ``instruct`` – free-text voice-design instruction.
+            * ``duration`` – target length in seconds.
+            * ``seed`` – integer seed for reproducible sampling.
+            * ``denoise`` – set False to skip prompt denoising (default True).
+            * ``preprocess_prompt`` – set False to feed the prompt as-is
+              (default True).
+            * ``chunk_duration`` / ``chunk_threshold`` – long-text chunking
+              controls forwarded unchanged.
+
+            Returns a float32 tensor shaped ``(1, n_samples)`` at the model's
+            native rate.
             """
-            import soundfile as sf  # local import keeps module import cheap
+            import soundfile as sf
             import torch
 
-            base_path, tok_path, _entry = self._resolve_quant_paths()
+            base, tokenizer, _ = self._resolve_quant_paths()
+            ref_audio = kw.get("ref_audio")
+            ref_text = kw.get("ref_text")
 
-            # Write the WAV to a temp file; we'll read it back as a tensor.
-            fd, out_str = tempfile.mkstemp(prefix="omnivoice-gguf-", suffix=".wav")
+            fd, out_name = tempfile.mkstemp(suffix=".wav")
             os.close(fd)
-            out_path = Path(out_str)
-            ref_text_file: Optional[Path] = None
-
+            out_path = Path(out_name)
+            transcript_path: Optional[Path] = None
             try:
-                # The binary reads the prompt transcript from a file, so stage one.
-                ref_text = kw.get("ref_text")
-                if kw.get("ref_audio") and ref_text:
-                    tfd, tname = tempfile.mkstemp(prefix="gguf-prompt-transcript-", suffix=".transcript")
-                    os.close(tfd)
-                    ref_text_file = Path(tname)
-                    ref_text_file.write_text(str(ref_text), encoding="utf-8")
+                if ref_audio and ref_text:
+                    # A file keeps arbitrary transcript text out of argv.
+                    t_fd, t_name = tempfile.mkstemp(suffix=".transcript")
+                    transcript_path = Path(t_name)
+                    with os.fdopen(t_fd, "w", encoding="utf-8") as handle:
+                        handle.write(str(ref_text))
                 argv = self._build_argv(
-                    base=base_path,
-                    tokenizer=tok_path,
+                    base=base,
+                    tokenizer=tokenizer,
                     out_path=out_path,
-                    ref_audio=kw.get("ref_audio"),
-                    ref_text=str(ref_text_file) if ref_text_file else None,
+                    ref_audio=ref_audio,
+                    ref_text=str(transcript_path) if transcript_path else None,
                     language=kw.get("language"),
                     instruct=kw.get("instruct"),
                     duration=kw.get("duration"),
@@ -922,31 +924,19 @@ def _make_backend_class():
                     chunk_threshold=kw.get("chunk_threshold"),
                 )
                 self._run_subprocess(argv, stdin_text=text)
-                wav, sr = sf.read(str(out_path))
+                samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
-                try:
-                    out_path.unlink()
-                except OSError:
-                    pass
-                if ref_text_file is not None:
+                for leftover in (out_path, transcript_path):
+                    if leftover is None:
+                        continue
                     try:
-                        ref_text_file.unlink()
+                        leftover.unlink(missing_ok=True)
                     except OSError:
                         pass
 
-            # soundfile returns (n,) for mono or (n, c) for multichannel.
-            # OmniVoice/Higgs Audio v2 is mono → (n,). Wrap to (1, n).
-            if wav.ndim == 1:
-                tensor = torch.from_numpy(wav).unsqueeze(0).float()
-            else:
-                # Defensive: if the binary ever returns stereo, take mean.
-                tensor = torch.from_numpy(wav.mean(axis=1)).unsqueeze(0).float()
-
-            # SubprocessBackend convention: return float32 in [-1, 1] at
-            # ``self.sample_rate`` (which we declare as 24_000). If the
-            # binary ever returns a different rate, the caller can resample
-            # — we don't second-guess here.
-            return tensor
+            if samples.ndim > 1:
+                samples = samples.mean(axis=1)
+            return torch.from_numpy(samples.astype("float32", copy=False)).unsqueeze(0)
 
         def _build_argv(
             self,
@@ -965,8 +955,13 @@ def _make_backend_class():
             chunk_duration: Optional[float] = None,
             chunk_threshold: Optional[float] = None,
         ) -> list[str]:
-            """Compose argv from typed Path objects only (T-04-02)."""
-            argv: list[str] = [
+            """Assemble the CLI argument list; ``ref_text`` is a staged file path.
+
+            The prompt clip must live under a directory this app owns (voices,
+            dubbing workspace or the temp dir) so a request cannot point the
+            binary at arbitrary files on disk.
+            """
+            argv = [
                 str(_binary_path()),
                 "--model", str(base),
                 "--codec", str(tokenizer),
@@ -975,56 +970,38 @@ def _make_backend_class():
             lang = _iso_to_omnivoice_lang(language)
             if lang:
                 argv += ["--lang", lang]
-            valued = (
-                ("--instruct", instruct or None, str),
-                ("--duration", duration, lambda v: str(float(v))),
-                ("--seed", seed, lambda v: str(int(v))),
-                ("--chunk-duration", chunk_duration, lambda v: str(float(v))),
-                ("--chunk-threshold", chunk_threshold, lambda v: str(float(v))),
-            )
-            for flag, value, render in valued:
-                if value is not None:
-                    argv.extend((flag, render(value)))
-            for flag, switched_off in (
-                ("--no-denoise", denoise is False),
-                ("--no-preprocess-prompt", preprocess_prompt is False),
-            ):
-                if switched_off:
-                    argv.append(flag)
+            if isinstance(instruct, str) and instruct:
+                argv += ["--instruct", instruct]
+            if duration is not None:
+                argv += ["--duration", str(float(duration))]
+            if seed is not None:
+                argv += ["--seed", str(int(seed))]
+            if chunk_duration is not None:
+                argv += ["--chunk-duration", str(float(chunk_duration))]
+            if chunk_threshold is not None:
+                argv += ["--chunk-threshold", str(float(chunk_threshold))]
+            if denoise is False:
+                argv.append("--no-denoise")
+            if preprocess_prompt is False:
+                argv.append("--no-preprocess-prompt")
+
             if ref_audio:
-                # Two-stage validation (defense in depth):
-                #   (a) Reject anything outside the project's voices /
-                #       dub-jobs trees + the system temp dir. Test
-                #       `test_generate_blocks_freeform_ref_audio` proved
-                #       on Linux that an existence-only check accepts
-                #       sensitive paths like /etc/shadow.
-                #   (b) Then confirm the constrained path actually exists.
-                ref_path = Path(str(ref_audio)).resolve()
-                from core.config import VOICES_DIR, DUB_DIR
-                allowed_roots = [
+                from core.config import DUB_DIR, VOICES_DIR
+
+                prompt = Path(ref_audio).resolve()
+                roots = [
                     Path(VOICES_DIR).resolve(),
                     Path(DUB_DIR).resolve(),
                     Path(tempfile.gettempdir()).resolve(),
                 ]
-                inside_allowed = any(
-                    ref_path == root or root in ref_path.parents
-                    for root in allowed_roots
-                )
-                if not inside_allowed:
-                    # FileNotFoundError keeps the failure mode consistent
-                    # with the existing test's expectation and the prior
-                    # validation contract (callers never differentiate
-                    # "outside policy" from "missing file" — both are bad).
+                if not any(prompt == root or prompt.is_relative_to(root) for root in roots):
                     raise FileNotFoundError(
-                        f"ref_audio outside allowed roots: {ref_path}"
+                        f"Reference audio is outside the directories this engine may read: {prompt}"
                     )
-                if not ref_path.is_file():
-                    raise FileNotFoundError(
-                        f"ref_audio not found: {ref_path}"
-                    )
-                argv += ["--ref-wav", str(ref_path)]
+                if not prompt.is_file():
+                    raise FileNotFoundError(f"Reference audio file does not exist: {prompt}")
+                argv += ["--ref-wav", str(prompt)]
                 if ref_text:
-                    # By this point ref_text is a path to the staged transcript file.
                     argv += ["--ref-text", str(ref_text)]
             return argv
 

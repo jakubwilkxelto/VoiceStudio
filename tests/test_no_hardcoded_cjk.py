@@ -16,8 +16,17 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 _CJK = re.compile(r"[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uff00-\uffef]")
 _SKIP_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".svg", ".woff",
-    ".woff2", ".ttf", ".otf", ".pdf", ".mp3", ".wav", ".mp4", ".lock",
+    # images
+    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".svg",
+    # fonts
+    ".woff", ".woff2", ".ttf", ".otf",
+    # documents
+    ".pdf",
+    # audio / video
+    ".mp3", ".wav", ".mp4",
+    # lockfiles
+    ".lock",
+    # model weights
     ".bin", ".onnx", ".safetensors",
 }
 _SKIP_DIRECTORIES = {

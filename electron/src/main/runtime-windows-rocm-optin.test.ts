@@ -45,13 +45,15 @@ it('reports ROCm on Windows ARM64 as not ready instead of rejecting', async () =
   const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
   const arch = Object.getOwnPropertyDescriptor(process, 'arch')!;
   const previous = process.env.OMNIVOICE_TORCH_VARIANT;
-  Object.defineProperty(process, 'platform', { value: 'win32' });
-  Object.defineProperty(process, 'arch', { value: 'arm64' });
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
   process.env.OMNIVOICE_TORCH_VARIANT = 'rocm';
   try {
     const reasons: string[] = [];
-    await expect(runtimeDependenciesReady(tmpdir(), (r) => reasons.push(r))).resolves.toBe(false);
-    expect(reasons.join()).toMatch(/x64/);
+    await expect(
+      runtimeDependenciesReady(tmpdir(), (reason) => reasons.push(reason)),
+    ).resolves.toBe(false);
+    expect(reasons.join('\n')).toContain('x64');
   } finally {
     Object.defineProperty(process, 'platform', platform);
     Object.defineProperty(process, 'arch', arch);

@@ -101,7 +101,7 @@ def _chain_form(word: str) -> str:
 
 
 def _two_digit(n: int) -> str:
-    """Words for 1..99."""
+    """Words for 1..99 as one compound."""
     if n < 10:
         return _UNITS[n]
     if n < 20:

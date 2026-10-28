@@ -8,7 +8,7 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock('@/components/dictation-demo', () => ({ DictationDemo: () => null }));
 vi.mock('@/lib/api/client', () => ({ apiJson: vi.fn() }));
 vi.mock('@/hooks/use-native-dictation', () => ({
-  dictationPreferencesKey: ['dictation-prefs'],
+  dictationPreferencesKey: ['dictation-preferences'],
   nativeShortcutKey: ['native-shortcut'],
   useDictationPreferences: () => ({ data: server.prefs }),
 }));

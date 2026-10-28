@@ -25,7 +25,7 @@ import StoriesEditor from '../components/StoriesEditor';
 import { useAppStore } from '../store';
 
 const castFixture = [
-  { id: 'reader', name: 'Reader', color: '#56789a', profileId: 'profile-reader' },
+  { id: 'reader', name: 'Night Reader', color: '#5b8def', profileId: 'profile-reader' },
 ];
 
 function storyFixture() {

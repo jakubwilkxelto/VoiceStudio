@@ -17,10 +17,15 @@ _PRIOR = "0012_call_sessions"
 
 
 def _root() -> str:
-    root = os.path.abspath(os.path.dirname(__file__))
-    while root != "/" and not os.path.isfile(os.path.join(root, "alembic.ini")):
-        root = os.path.dirname(root)
-    return root
+    """Nearest ancestor of this file that holds ``alembic.ini``."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        if os.path.isfile(os.path.join(here, "alembic.ini")):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            return here
+        here = parent
 
 
 def _cfg(db_path):
@@ -33,11 +38,11 @@ def _cfg(db_path):
 
 def _columns(path):
     with sqlite3.connect(str(path)) as conn:
-        return {r[1] for r in conn.execute("PRAGMA table_info(generation_history)")}
+        return {info[1] for info in conn.execute("PRAGMA table_info(generation_history)")}
 
 
 def _old_schema_db(path, *, with_column=False):
-    """History table as it was before the recipe column, stamped at 0012."""
+    """A database at revision ``_PRIOR``, optionally already carrying the column."""
     from alembic import command
 
     ddl = _db._BASE_SCHEMA
@@ -47,7 +52,8 @@ def _old_schema_db(path, *, with_column=False):
         conn.executescript(ddl)
         conn.execute(
             "INSERT INTO generation_history (id, text, mode, instruct, created_at) "
-            "VALUES ('row1', 'hello', 'design', 'female', 5.0)"
+            "VALUES (?, ?, ?, ?, ?)",
+            ("row1", "hello", "design", "female", 1_700_000_000.0),
         )
         conn.commit()
     command.stamp(_cfg(path), _PRIOR)

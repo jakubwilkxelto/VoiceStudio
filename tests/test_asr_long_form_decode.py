@@ -42,13 +42,17 @@ def test_mlx_whisper_decodes_windows_independently(monkeypatch):
     from services import asr_backend as ab
 
     captured = {}
+    fake_mlx = types.ModuleType("mlx_whisper")
 
-    def fake_transcribe(_audio, **kwargs):
+    def _transcribe(audio, **kwargs):
         captured.update(kwargs)
-        return {"text": "hello", "segments": [], "language": "en"}
+        return {"text": "hallo", "segments": [], "language": "de"}
 
-    monkeypatch.setitem(sys.modules, "mlx_whisper", types.SimpleNamespace(transcribe=fake_transcribe))
-    monkeypatch.setattr(ab, "_decode_audio_16k_mono", lambda _p: [0.0])
+    fake_mlx.transcribe = _transcribe
+    monkeypatch.setitem(sys.modules, "mlx_whisper", fake_mlx)
+    monkeypatch.setattr(ab, "_decode_audio_16k_mono", lambda _path: [0.0, 0.0, 0.0])
+    monkeypatch.setattr(ab, "_local_model_source", lambda name: name)
+
     ab.MLXWhisperBackend().transcribe("clip.wav", word_timestamps=False)
     assert captured["condition_on_previous_text"] is False
 

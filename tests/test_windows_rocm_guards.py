@@ -6,25 +6,36 @@ from pathlib import Path
 import pytest
 
 
+_REPO = Path(__file__).resolve().parents[1]
+
+
+def _load_setup_script():
+    spec = importlib.util.spec_from_file_location("_setup_rocm_guard", _REPO / "scripts" / "setup.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.mark.parametrize("platform", ["win32", "darwin"])
 def test_source_setup_never_installs_linux_rocm_wheels(platform, monkeypatch):
-    path = Path(__file__).parents[1] / "scripts" / "setup.py"
-    spec = importlib.util.spec_from_file_location("vs_setup_guards", path)
-    setup = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(setup)
-    called = []
-    native = []
-    monkeypatch.setattr("sys.platform", platform)
+    setup = _load_setup_script()
+    monkeypatch.setattr(setup.sys, "platform", platform)
     monkeypatch.setenv("OMNIVOICE_TORCH_VARIANT", "rocm")
-    monkeypatch.setattr(setup, "_ensure_vcredist_windows", lambda: None)
-    monkeypatch.setattr(setup, "_ensure_rocm_torch", lambda: called.append(True))
-    monkeypatch.setattr(setup, "_find_compat_dir", lambda: None)
-    monkeypatch.setattr(setup.subprocess, "check_call", lambda command, **kwargs: native.append(command))
+
+    rocm_calls = []
+    commands = []
+    monkeypatch.setattr(setup, "_ensure_vcredist_windows", lambda *a, **k: None)
+    monkeypatch.setattr(setup, "_ensure_rocm_torch", lambda *a, **k: rocm_calls.append((a, k)))
+    monkeypatch.setattr(setup, "_find_compat_dir", lambda *a, **k: None)
+    monkeypatch.setattr(setup.subprocess, "check_call", lambda cmd, *a, **k: commands.append(list(cmd)))
+
     setup.main()
-    assert called == []
-    assert [command[1:3] for command in native] == (
-        [["-m", "backend.core.windows_rocm.install"]] if platform == "win32" else []
-    )
+
+    assert rocm_calls == []
+    if platform == "win32":
+        assert [cmd[1:3] for cmd in commands] == [["-m", "backend.core.windows_rocm.install"]]
+    else:
+        assert commands == []
 
 
 @pytest.mark.parametrize("family", ["cpu", "rocm"])

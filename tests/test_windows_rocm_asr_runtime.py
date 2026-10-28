@@ -13,46 +13,79 @@ from services import asr_backend as ab
 
 @pytest.fixture
 def hip(monkeypatch, tmp_path):
+    """A Windows HIP CTranslate2 install whose pins, binary and devices check out."""
+    import types
+
+    from core import device_caps
     from core.windows_rocm import ct2
     from core.windows_rocm.recipe import expected_versions, load_recipe
 
     recipe = load_recipe()
-    monkeypatch.setattr(ct2.sys, "platform", "win32")
-    monkeypatch.setattr(ct2, "validate_target", lambda: None)
-    version = ct2.metadata.version
     pins = expected_versions(recipe)
-    monkeypatch.setattr(ct2.metadata, "version", lambda name: pins[name] if name in pins else version(name))
-    monkeypatch.setattr(ct2, "package_root", lambda name: tmp_path)
-    # faster_whisper is a fake module here; its presence check uses find_spec.
-    monkeypatch.setattr(ct2.util, "find_spec", lambda name: SimpleNamespace(submodule_search_locations=[str(tmp_path)]))
-    monkeypatch.setattr(ct2, "sha256", lambda path: recipe["ctranslate2"]["binary_sha256"])
+    real_version = ct2.metadata.version
+    real_find_spec = ct2.util.find_spec
     initialized = []
-    monkeypatch.setattr(ct2, "initialize_dll_search", lambda: initialized.append(True))
-    native = SimpleNamespace(get_cuda_device_count=lambda: 1,
-                             get_supported_compute_types=lambda device: {"float16"})
+    loads = []
+
+    monkeypatch.setattr(ct2.sys, "platform", "win32")
+    monkeypatch.setattr(ct2, "validate_target", lambda *a, **k: None)
+    monkeypatch.setattr(
+        ct2.metadata, "version", lambda name: pins[name] if name in pins else real_version(name)
+    )
+    monkeypatch.setattr(ct2, "package_root", lambda *a, **k: tmp_path)
+
+    faked_modules = {"faster_whisper", "ctranslate2"}
+
+    def _find_spec(name, *args, **kwargs):
+        if name in faked_modules:
+            return SimpleNamespace(name=name, submodule_search_locations=[str(tmp_path)])
+        return real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(ct2.util, "find_spec", _find_spec)
+    monkeypatch.setattr(ct2, "sha256", lambda path: recipe["ctranslate2"]["binary_sha256"])
+    monkeypatch.setattr(ct2, "initialize_dll_search", lambda *a, **k: initialized.append(True))
+
+    native = types.ModuleType("ctranslate2")
+    native.get_cuda_device_count = lambda: 1
+    native.get_supported_compute_types = lambda device: {"float16"}
     monkeypatch.setitem(sys.modules, "ctranslate2", native)
+
     monkeypatch.setattr(ct2, "_VERIFIED", set())
     monkeypatch.setattr(ct2, "_FAILED", {})
 
-    def verify():
-        if native.get_cuda_device_count() < 1 or "float16" not in native.get_supported_compute_types("cuda"):
-            raise RuntimeError("HIP child verification failed")
+    def _verify():
+        if native.get_cuda_device_count() < 1:
+            raise RuntimeError("no HIP device visible to CTranslate2")
+        if "float16" not in native.get_supported_compute_types("cuda"):
+            raise RuntimeError("float16 is not supported on the HIP device")
 
-    monkeypatch.setattr(ct2, "verify_environment", verify)
-    caps = SimpleNamespace(family="rocm", requested_family=None, available_families=("rocm", "cpu"),
-                           device_name="AMD test", vram_gb=16, notes=(), probe_ok=True)
-    monkeypatch.setattr("core.device_caps.detect_host_caps", lambda: caps)
+    monkeypatch.setattr(ct2, "verify_environment", _verify)
+
+    caps = SimpleNamespace(
+        family="rocm",
+        requested_family=None,
+        available_families=("rocm", "cpu"),
+        device_name="AMD Radeon RX 7800 XT",
+        vram_gb=16.0,
+        notes=(),
+        probe_ok=True,
+    )
+    monkeypatch.setattr(device_caps, "detect_host_caps", lambda *a, **k: caps)
+
     monkeypatch.setattr(ab, "_ctranslate2_execstack_ok", lambda: (True, "ready"))
     monkeypatch.setattr(ab, "_ctranslate2_cudnn_ok", lambda: (True, "ready"))
-    loads = []
 
-    def model(source, **kwargs):
-        assert initialized, "initialize DLL search before importing/loading CT2"
+    whisper = types.ModuleType("faster_whisper")
+
+    def _whisper_model(source, **kwargs):
+        assert initialized, "the HIP DLL search path must be set up before loading"
         loads.append(kwargs)
-        return SimpleNamespace()
+        return SimpleNamespace(source=source)
 
-    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=model))
-    monkeypatch.setattr(ab, "_local_model_source", lambda name: "local")
+    whisper.WhisperModel = _whisper_model
+    monkeypatch.setitem(sys.modules, "faster_whisper", whisper)
+    monkeypatch.setattr(ab, "_local_model_source", lambda *a, **k: "local-whisper-model")
+
     return SimpleNamespace(ct2=ct2, native=native, caps=caps, loads=loads, initialized=initialized)
 
 

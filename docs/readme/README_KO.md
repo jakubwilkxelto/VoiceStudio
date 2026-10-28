@@ -2,14 +2,14 @@
   <img src="../../docs/logo.png" alt="VoiceStudio" width="88" />
   <h1>VoiceStudio</h1>
   <p>
-    <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Trendshift의 VoiceStudio 순위" width="220" height="48" /></a>
+    <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Trendshift의 VoiceStudio 인기 순위 배지" width="220" height="48" /></a>
   </p>
   <p><strong>내 기기에서 돌아가는 보이스 스튜디오: 646개 언어로 음성 복제, 보이스 디자인, 더빙, 받아쓰기, 음성 전사, 내레이션.</strong><br />
   내 컴퓨터와 휴대폰에서 실행됩니다. 계정도 API 키도 필요 없으며, 사용자가 허락하지 않는 한 어떤 데이터도 기기 밖으로 나가지 않습니다.</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">웹사이트</a> ·
-    <a href="https://github.com/debpalash/VoiceStudio/releases/latest">다운로드</a> ·
-    <a href="#시작하기">시작하기</a> ·
+    <a href="https://github.com/debpalash/VoiceStudio/releases/latest">내려받기</a> ·
+    <a href="#시작하기">시작 안내</a> ·
     <a href="#문서">문서</a> ·
     <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
     <a href="../../README.md">English</a> ·
@@ -18,9 +18,9 @@
     <a href="README_RU.md">Русский</a>
   </p>
   <p>
-    <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main" alt="CI" /></a>
+    <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main" alt="CI 상태" /></a>
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio" alt="최신 릴리스" /></a>
-    <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0" /></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0 라이선스" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio&style=stats" alt="조회수" /></a>
   </p>
   <p>

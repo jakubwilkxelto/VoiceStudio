@@ -209,6 +209,8 @@ class AgentFitRequest(BaseModel):
     target_lang: str
 
 class ProsodyMirrorSegment(BaseModel):
+    """One timed source line to measure for the prosody mirror."""
+
     id: str = Field(min_length=1, max_length=128)
     start: float = Field(ge=0, allow_inf_nan=False)
     end: float = Field(ge=0, allow_inf_nan=False)
@@ -217,8 +219,9 @@ class ProsodyMirrorSegment(BaseModel):
     @model_validator(mode="after")
     def _end_after_start(self):
         if self.end <= self.start:
-            raise ValueError("end must be greater than start")
+            raise ValueError("segment end must be later than its start")
         return self
+
 
 
 class TranscriptSegment(BaseModel):

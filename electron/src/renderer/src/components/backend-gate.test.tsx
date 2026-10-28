@@ -311,13 +311,14 @@ it('explains unsupported Windows proxy bypass rules before retrying setup', () =
   );
 });
 
-const RELEASES_URL = 'https://github.com/debpalash/VoiceStudio/releases/latest';
-it('sends Apple Silicon users on the Intel build to the arm64 download (#2598)', () => {
+const LATEST_RELEASE_URL = 'https://github.com/debpalash/VoiceStudio/releases/latest';
+
+it('sends Apple Silicon users running the Intel build to the arm64 download (#2598)', () => {
   backendStatus.setupIssue = 'wrong_architecture';
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
   render(
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
+    <QueryClientProvider client={client}>
       <BackendGate>
         <div>workspace</div>
       </BackendGate>
@@ -326,18 +327,14 @@ it('sends Apple Silicon users on the Intel build to the arm64 download (#2598)',
 
   expect(screen.getByText(i18n.t('backend.setup_wrong_architecture'))).toBeVisible();
   expect(
-    screen.getByRole('link', {
-      name: i18n.t('backend.download_apple_silicon'),
-    }),
-  ).toHaveAttribute('href', RELEASES_URL);
+    screen.getByRole('link', { name: i18n.t('backend.download_apple_silicon') }),
+  ).toHaveAttribute('href', LATEST_RELEASE_URL);
   expect(
     screen.queryByRole('button', { name: i18n.t('backend.setup_required') }),
   ).not.toBeInTheDocument();
   expect(screen.queryByText(i18n.t('backend.setup_unsupported_platform'))).not.toBeInTheDocument();
   expect(
-    screen.getByRole('textbox', {
-      name: i18n.t('settings.remote_backend_url'),
-    }),
+    screen.getByRole('textbox', { name: i18n.t('settings.remote_backend_url') }),
   ).toBeVisible();
 });
 

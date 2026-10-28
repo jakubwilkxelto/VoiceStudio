@@ -316,10 +316,15 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/** SHA-256 of a file on disk as lowercase hex, read chunk by chunk rather than all at once. */
 export async function fileSha256(path: string): Promise<string> {
-  const hash = createHash('sha256');
-  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
-  return hash.digest('hex');
+  return new Promise<string>((resolve, reject) => {
+    const digest = createHash('sha256');
+    const source = createReadStream(path);
+    source.on('data', (chunk) => digest.update(chunk));
+    source.once('error', reject);
+    source.once('end', () => resolve(digest.digest('hex')));
+  });
 }
 
 export interface SegmentedDownloadOptions {

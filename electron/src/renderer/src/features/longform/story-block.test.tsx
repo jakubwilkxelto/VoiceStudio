@@ -6,6 +6,7 @@ vi.mock('@/components/waveform-player', () => ({ WaveformPlayer: () => null }));
 vi.mock('./story-preview', () => ({ previewStoryLine: vi.fn() }));
 vi.mock('./story-stems', () => ({ StoryStems: () => null }));
 vi.mock('@/components/pipeline-failure', () => ({ PipelineFailure: () => null }));
+
 import { StoryEditor } from './story-editor';
 import { blankLongformDraft, type Draft } from './longform-session';
 

@@ -48,14 +48,10 @@ for _stream in (sys.stdout, sys.stderr):
 
 # ── Linux: AMD GPU torch build, only on request ───────────────────────────
 
-# Keep in sync with Electron's runtime-project.ts and
-# [tool.uv.constraint-dependencies].
+# Keep this index and these pins in step with Electron's runtime-project.ts
+# and with [tool.uv.constraint-dependencies] in pyproject.toml.
 ROCM_TORCH_INDEX = "https://download.pytorch.org/whl/rocm6.4"
-ROCM_TORCH_PINS = (
-    "torch==2.8.0",
-    "torchaudio==2.8.0",
-    "torchvision==0.23.0",
-)
+ROCM_TORCH_PINS = ("torch==2.8.0", "torchaudio==2.8.0", "torchvision==0.23.0")
 
 
 def _rocm_opt_in(environ=os.environ):

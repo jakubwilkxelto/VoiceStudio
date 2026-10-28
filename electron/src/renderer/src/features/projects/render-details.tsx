@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 
+/** The settings a finished render was produced with, as the backend recorded them. */
 export interface RenderSummary {
   engine?: string;
   voices?: { id: string; name: string }[];
@@ -9,14 +10,17 @@ export interface RenderSummary {
   lines?: number;
   words?: number;
   speeds?: number[];
+  /** Engine options keyed by backend name; known keys map through OPTION_LABELS. */
   options?: Record<string, unknown>;
   chapter_titles?: string[];
 }
 
+/** One finished long-form render as listed by `/longform/jobs`. */
 export interface RenderRecord {
   job_id: string;
-  title?: string;
+  /** Path of the rendered audio file. */
   output: string;
+  title?: string;
   type?: 'story' | 'audiobook';
   created_at?: number | string;
   duration_s?: number;

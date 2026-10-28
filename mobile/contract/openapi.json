@@ -3581,6 +3581,7 @@
     "type": "object"
    },
    "ProsodyMirrorSegment": {
+    "description": "One timed source line to measure for the prosody mirror.",
     "properties": {
      "end": {
       "minimum": 0.0,
@@ -10766,7 +10767,7 @@
   },
   "/dub/cleanup-segments/{job_id}": {
    "post": {
-    "description": "Re-run the merge/stitch passes to drop fragments.\n\nUses the editor's segments when they are sent, so unsaved edits survive;\notherwise the stored ones. The editor's result is returned unsaved (the\nclient applies it as an undoable edit) and the job keeps its stored\nsegments until the next generation.",
+    "description": "Merge fragments and stitch split sentences in a job's segments.\n\nWith a body, the editor's own segments are cleaned and handed back\nuntouched on the server, so the client can apply the result as an edit\nthe user can undo. Without one, the stored segments are cleaned and saved.",
     "operationId": "dub_cleanup_segments_dub_cleanup_segments__job_id__post",
     "parameters": [
      {

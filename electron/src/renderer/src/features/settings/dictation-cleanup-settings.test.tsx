@@ -1,10 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
+
 const mock = vi.hoisted(() => ({ apiJson: vi.fn() }));
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
-}));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/lib/api/client', () => ({ apiJson: mock.apiJson }));
 import { DictationCleanupSettings } from './dictation-cleanup-settings';
 afterEach(() => {

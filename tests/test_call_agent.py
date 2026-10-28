@@ -159,9 +159,9 @@ def _configure(enabled=True, **settings):
 @pytest.fixture()
 def api(fakes):
     from fastapi.testclient import TestClient
-    from main import app
 
-    return TestClient(app, client=("127.0.0.1", 50000))
+    main = importlib.import_module("main")
+    return TestClient(main.app, client=("127.0.0.1", 51123))
 
 
 @pytest.fixture()

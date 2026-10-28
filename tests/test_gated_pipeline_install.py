@@ -34,7 +34,7 @@ class _FakeHub:
         return [c for c in self.calls if not c.get("dry_run")]
 
 
-@pytest.fixture()
+@pytest.fixture
 def hub(monkeypatch, tmp_path):
     import huggingface_hub
     from api.routers.setup import download
@@ -45,19 +45,21 @@ def hub(monkeypatch, tmp_path):
     monkeypatch.setattr(huggingface_hub, "snapshot_download", fake)
     monkeypatch.setattr(
         "services.token_resolver.resolve",
-        lambda: ResolvedToken(token=SECRET, source="app", username="tester"),
+        lambda *a, **k: ResolvedToken(token=SECRET, source="app", username="pipeline-tester"),
     )
-    monkeypatch.setattr(download, "compute_plan", lambda plan: {
+    empty_plan = {
         "to_download_bytes": 0, "n_files": 0, "n_cached": 0,
-        "total_bytes": 0, "cached_bytes": 0})
-    monkeypatch.setattr(download, "disk_space_error", lambda n: None)
-    monkeypatch.setattr(download, "_segmented_enabled", lambda: False)
+        "total_bytes": 0, "cached_bytes": 0,
+    }
+    monkeypatch.setattr(download, "compute_plan", lambda *a, **k: dict(empty_plan))
+    monkeypatch.setattr(download, "disk_space_error", lambda *a, **k: None)
+    monkeypatch.setattr(download, "_segmented_enabled", lambda *a, **k: False)
     monkeypatch.setattr(hf_revisions, "remember_revision", lambda *a, **k: None)
-    monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda: None)
+    monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda *a, **k: None)
     download._install_cooldowns.pop(PIPELINE, None)
     download._install_failures.pop(PIPELINE, None)
     yield fake
-    for repo in [PIPELINE, *DEPS]:
+    for repo in (PIPELINE, *DEPS):
         download._install_cooldowns.pop(repo, None)
         download._install_failures.pop(repo, None)
 
