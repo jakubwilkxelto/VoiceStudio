@@ -5,9 +5,12 @@ Docker. Pełny plan: `PLAN-26-10-2026.md`.
 
 ## Stan
 
-**Faza P1: logowanie i role działają, dane są jeszcze wspólne.** Wszyscy
-zalogowani widzą te same głosy, historię i projekty, dopóki nie wejdzie P2.
-Do tego czasu udostępniaj serwer tylko zaufanemu zespołowi.
+**Faza P2: logowanie i role działają, wiersze bazy są rozdzielone per user.**
+Każdy widzi tylko swoje głosy, historię, dubbingi, projekty, glosariusze,
+eksporty i joby (patrz [Izolacja danych](#izolacja-danych-p2)). **Pliki**
+(`/audio`, `/voice_audio`), strumienie zadań w pamięci, `/batch/*` i zdarzenia
+`/ws/events` są jeszcze wspólne (rozdzielenie w P3). Do tego czasu udostępniaj
+serwer tylko zaufanemu zespołowi.
 
 | Flaga | Zachowanie |
 |---|---|
@@ -66,6 +69,8 @@ Uwagi:
 | `OMNIVOICE_SERVER_MODE=1` | wymagane (obraz Dockera ustawia je sam) |
 | `OMNIVOICE_MULTIUSER_ALLOW_MASTER_KEY=1` | awaryjnie: `OMNIVOICE_API_KEY` jako Bearer admina |
 | `OMNIVOICE_MULTIUSER_INSECURE_HTTP=1` | tylko testy lokalne: zezwala na `http://` |
+| `OMNIVOICE_MULTIUSER_BOOTSTRAP_OWNER` | username albo `sub`; przy jego pierwszym logowaniu dostaje wszystkie istniejące dane bez właściciela |
+| `OMNIVOICE_MULTIUSER_AUDIT=1` | loguje stos każdego połączenia z bazą otwartego bez tożsamości |
 
 Serwer **nie wystartuje**, gdy brakuje którejś z wymaganych zmiennych, gdy
 ustawiono `OMNIVOICE_TRUSTED_NETWORKS` lub `OMNIVOICE_TRUST_HOST_LOOPBACK`,
@@ -126,10 +131,56 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
     luźniejsza niż upstream, poza przejrzaną listą odczytów dla userów.
 - **Tożsamość** (`identity.py`): `ContextVar`. `None` oznacza brak
   tożsamości (fail-closed), `SYSTEM` to start aplikacji i migracje.
-  `asyncio.to_thread` przenosi ją sam, `run_in_executor` nie (patch w P2).
+  `asyncio.to_thread` przenosi ją sam; resztę załatwia `propagation.py` (P2).
 - **Migracje forka** (`migrations/`, tabela wersji `xelto_alembic_version`):
   osobny łańcuch, więc nie tworzy drugiego heada w łańcuchu upstreamu.
   Uruchamia je opakowanie `core.db.init_db`.
+
+### Izolacja danych (P2)
+
+- **Tabele per user** (`db_views.USER_TABLES`): `voice_profiles`,
+  `generation_history`, `dub_history`, `studio_projects`, `export_history`,
+  `glossary_terms`, `jobs`. Pozostałe są wspólne (`db_scope.GLOBAL_TABLES`:
+  ustawienia, wymowa, galeria, telefonia, zdalne workery, cloud sync,
+  `job_events`, dostępne tylko przez swój job).
+- **Własność** w tabeli `xelto_row_owner(tbl, row_id, owner)`; tabele upstreamu
+  są nietknięte. Głosy demo (`is_demo=1`) nie mają właściciela: widzą je
+  wszyscy, nikt nie może ich zmienić (brama odpowiada 403).
+- **Hak w `core/db.py` `get_db`** (`db_scope.py`): połączenie otwarte dla usera
+  to `XeltoConnection`, w którym każda tabela per user jest przesłonięta
+  widokiem TEMP filtrowanym po właścicielu, z triggerami INSTEAD OF do zapisu
+  i triggerami na tabeli bazowej (stemplowanie właściciela, blokada cudzych
+  wierszy). Połączenie dodatkowo:
+  - zwraca poprawne `cursor.rowcount` dla zapisów przez widok;
+  - przepisuje UPSERT na tabeli usera na `main.<tabela>`;
+  - wykonuje `executescript` (DDL z `ensure_schema`) na osobnym połączeniu systemowym.
+- **Fail-closed**: połączenie bez tożsamości widzi puste tabele per user,
+  a zapis do nich się nie udaje. `SYSTEM` (lifespan, `init_db`, CLI) dostaje
+  zwykłe połączenie i widzi wszystko.
+- **Admin też widzi tylko swoje dane.** Operacje między userami robi CLI.
+  Klucz master (`ALLOW_MASTER_KEY`) działa jako osobny pseudo-user `__master_key__`.
+- **Tożsamość w pracy w tle** (`propagation.py`, `hooks.py`):
+  `ThreadPoolExecutor.submit`, `threading.Thread.start` i `JobQueue.submit`
+  przenoszą kontekst zgłaszającego. `TaskManager` zapamiętuje go w
+  `add_task` i wchodzi w niego w `worker` (hak w `core/tasks.py`).
+- **Cache jobów dubbingu**: `dub_pipeline.get_job` sprawdza właściciela przed
+  odczytem `_dub_jobs` (hak). Właściciel nowych jobów pochodzi z opakowanych
+  `put_job`/`put_and_save_job`, a zapisanych z `xelto_row_owner`.
+- **Bootstrap**: przy pierwszym logowaniu `OMNIVOICE_MULTIUSER_BOOTSTRAP_OWNER`
+  dostaje wszystkie wiersze bez właściciela (raz na bazę, znacznik w `xelto_meta`).
+- **CLI** (z `backend/`, najlepiej przy zatrzymanym serwerze):
+
+  ```sh
+  python -m xelto.cli assign-unowned --to <user>   # przypisz dane bez właściciela
+  python -m xelto.cli purge-user <user>            # usuń wiersze usera (pliki zostają)
+  python -m xelto.cli --db /ścieżka/omnivoice.db ...
+  ```
+
+  `<user>` to username albo `sub` kogoś, kto choć raz się zalogował.
+- **Strażnicy merge'y**:
+  - `test_table_classification.py`: każde `CREATE TABLE` upstreamu musi być w USER_TABLES albo GLOBAL_TABLES;
+  - `test_sql_lint.py`: nowe `RETURNING`, UPSERT, `lastrowid`, `CREATE VIRTUAL TABLE` na tabelach per user
+    albo `executescript` gdziekolwiek wymagają przeglądu i wpisu na allowlistę.
 
 ### Frontend (`electron/src/renderer/src/xelto/`, tylko build web)
 
@@ -151,6 +202,11 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
 - `tests/xelto_fork/`: fałszywy Keycloak (`fake_idp.py`, prawdziwe tokeny
   RS256), przepływ logowania, brama, konfiguracja, strażnicy polityki,
   sonda na prawdziwej `main.app` w podprocesie (`real_app_probe.py`).
+- P2: `test_db_scope.py` (scoping na prawdziwych ścieżkach upstreamu:
+  rowcount, UPSERT, `ensure_schema`, fail-closed), `test_propagation.py`,
+  `test_ownership.py`, strażnicy oraz macierz izolacji na prawdziwej
+  `main.app` (`isolation_probe.py`): bob nie listuje, nie czyta, nie zmienia
+  i nie usuwa danych alice w żadnej z 7 tabel.
 - `electron/src/renderer/src/xelto/*.test.ts(x)`: stany bramki, zmiana
   użytkownika, filtr admina, parytet tłumaczeń.
 - Smoke test 2026-10-27 na prawdziwym Keycloaku 26.4 z importem realmu:

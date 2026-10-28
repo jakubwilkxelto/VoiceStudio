@@ -7,6 +7,7 @@ import logging
 from core import job_store
 from core import failure
 from core import run_sentinel
+from xelto import hooks as _xelto_hooks  # XELTO: multi-user identity for queued tasks
 
 logger = logging.getLogger("omnivoice.tasks")
 
@@ -76,6 +77,7 @@ class TaskManager:
             "error": None,
             "cancelled": False,
         }
+        task_obj["xelto"] = _xelto_hooks.capture()  # XELTO: multi-user identity for queued tasks
         self.active_tasks[task_id] = task_obj
         try:
             job_store.create(task_id, type=task_type, project_id=project_id, meta=meta)
@@ -137,6 +139,7 @@ class TaskManager:
                 self.queue.task_done()
                 continue
 
+            _xelto_hooks.enter(t)  # XELTO: multi-user identity for queued tasks
             t["status"] = "running"
             try:
                 job_store.mark_running(task_id)

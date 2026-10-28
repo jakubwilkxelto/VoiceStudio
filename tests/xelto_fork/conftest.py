@@ -1,6 +1,7 @@
 """Shared fixtures: multi-user configuration, a fake Keycloak, a small gated app."""
 from __future__ import annotations
 
+import sqlite3
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -11,7 +12,7 @@ from fastapi.testclient import TestClient
 import core.db as db_module
 from api.dependencies import require_admin, require_consumer
 from xelto import install, migrate
-from xelto.identity import current_identity
+from xelto.identity import Identity, current_identity
 
 from .fake_idp import CLIENT_ID, CLIENT_SECRET, ISSUER, FakeIdP
 
@@ -117,8 +118,20 @@ def build_app() -> FastAPI:
 
 @pytest.fixture
 def keep_init_db(monkeypatch):
-    # install() wraps core.db.init_db; restore the original after each test.
+    # install() wraps core.db.init_db and the dub job creators, turns on row
+    # scoping and patches the executors; undo all of it after each test so
+    # upstream tests in the same session see plain upstream behaviour.
+    from services import dub_pipeline
+
+    from xelto import db_scope, hooks, propagation
+
     monkeypatch.setattr(db_module, "init_db", db_module.init_db)
+    monkeypatch.setattr(dub_pipeline, "put_job", dub_pipeline.put_job)
+    monkeypatch.setattr(dub_pipeline, "put_and_save_job", dub_pipeline.put_and_save_job)
+    monkeypatch.setattr(db_scope, "_active", db_scope._active)
+    yield
+    propagation.uninstall()
+    hooks.forget_dub_owners()
 
 
 @pytest.fixture
@@ -134,6 +147,25 @@ def db_path(tmp_path, monkeypatch):
     monkeypatch.setattr(db_module, "DB_PATH", str(path))
     migrate.upgrade(str(path))
     return path
+
+
+ALICE = Identity(sub="alice-sub", username="alice")
+BOB = Identity(sub="bob-sub", username="bob")
+
+
+@pytest.fixture
+def scoped_db(db_path, keep_init_db, monkeypatch):
+    """Upstream's schema plus the fork's tables, row scoping on, one shared demo voice."""
+    from core.db import _BASE_SCHEMA
+    from xelto import db_scope
+
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(_BASE_SCHEMA)
+    conn.execute("INSERT INTO voice_profiles(id, name, is_demo) VALUES ('demo', 'Demo', 1)")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(db_scope, "_active", True)
+    return db_path
 
 
 @pytest.fixture

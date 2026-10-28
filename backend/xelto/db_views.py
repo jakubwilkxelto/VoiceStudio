@@ -29,6 +29,9 @@ USER_TABLES = (
     "jobs",
 )
 
+# The guard triggers' error message (the gate turns it into a 403).
+OWNERSHIP_REFUSAL = "xelto: row belongs to another user"
+
 # Rows every user may read but nobody may change through a scoped connection.
 SHARED_READ = {"voice_profiles": "is_demo = 1"}
 
@@ -76,7 +79,7 @@ def scope_ddl(table: str, cols: list[Column]) -> list[str]:
         f"""CREATE TEMP TRIGGER xelto_{table}_bi BEFORE INSERT ON main.{table}
             WHEN EXISTS (SELECT 1 FROM main.xelto_row_owner WHERE tbl = '{table}'
                          AND row_id = NEW.id AND owner <> xelto_owner())
-            BEGIN SELECT RAISE(ABORT, 'xelto: row belongs to another user'); END""",
+            BEGIN SELECT RAISE(ABORT, '{OWNERSHIP_REFUSAL}'); END""",
         f"""CREATE TEMP TRIGGER xelto_{table}_ai AFTER INSERT ON main.{table}
             BEGIN
               INSERT OR REPLACE INTO main.xelto_row_owner(tbl, row_id, owner)
@@ -85,12 +88,12 @@ def scope_ddl(table: str, cols: list[Column]) -> list[str]:
             END""",
         f"""CREATE TEMP TRIGGER xelto_{table}_bu BEFORE UPDATE ON main.{table}
             WHEN NOT {_owned(table, 'OLD')}
-            BEGIN SELECT RAISE(ABORT, 'xelto: row belongs to another user'); END""",
+            BEGIN SELECT RAISE(ABORT, '{OWNERSHIP_REFUSAL}'); END""",
         f"""CREATE TEMP TRIGGER xelto_{table}_au AFTER UPDATE ON main.{table}
             BEGIN SELECT xelto_count(); END""",
         f"""CREATE TEMP TRIGGER xelto_{table}_bd BEFORE DELETE ON main.{table}
             WHEN NOT {_owned(table, 'OLD')}
-            BEGIN SELECT RAISE(ABORT, 'xelto: row belongs to another user'); END""",
+            BEGIN SELECT RAISE(ABORT, '{OWNERSHIP_REFUSAL}'); END""",
         f"""CREATE TEMP TRIGGER xelto_{table}_ad AFTER DELETE ON main.{table}
             BEGIN
               DELETE FROM main.xelto_row_owner WHERE tbl = '{table}' AND row_id = OLD.id;

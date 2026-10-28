@@ -20,6 +20,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, RedirectRespons
 from starlette.types import Receive, Scope, Send
 
 from core.csrf import cookie_csrf_allowed
+from xelto import ownership
 from xelto.authn import Authenticator
 from xelto.crypto import InvalidToken, fernet
 from xelto.oidc import InvalidGrant, OidcError, TokenRejected
@@ -133,7 +134,13 @@ class SignInEndpoints:
         store = self.auth.store
         if not await asyncio.to_thread(store.upsert_user, identity):
             return self._refuse("Your VoiceStudio account is disabled.", 403)
-        raw = await asyncio.to_thread(store.create, identity, tokens.refresh_token,
+        owner = self.settings.bootstrap_owner
+        if owner and owner in (identity.username, identity.sub):
+            counts = await asyncio.to_thread(ownership.bootstrap, store._connect, identity.sub)
+            if counts is not None:
+                logger.info("bootstrap: existing data assigned to %s: %s",
+                            identity.username or identity.sub, counts)
+        raw =await asyncio.to_thread(store.create, identity, tokens.refresh_token,
                                       request.headers.get("user-agent", ""))
         response = RedirectResponse(tx["next"], status_code=302)
         self._clear(response, self.settings.tx_cookie)
