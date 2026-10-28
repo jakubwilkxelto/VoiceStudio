@@ -13,7 +13,8 @@ _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "scripts" / "xelto"))
 from dump_unclassified_routes import UNCLASSIFIED, snapshot_routes, unclassified  # noqa: E402
 
-from xelto.policy import DEFAULT_CLASS, RouteClass, classify  # noqa: E402
+from xelto.policy import DEFAULT_CLASS, Owner, RouteClass, classify, path_owner  # noqa: E402
+from xelto.resolvers import RESOLVERS  # noqa: E402
 
 _REGEN = "uv run python scripts/xelto/dump_unclassified_routes.py"
 
@@ -47,3 +48,32 @@ def test_unclassified_default_is_admin():
 def test_health_is_public():
     assert ("GET", "/health") in snapshot_routes()
     assert classify("GET", "/health") == (RouteClass.PUBLIC, True)
+
+
+def test_every_user_route_with_a_parameter_has_an_owner_check():
+    """A per-user route that names something by id must say how its owner is found.
+
+    ``db-view`` means the handler only reaches it through the scoped views;
+    anything kept in memory or on disk needs a resolver.
+    """
+    missing = sorted(
+        f"{method} {path}" for method, path in snapshot_routes()
+        if "{" in path
+        and classify(method, path)[0] in (RouteClass.USER, RouteClass.USER_READ_ADMIN_WRITE)
+        and path_owner(method, path) is None
+    )
+    assert not missing, (
+        "Per-user routes with path parameters but no owner check; add them to "
+        "PATH_OWNERS in backend/xelto/policy.py:\n  " + "\n  ".join(missing)
+    )
+
+
+def test_file_mounts_and_file_routes_are_guarded():
+    for template in ("/audio/*", "/voice_audio/*", "/audio/{audio_id}.ogg",
+                     "/audio/{audio_id}/quality", "/preview/{filename}"):
+        assert path_owner("GET", template) is Owner.FILE, template
+    assert path_owner("DELETE", "/dub/history/{history_id}") is Owner.DUB
+
+
+def test_every_owner_check_except_views_and_shared_has_a_resolver():
+    assert set(Owner) - set(RESOLVERS) == {Owner.DB_VIEW, Owner.SHARED}

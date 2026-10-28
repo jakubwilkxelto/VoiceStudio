@@ -52,6 +52,9 @@ def purge_user(conn: sqlite3.Connection, owner: str) -> dict[str, int]:
         )
         counts[table] = cur.rowcount
     conn.execute("DELETE FROM xelto.xelto_row_owner WHERE owner = ?", (owner,))
+    counts["file claims"] = conn.execute(
+        "DELETE FROM xelto.xelto_file_owner WHERE owner = ?", (owner,)
+    ).rowcount
     hooks.forget_dub_owners()
     return counts
 

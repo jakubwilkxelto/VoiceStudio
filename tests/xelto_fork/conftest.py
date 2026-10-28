@@ -1,6 +1,7 @@
 """Shared fixtures: multi-user configuration, a fake Keycloak, a small gated app."""
 from __future__ import annotations
 
+import importlib
 import sqlite3
 from urllib.parse import parse_qs, urlsplit
 
@@ -36,6 +37,7 @@ MULTIUSER_ENV = {
     "OMNIVOICE_MULTIUSER_INSECURE_HTTP": "",
     "OIDC_DISCOVERY_URL": "",
     "OIDC_API_AUDIENCE": "",
+    "OMNIVOICE_MULTIUSER_FILES": "",
 }
 
 
@@ -118,20 +120,27 @@ def build_app() -> FastAPI:
 
 @pytest.fixture
 def keep_init_db(monkeypatch):
-    # install() wraps core.db.init_db and the dub job creators, turns on row
-    # scoping and patches the executors; undo all of it after each test so
-    # upstream tests in the same session see plain upstream behaviour.
+    # install() wraps core.db.init_db, the dub job creators, the batch and
+    # bundle routers' owners, turns on row scoping and patches the executors
+    # and the event bus; undo all of it after each test so upstream tests in
+    # the same session see plain upstream behaviour.
+    from api.routers import batch, project_bundles
     from services import dub_pipeline
 
-    from xelto import db_scope, hooks, propagation
+    from xelto import db_scope, events, hooks, propagation, resources
 
     monkeypatch.setattr(db_module, "init_db", db_module.init_db)
     monkeypatch.setattr(dub_pipeline, "put_job", dub_pipeline.put_job)
     monkeypatch.setattr(dub_pipeline, "put_and_save_job", dub_pipeline.put_and_save_job)
     monkeypatch.setattr(db_scope, "_active", db_scope._active)
+    monkeypatch.setattr(batch, "_jobs", batch._jobs)
+    monkeypatch.setattr(batch, "_run_batch_pipeline", batch._run_batch_pipeline)
+    monkeypatch.setattr(project_bundles, "_directory", project_bundles._directory)
     yield
     propagation.uninstall()
+    events.uninstall()
     hooks.forget_dub_owners()
+    resources.forget_batch_owners()
 
 
 @pytest.fixture
@@ -146,6 +155,8 @@ def db_path(tmp_path, monkeypatch):
     """The app's database (``omnivoice.db``); the fork's ``xelto.db`` sits next to it."""
     path = tmp_path / "omnivoice.db"
     monkeypatch.setattr(db_module, "DB_PATH", str(path))
+    # Some upstream suites purge and re-import `core`; xelto.store reads the live module.
+    monkeypatch.setattr(importlib.import_module("core.db"), "DB_PATH", str(path))
     monkeypatch.delenv("OMNIVOICE_MULTIUSER_DB", raising=False)
     migrate.upgrade()
     return path
