@@ -13,6 +13,16 @@
     "surprised": "Şaşkınlık",
     "calm": "Sakinlik"
   },
+  "expression": {
+    "direction_label": "Seslendirme yönergesi",
+    "direction_ph": "ör. önce gergin, sonra heyecanlı",
+    "direction_help": "Tüm kayda, {{engine}} için yönerge olarak uygulanır.",
+    "unsupported": "{{engine}} ile duygu kullanılamaz. IndexTTS2 kademeli duygu sunar; CosyVoice 3 ve VoxCPM2 yazılı yönerge kabul eder.",
+    "tags_hint": "Bir satırın içindeki anlar için betikteki Ekle menüsünden {{example}} gibi tepkiler ekleyin.",
+    "tags_unsupported": "Gri etiketleri {{engine}} sözcük olarak sesli okur.",
+    "guide": "Etkileyici konuşma kılavuzu",
+    "tip": "İpucu: aşağıdaki Duygu ile seslendirmeyi şekillendirin, betikteki Ekle menüsünden gülme veya iç çekme gibi tepkiler ekleyin."
+  },
   "cloneQuality": {
     "title": "Ses kalitesi",
     "precision": "WAV hassasiyeti",
@@ -2782,6 +2792,10 @@
     "pick_voice": "Bir ses profili seçin…",
     "match_duration": "Kaynak süresine eşitle",
     "match_duration_hint": "Sonucu zamanda esnetir (perde korunur) ve kaynak klibin uzunluğuna yaklaştırır.",
+    "keep_delivery": "Anlatımımı koru",
+    "keep_delivery_hint": "Yalnızca ses değişir. Zamanlamanız, duraklamalarınız ve tonlamanız kaydedildiği gibi kalır. Kapalı: klip yazıya dökülür ve yeniden seslendirilir.",
+    "keep_delivery_engine_required": "Anlatımımı koru için CosyVoice 3 gerekir.",
+    "keep_delivery_no_voices": "Dönüştürülecek kaydı olan bir ses yok. Bir kayıttan ses klonlayın veya Anlatımımı koru seçeneğini kapatın.",
     "source_language": "Kaynak konuşma dili (Otomatik = ses profilinin dili)",
     "convert": "Dönüştür",
     "converting": "Dönüştürülüyor…",
@@ -4454,5 +4468,45 @@
     "generating": "Geçerli çekim bitene kadar bekleyin.",
     "name_required": "Önce bir ad girin.",
     "audio_missing": "Bu çekimin kaydedilecek ses dosyası yok."
+  },
+  "ggufQuant": {
+    "label": "Model nicemlemesi",
+    "auto": "Otomatik: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU veya yerel varsayılan",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · yüklü",
+    "download": "{{quant}} indir ({{size}} MB)",
+    "downloading": "{{quant}} indiriliyor: {{done}} / {{total}} MB",
+    "using_installed": "Seçilen nicemleme inene kadar yüklü {{quant}} kullanılır.",
+    "env_pinned": "{{env}} tarafından {{quant}} olarak sabitlendi.",
+    "runtime_missing": "omnivoice-tts çalışma zamanı eksik. VoiceStudio'yu yeniden kurun veya scripts/build-omnivoice-tts.sh ile derleyin.",
+    "runtime_placeholder": "Paketteki omnivoice-tts dosyası bir yer tutucu, çalışan bir çalışma zamanı değil. VoiceStudio'yu yeniden kurun.",
+    "runtime_integrity": "omnivoice-tts çalışma zamanının sağlama toplamı tutmuyor. VoiceStudio'yu yeniden kurun.",
+    "runtime_quarantined": "İşletim sistemi omnivoice-tts çalışma zamanını karantinaya aldı. İzin verin veya VoiceStudio'yu yeniden kurun.",
+    "runtime_other": "omnivoice-tts çalışma zamanı başlamıyor. Ayrıntılar için motor denetimine bakın.",
+    "weights_missing": "Model ağırlıkları henüz indirilmedi. Şimdi indirin, yoksa ilk üretimde inecekler.",
+    "download_failed": "Ağırlık indirmesi başarısız"
+  },
+  "gpuOffer": {
+    "title": "Daha hızlı konuşma için GPU kullanılsın mı?",
+    "body": "VoiceStudio {{gpu}} buldu. OmniVoice GGUF, CPU yerine Vulkan ile bunun üzerinde {{quant}} modeliyle çalışabilir.",
+    "body_shared": "VoiceStudio sistem belleğini paylaşan {{gpu}} buldu. OmniVoice GGUF, CPU yerine Vulkan ile bunun üzerinde {{quant}} modeliyle çalışabilir.",
+    "download": "Bir kez {{size}} MB indirilir.",
+    "no_download": "Hiçbir şey indirilmesi gerekmiyor.",
+    "licence": "GGUF modeli ticari olmayan kullanım içindir; önce lisansını kabul etmeniz istenecek.",
+    "accept": "GPU kullan",
+    "decline": "Şimdi değil",
+    "later": "Bunu daha sonra Ayarlar › {{section}} bölümünden değiştirebilirsiniz.",
+    "licence_then_retry": "Lisansı kabul edin, ardından GPU kullan'a yeniden basın.",
+    "switched": "Konuşma için artık {{gpu}} kullanılıyor.",
+    "switched_downloading": "Konuşma için artık {{gpu}} kullanılıyor. {{quant}} modeli indiriliyor…"
+  },
+  "pauseFill": {
+    "title": "Duraklamalar",
+    "room_tone": "Duraklamaları oda sesiyle doldur",
+    "room_tone_note": "[pause] işaretleri ve sesli kitap boşlukları dijital sessizlik yerine kaydın kendi sessiz arka planını alır; böylece ses satırlar arasında kesilmez.",
+    "env_pinned": "{{env}} tarafından belirlendi. Bu anahtarı kullanmak için değiştirin veya temizleyin."
   }
 }

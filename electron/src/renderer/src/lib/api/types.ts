@@ -53,6 +53,8 @@ export interface HistoryItem {
   starred: boolean | number | null;
   /** JSON copy of the Voice Design draft behind a design take; null for any other take or a row saved earlier. */
   design_recipe?: string | null;
+  /** The take's text as a reference transcript: no script markup, '' when it may be cut short (#3062). */
+  transcript?: string;
   /** Epoch seconds (SQLite REAL) on the wire; tolerate ISO strings too. */
   created_at: number | string;
 }
@@ -77,6 +79,8 @@ export interface EngineBackend {
   reason: string | null;
   hint?: string | null;
   supports_cloning?: boolean | null;
+  /** Speech-to-speech conversion: Convert's "Keep my delivery" (#3421). */
+  supports_voice_conversion?: boolean;
   /** Graded emotion conditioning (IndexTTS2): text, strength and vector. */
   supports_emotion?: boolean;
   /** Built-in voices a request may pick (`preset_voice`); empty or absent when the engine has none (#2938). */
@@ -86,6 +90,8 @@ export interface EngineBackend {
   supports_voice_design?: boolean | null;
   /** Whether `instruct` must be one of a fixed tag list (OmniVoice) or may be any wording. */
   instruct_vocabulary?: InstructVocabulary;
+  /** Emotion mechanism and inline reaction tags the engine renders (#3422). */
+  expression_caps?: ExpressionCaps;
   /** Seconds of a clone reference the engine uses; null when not verified (#2281). */
   max_ref_seconds?: number | null;
   /** How that stretch is chosen from a longer clip. */
@@ -142,6 +148,15 @@ export interface SystemInfo {
 
 /** `tags` = the fixed OmniVoice attribute list; `freeform` = any wording is passed through. */
 export type InstructVocabulary = 'tags' | 'freeform';
+
+/** "graded" = IndexTTS2 sliders/description; "direction" = written `instruct`; "none". */
+export type EmotionControl = 'graded' | 'direction' | 'none';
+
+export interface ExpressionCaps {
+  emotion: EmotionControl;
+  /** Inline tags the engine's tokenizer renders, e.g. `[laughter]`. */
+  tags: string[];
+}
 
 /** What the client reports about its Voice Design draft. The server adds a
  *  `mapped` section of its own before storing it. */

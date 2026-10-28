@@ -99,32 +99,32 @@ export function ProductionSettings({
           }}
         />
       </label>
-      {emotion && (
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">{t('audiobook.emotion_help')}</p>
-          <label className="block space-y-1 text-xs">
-            {t('audiobook.emotion_text')}
-            <Input
-              value={value.emoText}
-              disabled={disabled}
-              onChange={(event) => onChange({ ...value, emoText: event.target.value })}
-            />
-          </label>
-          <label className="block space-y-1 text-xs">
-            {t('audiobook.emotion_alpha')}
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              className="w-full accent-primary"
-              disabled={disabled}
-              value={value.emoAlpha ?? 1}
-              onChange={(event) => onChange({ ...value, emoAlpha: Number(event.target.value) })}
-            />
-          </label>
-        </div>
-      )}
+      {/* Always shown so it can be found (#3422); grayed where the engine ignores it. */}
+      <div className="space-y-3">
+        <p className="text-xs text-muted-foreground">{t('audiobook.emotion_help')}</p>
+        <label className="block space-y-1 text-xs">
+          {t('audiobook.emotion_text')}
+          <Input
+            value={value.emoText}
+            disabled={disabled || !emotion}
+            placeholder={t('audiobook.emotion_text_ph')}
+            onChange={(event) => onChange({ ...value, emoText: event.target.value })}
+          />
+        </label>
+        <label className="block space-y-1 text-xs">
+          {t('audiobook.emotion_alpha')}
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            className="w-full accent-primary disabled:opacity-50"
+            disabled={disabled || !emotion}
+            value={value.emoAlpha ?? 1}
+            onChange={(event) => onChange({ ...value, emoAlpha: Number(event.target.value) })}
+          />
+        </label>
+      </div>
       <Button
         size="sm"
         variant="ghost"

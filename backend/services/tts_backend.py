@@ -34,6 +34,8 @@ from typing import Literal, Optional
 
 import torch
 
+from services.expression import COSYVOICE_INLINE_TAGS, OMNIVOICE_INLINE_TAGS, expression_caps
+
 logger = logging.getLogger("omnivoice.tts")
 
 
@@ -231,7 +233,7 @@ class TTSBackend(ABC):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         # Enforce lifetime at the engine boundary so every caller is covered.
-        for name in ("generate", "generate_batch", "_ensure_loaded"):
+        for name in ("generate", "generate_batch", "_ensure_loaded", "convert_voice"):
             method = cls.__dict__.get(name)
             if method is not None:
                 setattr(cls, name, _lease_render(method))
@@ -283,6 +285,17 @@ class TTSBackend(ABC):
     #: used as written or ignored. Reported by ``list_backends()`` so clients
     #: know whether to sanitise before sending.
     instruct_vocabulary: Literal["tags", "freeform"] = "freeform"
+
+    #: Inline reaction tags (``[laughter]``, ``[breath]``) this engine's own
+    #: tokenizer renders where they are typed (#3422). The text reaches every
+    #: engine verbatim, so an engine that doesn't list a tag speaks it as
+    #: words; Insert menus offer only these. Declare only verified tags.
+    inline_tags: tuple[str, ...] = ()
+
+    #: Whether ``instruct`` steers the *delivery* of a cloned voice ("sound
+    #: scared") rather than only designing a new one (#3422). True for
+    #: CosyVoice's instruct2 and VoxCPM2's controllable cloning.
+    instruct_directs_delivery: bool = False
 
     def ensure_ready(self) -> None:
         """Load model weights now (blocking), so callers can separate the
@@ -444,11 +457,10 @@ class TTSBackend(ABC):
     #: the reference voice. Read through :func:`rendered_dialects`.
     rendered_dialects: tuple[str, ...] = ()
 
-    #: Whether this engine already emits mastered, studio-grade audio and should
-    #: therefore skip the shared apply_mastering() chain (highpass + Compressor,
-    #: tuned for OmniVoice's 24 kHz output). Studio engines like VoxCPM2 (native
-    #: 48 kHz) set this True so their clean output isn't pumped. Loudness
-    #: normalisation is applied regardless — it's a benign peak scale.
+    #: True bypasses ``apply_mastering()``: its high-pass filter and compressor
+    #: target the default engine's 24 kHz cloned audio. Finished high-rate
+    #: engines such as VoxCPM2 opt out to avoid damaging their studio output;
+    #: loudness normalisation is still applied independently.
     applies_own_mastering: bool = False
 
     #: Whether this engine can clone an arbitrary voice from reference audio
@@ -457,6 +469,21 @@ class TTSBackend(ABC):
     #: (issue #312 class) before committing to a job that needs it, instead
     #: of silently falling back to OmniVoice or mis-cloning per segment.
     supports_cloning: bool = True
+
+    #: Whether :meth:`convert_voice` works: speech-to-speech conversion that
+    #: keeps the source recording's timing, rhythm and intonation and changes
+    #: only the timbre (#3421). Convert's "Keep my delivery" mode routes to an
+    #: engine that declares it instead of transcribing and re-speaking.
+    supports_voice_conversion: bool = False
+
+    def convert_voice(self, source_audio: str, *, ref_audio: str, seed: Optional[int] = None) -> torch.Tensor:
+        """Re-voice the speech in ``source_audio`` with ``ref_audio``'s timbre.
+
+        Both are local WAV paths. Returns a ``(1, n_samples)`` tensor at
+        :attr:`sample_rate` that follows the source's timing. Engines that
+        declare :attr:`supports_voice_conversion` override this.
+        """
+        raise NotImplementedError(f"{self.id} does not support voice conversion")
 
     #: Longest stretch of a reference clip this engine actually conditions on,
     #: in seconds, and how it chooses that stretch from a longer clip:
@@ -855,6 +882,31 @@ def _reference_duration_cached(path: str, _mtime_ns: int, _size: int) -> Optiona
         return None
 
 
+def required_reference_transcript(ref_audio, ref_text):
+    """``ref_text``, or the reference clip's transcript when it has none.
+
+    For engines that cannot clone without a transcript (MLX-Audio CSM,
+    CosyVoice GGUF). /generate and /convert transcribe a transcript-less clip
+    before calling the engine, but streaming, audiobook and dub pass a profile's
+    stored transcript straight through, and that is missing for a voice saved
+    without one or whose cut legacy take transcript is ignored (#3062).
+    Transcribing here covers every route with the same recognizer
+    (``transcribe_reference``, cached by audio content). Best-effort: ``None``
+    when recognition fails, and the engine reports its own error.
+    """
+    if ref_text and str(ref_text).strip():
+        return ref_text
+    if not isinstance(ref_audio, str) or not ref_audio:
+        return None
+    try:
+        from services.asr_backend import transcribe_reference
+
+        return transcribe_reference(ref_audio) or None
+    except Exception as exc:  # noqa: BLE001 - the engine names the missing transcript
+        logger.warning("reference transcript for a cloning engine failed: %s", exc)
+        return None
+
+
 def omnivoice_ref_text(ref_audio, ref_text):
     """The transcript OmniVoice can actually align with ``ref_audio`` (#2281).
 
@@ -868,7 +920,11 @@ def omnivoice_ref_text(ref_audio, ref_text):
     fallback when that recognizer finds no words. A transcript typed on a ``/generate`` request is
     rejected there with ``[clone_ref_too_long]`` before reaching this point.
     """
-    if not ref_text or not ref_text.strip():
+    from services.reference_transcript import strip_script_markup
+
+    # Script markup in a transcript is read out at every chunk start (#3062).
+    ref_text = strip_script_markup(ref_text)
+    if not ref_text:
         # "" and whitespace are no transcript: the model checks
         # ``ref_text is not None``, so pass None and let it pick the passage.
         return None
@@ -1724,6 +1780,7 @@ class OmniVoiceBackend(TTSBackend):
     id = "omnivoice"
     display_name = "VoiceStudio (k2-fsa/OmniVoice, 600+ languages)"
     instruct_vocabulary = "tags"
+    inline_tags = OMNIVOICE_INLINE_TAGS
     supports_voice_design = True
     gpu_compat = ("cuda", "rocm", "mps", "cpu")
     # Derived from the pool's own per-job budget (_GPU_VRAM_PER_JOB_GB = 5.0 in
@@ -2132,10 +2189,12 @@ class VoxCPM2Backend(TTSBackend):
     id = "voxcpm2"
     display_name = "VoxCPM2 (30 langs, studio 48 kHz, voice design)"
     supports_voice_design = True
+    # Controllable cloning: instruct becomes the "(control)text" prefix.
+    instruct_directs_delivery = True
     # _prepare_voxcpm_ref keeps the first _VOXCPM_REF_MAX_S after silence trim.
     max_ref_seconds = _VOXCPM_REF_MAX_S
     ref_strategy = "head"
-    applies_own_mastering = True  # native 48 kHz studio output — skip apply_mastering()
+    applies_own_mastering = True  # Native studio-grade 48 kHz needs no apply_mastering().
     gpu_compat = ("cuda", "mps", "cpu")
 
     def __init__(self):
@@ -3079,6 +3138,8 @@ class MLXAudioBackend(TTSBackend):
         # stays empty and indexing into it raises an opaque
         # "IndexError: list index out of range" deep inside mlx-audio,
         # instead of ever attempting the clone. Community-diagnosed (#1012).
+        if ref_audio:
+            ref_text = required_reference_transcript(ref_audio, ref_text)
         if ref_audio and ref_text: kwargs["ref_text"] = ref_text
         if language and language.strip() and language.strip().lower() != "auto":
             if self._model_id == self.CURATED_MODELS.get("kokoro"):
@@ -3205,6 +3266,9 @@ class CosyVoiceBackend(TTSBackend):
 
     id = "cosyvoice"
     display_name = "CosyVoice 3 (9 langs, zero-shot, instruct, Apache-2.0)"
+    # instruct + reference → inference_instruct2 (emotion, dialect, pace).
+    instruct_directs_delivery = True
+    inline_tags = COSYVOICE_INLINE_TAGS
     # CosyVoice's official inference path expects CUDA; CPU works but slow.
     # MPS support not verified upstream — flagged for Phase 6 confirmation.
     gpu_compat = ("cuda", "cpu")
@@ -3217,8 +3281,18 @@ class CosyVoiceBackend(TTSBackend):
         "ru": "<|ru|>",
     }
 
+    _ENDOFPROMPT = "<|endofprompt|>"
+    _SYSTEM_PROMPT = "You are a helpful assistant."
+
     def __init__(self):
         self._model = None
+
+    @classmethod
+    def _v3_prompt(cls, text: str) -> str:
+        """v3 wants the system prompt ahead of the prompt transcript or text."""
+        if cls._ENDOFPROMPT in text:
+            return text
+        return f"{cls._SYSTEM_PROMPT}{cls._ENDOFPROMPT}{text}"
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
@@ -3280,17 +3354,27 @@ class CosyVoiceBackend(TTSBackend):
         # 2. ref_audio + ref_text → inference_zero_shot (voice cloning)
         # 3. ref_audio only → inference_cross_lingual (with lang tag)
         # 4. nothing → inference_sft (built-in speakers, v1/SFT model only)
+        # CosyVoice 3 wants its system prompt ahead of every prompt, the
+        # same construction as the sidecar (engines/cosyvoice_subprocess).
+        v3 = type(self._model).__name__ == "CosyVoice3"
         pieces = []
         if instruct and ref_audio:
             # Instruct mode: "用四川话说<|endofprompt|>"
-            if not instruct.endswith("<|endofprompt|>"):
-                instruct = f"{instruct}<|endofprompt|>"
+            if not instruct.endswith(self._ENDOFPROMPT):
+                instruct = f"{instruct}{self._ENDOFPROMPT}"
+            if v3 and not instruct.startswith(self._SYSTEM_PROMPT):
+                instruct = f"{self._SYSTEM_PROMPT} {instruct}"
             results = self._model.inference_instruct2(
                 text, instruct, ref_audio, stream=False,
             )
         elif ref_audio and ref_text:
+            prompt_text = self._v3_prompt(ref_text) if v3 else ref_text
             results = self._model.inference_zero_shot(
-                text, ref_text, ref_audio, stream=False,
+                text, prompt_text, ref_audio, stream=False,
+            )
+        elif ref_audio and v3:
+            results = self._model.inference_cross_lingual(
+                self._v3_prompt(text), ref_audio, stream=False,
             )
         elif ref_audio:
             # Cross-lingual: prefix text with language tag if available.
@@ -3522,41 +3606,38 @@ class GPTSoVITSBackend(TTSBackend):
 
 
 def _sherpa_model_file(model_dir: str) -> Optional[str]:
-    """The VITS ``.onnx`` file in a sherpa-onnx model directory, or ``None``.
+    """Find the single VITS model that can be loaded from ``model_dir``.
 
-    Most sherpa-onnx VITS releases name it ``model.onnx``, but every Piper
-    voice (``vits-piper-*``, the only option for many languages, e.g.
-    ``tr_TR-dfki-medium.onnx``) keeps its voice name. Prefer ``model.onnx``;
-    otherwise accept exactly one ``*.onnx`` so an ambiguous directory still
-    fails with the setup hint instead of loading the wrong file.
+    Piper archives commonly name the ONNX file after the voice instead of
+    using ``model.onnx``.  Accepting that layout is important because Piper is
+    the only sherpa-onnx voice available for many languages, while refusing
+    directories with several candidates keeps model selection deterministic.
     """
     if not model_dir or not os.path.isdir(model_dir):
         return None
-    preferred = os.path.join(model_dir, "model.onnx")
-    if os.path.isfile(preferred):
-        return preferred
-    candidates = sorted(
-        name for name in os.listdir(model_dir)
+
+    conventional = os.path.join(model_dir, "model.onnx")
+    if os.path.isfile(conventional):
+        return conventional
+
+    candidates = [
+        os.path.join(model_dir, name)
+        for name in os.listdir(model_dir)
         if name.lower().endswith(".onnx")
         and os.path.isfile(os.path.join(model_dir, name))
-    )
-    return os.path.join(model_dir, candidates[0]) if len(candidates) == 1 else None
+    ]
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def _sherpa_vits_extras(model_dir: str) -> dict[str, str]:
-    """Optional VITS config files the release ships next to the model.
-
-    Piper voices phonemize with espeak-ng and need ``espeak-ng-data`` as
-    ``data_dir``; lexicon-based VITS models (MeloTTS, Chinese voices) need
-    ``lexicon.txt``. Without them sherpa-onnx rejects the config or reads
-    nothing. A release's ``dict/`` is not passed: sherpa-onnx >= 1.13.3
-    ignores ``dict_dir`` for VITS and logs an error when it is set.
-    """
+    """Return optional phonemizer inputs present beside a VITS model."""
+    if not model_dir:
+        return {}
     extras: dict[str, str] = {}
-    espeak = os.path.join(model_dir, "espeak-ng-data")
-    if os.path.isdir(espeak):
-        extras["data_dir"] = espeak
+    data_dir = os.path.join(model_dir, "espeak-ng-data")
     lexicon = os.path.join(model_dir, "lexicon.txt")
+    if os.path.isdir(data_dir):
+        extras["data_dir"] = data_dir
     if os.path.isfile(lexicon):
         extras["lexicon"] = lexicon
     return extras
@@ -3622,11 +3703,11 @@ class SherpaOnnxBackend(TTSBackend):
             )
         if _sherpa_model_file(model_dir) is None:
             return False, (
-                f"No model.onnx in OMNIVOICE_SHERPA_MODEL ({model_dir}). Point "
-                "it at a sherpa-onnx TTS model directory containing model.onnx "
-                "(or a single <voice>.onnx, as Piper voices ship) + tokens.txt. "
-                "Download models from "
-                "https://github.com/k2-fsa/sherpa-onnx/releases"
+                f"OMNIVOICE_SHERPA_MODEL points to {model_dir!r}, but that directory "
+                "does not contain model.onnx or exactly one voice-named .onnx file. "
+                "Choose a sherpa-onnx TTS model directory containing that model and "
+                "tokens.txt (Piper archives use a per-voice filename). Download models "
+                "from https://github.com/k2-fsa/sherpa-onnx/releases"
             )
         return True, "ready"
 
@@ -3643,9 +3724,11 @@ class SherpaOnnxBackend(TTSBackend):
     def _ensure_loaded(self):
         if self._tts is not None:
             return
+
         ok, msg = self.is_available()
         if not ok:
             raise RuntimeError(f"Sherpa-ONNX unavailable: {msg}")
+
         import sherpa_onnx
 
         if not self._model_dir:
@@ -3654,27 +3737,25 @@ class SherpaOnnxBackend(TTSBackend):
                 "TTS model directory (containing model.onnx + tokens.txt)."
             )
 
-        # Auto-detect model type from directory contents
-        model_onnx = _sherpa_model_file(self._model_dir)
-        tokens = os.path.join(self._model_dir, "tokens.txt")
-
-        if model_onnx is None:
+        model_file = _sherpa_model_file(self._model_dir)
+        tokens_file = os.path.join(self._model_dir, "tokens.txt")
+        if model_file is None:
             raise RuntimeError(
                 f"No model.onnx found in {self._model_dir}. "
                 "Download a model from https://github.com/k2-fsa/sherpa-onnx/releases"
             )
 
         logger.info("Loading sherpa-onnx TTS from %s", self._model_dir)
-        tts_config = sherpa_onnx.OfflineTtsConfig(
+        config = sherpa_onnx.OfflineTtsConfig(
             model=sherpa_onnx.OfflineTtsModelConfig(
                 vits=sherpa_onnx.OfflineTtsVitsModelConfig(
-                    model=model_onnx,
-                    tokens=tokens,
+                    model=model_file,
+                    tokens=tokens_file,
                     **_sherpa_vits_extras(self._model_dir),
-                ),
-            ),
+                )
+            )
         )
-        self._tts = sherpa_onnx.OfflineTts(tts_config)
+        self._tts = sherpa_onnx.OfflineTts(config)
 
     def generate(self, text: str, **kw) -> torch.Tensor:
         import numpy as np
@@ -3744,6 +3825,9 @@ _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
     # same import-cycle reason as the entries above (engines.audiocpp
     # imports services.tts_backend for TTSBackend).
     "audiocpp": ("engines.audiocpp", "AudioCPPBackend"),
+    # dots.tts SOAR on the same managed audio.cpp runtime (#2665): native on
+    # Windows too, unlike the venv `dots-tts` engine. Gated like `audiocpp`.
+    "audiocpp-dots": ("engines.audiocpp", "AudioCPPDotsBackend"),
     # Community CosyVoice.cpp GGUF server, explicitly installed and isolated.
     "cosyvoice-gguf": ("engines.cosyvoice_gguf", "CosyVoiceGGUFBackend"),
 }
@@ -3848,9 +3932,10 @@ _INSTALL_HINTS: dict[str, str] = {
     "supertonic3":   "uv sync --extra supertonic  (CPU-only ONNX, 31 langs, ~400 MB model on first use; OpenRAIL-M model license)",
     "pockettts":     "uv sync --extra pockettts  (Kyutai, CPU-only, ~100 MB model on first use; MIT code + CC-BY-4.0 weights; HF-gated, review terms and set HF_TOKEN)",
     "moss-tts-v15":  "git clone OpenMOSS/MOSS-TTS + set OMNIVOICE_MOSS_TTS_V15_DIR  (own venv, transformers==5.0; 8B, ~16 GB weights; CUDA/ROCm/XPU/NPU/CPU, no MPS; Apache-2.0)",
-    "dots-tts":      "git clone rednote-hilab/dots.tts + set OMNIVOICE_DOTS_TTS_DIR  (own venv, transformers==4.57; 2B, ~9 GB weights; CUDA/CPU, Linux/macOS only — no Windows; Apache-2.0)",
+    "dots-tts":      "git clone rednote-hilab/dots.tts + set OMNIVOICE_DOTS_TTS_DIR  (own venv, transformers==4.57; 2B, ~9 GB weights; CUDA/CPU, Linux/macOS only — on Windows use the audio.cpp dots.tts engine; Apache-2.0)",
     "confucius4-tts":"git clone netease-youdao/Confucius4-TTS + set OMNIVOICE_CONFUCIUS4_TTS_DIR  (own Python 3.10 venv; 14-lang cross-lingual zero-shot clone; ~5 GB weights auto-download; CUDA/ROCm/XPU/NPU/CPU, no MPS; Apache-2.0)",
     "audiocpp":     "download the matching audio.cpp v0.7.4 prebuilt + set OMNIVOICE_AUDIOCPP_BIN, then explicitly install Breeze-TTS-2 in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF server, no Python; en+zh clone+design; ~4.73 GiB; weights research/non-commercial only)",
+    "audiocpp-dots": "download the matching audio.cpp v0.7.4 prebuilt (Model Catalogue installs it) + explicitly install dots.tts SOAR in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF on Windows, macOS and Linux; multilingual voice cloning; ~3 GB; Apache-2.0)",
     "cosyvoice-gguf": "Build Lourdle/cosyvoice.cpp at the documented pinned revision with Vulkan enabled; set OMNIVOICE_COSYVOICE_GGUF_DIR and install its GGUF/ONNX model assets from Model Catalogue (native Vulkan/CPU; no automatic runtime download).",
 }
 
@@ -3899,6 +3984,7 @@ _ENGINE_DOCS: dict[str, str] = {
     "supertonic3":          "docs/engines/supertonic3.md",
     "pockettts":            "docs/engines/pockettts.md",
     "audiocpp":             "docs/engines/audio-cpp.md",
+    "audiocpp-dots":        "docs/engines/audio-cpp.md",
     "cosyvoice-gguf":       "docs/engines/cosyvoice-gguf.md",
 }
 
@@ -3997,6 +4083,8 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
                                                     #   model-dependent (property, e.g. mlx-audio)
           "instruct_vocabulary": "tags" | "freeform",  # how ``instruct`` is read: closed OmniVoice
                                                     #   attribute list vs text used as written
+          "expression_caps": {"emotion": "graded" | "direction" | "none",
+                              "tags": list[str]},   # inline reaction tags it renders (#3422)
           "supports_voice_design": Optional[bool],  # False = needs a reference clip;
                                                     #   None = undeclared (design allowed)
           "preset_voices":  list[str],              # built-in voice ids a request may pick (``voice``); [] = none
@@ -4120,10 +4208,14 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
             # upgrade hint). None unless ok and the message carries advice.
             "hint": _available_hint(msg) if ok else None,
             "supports_cloning": _clone if isinstance(_clone, bool) else None,
+            # Speech-to-speech conversion (#3421): Convert's "Keep my delivery".
+            "supports_voice_conversion": bool(getattr(cls, "supports_voice_conversion", False)),
             # Graded-emotion capability (#1208) — drives the Audiobook emotion
             # panel's engine gate. Class attr, defaults False.
             "supports_emotion": bool(getattr(cls, "supports_emotion", False)),
             "instruct_vocabulary": getattr(cls, "instruct_vocabulary", "freeform"),
+            # Emotion mechanism + inline reaction tags the engine renders (#3422).
+            "expression_caps": expression_caps(cls),
             # Voice Design gate: False hides Design for reference-only engines.
             "supports_voice_design": voice_design_support(cls),
             # Reference-length truth (#2281): how much of a clone clip the
@@ -4851,6 +4943,21 @@ async def resolve_generation_backend(
         raise ValueError(cloning_unavailable_detail(engine_id, backend, cloning_purpose))
 
     return backend
+
+
+def voice_conversion_engine_ids() -> list[str]:
+    """Registered engines whose effective class converts speech to speech."""
+    return [
+        bid for bid, cls in _REGISTRY.items()
+        if getattr(_effective_backend_class(bid, cls), "supports_voice_conversion", False) is True
+    ]
+
+
+VOICE_CONVERSION_MISSING = (
+    "Keep my delivery needs an engine that converts a recording directly. "
+    "Install CosyVoice 3 from Model Catalogue → Engines, or turn off Keep my "
+    "delivery to re-speak the text instead."
+)
 
 
 # ── PEP 562 lazy attribute re-export ───────────────────────────────────────

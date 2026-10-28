@@ -41,7 +41,7 @@ import threading
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from services.ffmpeg_utils import local_inputs_only
 
@@ -480,6 +480,8 @@ class SegmentCache:
         vary_repeats: bool = False,
         legacy_voice_sigs: Iterable[dict] = (),
         lease: Optional[CacheLease] = None,
+        gap_sig: str = "",
+        gap_spans: Optional[Callable[[object], bool]] = None,
     ) -> None:
         self.dir = os.path.join(cache_dir, SEGMENT_SUBDIR)
         self.sample_rate = int(sample_rate)
@@ -492,6 +494,11 @@ class SegmentCache:
         # keep counting.
         self.legacy_voice_sigs = [dict(s) for s in legacy_voice_sigs if s]
         self.extra_sig = extra_sig or ""
+        # A render input that only changes segments with gaps inside them
+        # (room tone between paragraphs, #3611): keyed into those segments
+        # alone, so segments without such gaps stay reusable.
+        self.gap_sig = gap_sig or ""
+        self.gap_spans = gap_spans
         # Cache opt-out (#1208): when on, a per-occurrence nonce enters the key
         # so identical repeated lines no longer share one WAV. Off → the nonce
         # is dropped and keys are byte-identical to pre-#1208 (default render).
@@ -509,11 +516,16 @@ class SegmentCache:
             voice_id=span.voice_id,
             voice_sig=sigs.get(span.voice_id or "", ""),
             speed=getattr(span, "speed", None),
-            extra_sig=self.extra_sig,
+            extra_sig=self._extra_sig_for(span),
             nonce=nonce if self.vary_repeats else 0,
         )
         path = os.path.join(self.dir, f"{key}.wav")
         return self.lease.hold(path) if self.lease is not None else path
+
+    def _extra_sig_for(self, span) -> str:
+        if self.gap_sig and self.gap_spans is not None and self.gap_spans(span):
+            return f"{self.extra_sig}\x00{self.gap_sig}"
+        return self.extra_sig
 
     def _existing_path(self, span, nonce: int = 0) -> Optional[str]:
         """The file holding ``span``'s audio under the current key, adopting a

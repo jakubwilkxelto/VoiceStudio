@@ -73,7 +73,7 @@ def build_commit() -> str:
             candidates.append(
                 subprocess.run(
                     ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
-                    text=True, timeout=5, check=False,
+                    text=True, errors="replace", timeout=5, check=False,
                 ).stdout
             )
         except (OSError, subprocess.SubprocessError):

@@ -53,7 +53,7 @@ def cached_prompt(audio: str | Path, transcript: str) -> Path:
     ]
     try:
         result = subprocess.run(
-            args, capture_output=True, text=True, timeout=300, check=False
+            args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False
         )
         if result.returncode or not temp_path.is_file() or not temp_path.stat().st_size:
             raise RuntimeError(

@@ -519,34 +519,43 @@ def ensure_media_tools_on_path() -> list[str]:
 
 
 class _ThreadProcess:
-    # These are plain SYNC pipes (io.BufferedReader), NOT asyncio
-    # StreamReaders — so callers must not `await proc.stderr.read()` on
-    # this wrapper. `communicate()`/`wait()` below are the only async
-    # entry points. run_proc_streaming_stderr checks this flag and
-    # degrades to communicate() on the fallback loop instead of awaiting
-    # the sync pipe (which raised "a coroutine or an awaitable is
-    # required" and crashed the demucs step under uvicorn --reload).
     uses_sync_pipes = True
 
     def __init__(self, popen):
         self._popen = popen
-        self.returncode = popen.returncode
-        self.stdin = popen.stdin
-        self.stdout = popen.stdout
-        self.stderr = popen.stderr
-        self.pid = popen.pid
+        self._returncode = popen.returncode
+
+    @property
+    def stdin(self):
+        return self._popen.stdin
+
+    @property
+    def stdout(self):
+        return self._popen.stdout
+
+    @property
+    def stderr(self):
+        return self._popen.stderr
+
+    @property
+    def pid(self):
+        return self._popen.pid
+
+    @property
+    def returncode(self):
+        return self._returncode
 
     async def communicate(self, input=None):
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, self._popen.communicate, input)
-        self.returncode = self._popen.returncode
+        self._returncode = self._popen.returncode
         return result
 
     async def wait(self):
-        loop = asyncio.get_running_loop()
-        code = await loop.run_in_executor(None, self._popen.wait)
-        self.returncode = code
-        return code
+        if self._returncode is None:
+            loop = asyncio.get_running_loop()
+            self._returncode = await loop.run_in_executor(None, self._popen.wait)
+        return self._returncode
 
     def kill(self):
         return self._popen.kill()
@@ -556,18 +565,19 @@ class _ThreadProcess:
 
 
 async def _spawn_in_thread(cmd, **kwargs):
-    stdout = kwargs.pop("stdout", asyncio.subprocess.PIPE)
-    stderr = kwargs.pop("stderr", asyncio.subprocess.PIPE)
-    stdin = kwargs.pop("stdin", None)
-
-    def pipe(value):
-        return subprocess.PIPE if value == asyncio.subprocess.PIPE else value
+    popen_kwargs = dict(kwargs)
+    popen_kwargs.setdefault("stdin", None)
+    popen_kwargs.setdefault("stdout", asyncio.subprocess.PIPE)
+    popen_kwargs.setdefault("stderr", asyncio.subprocess.PIPE)
+    for pipe_name in ("stdin", "stdout", "stderr"):
+        if popen_kwargs[pipe_name] == asyncio.subprocess.PIPE:
+            popen_kwargs[pipe_name] = subprocess.PIPE
 
     loop = asyncio.get_running_loop()
-    factory = lambda: subprocess.Popen(  # forward cwd / env / etc. so the fallback matches the async call
-        cmd, stdin=pipe(stdin), stdout=pipe(stdout), stderr=pipe(stderr), **kwargs
+    popen = await loop.run_in_executor(
+        None, lambda: subprocess.Popen(cmd, **popen_kwargs)
     )
-    return _ThreadProcess(await loop.run_in_executor(None, factory))
+    return _ThreadProcess(popen)
 
 
 async def _create_subprocess(cmd, **kwargs):

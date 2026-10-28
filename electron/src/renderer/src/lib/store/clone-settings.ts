@@ -19,6 +19,8 @@ export interface CloneSettings {
   emotionAlpha: number;
   /** Eight weights: happy, angry, sad, afraid, disgusted, melancholic, surprised, calm. */
   emotionVector: number[];
+  /** Written delivery direction, sent only to engines whose instruct steers a clone (#3422). */
+  direction: string;
   steps: number;
   wavBits: 16 | 24 | 32;
   effectPreset: 'broadcast' | 'raw';
@@ -48,6 +50,7 @@ export const DEFAULT_CLONE_SETTINGS: CloneSettings = {
   emotionText: '',
   emotionAlpha: 0.6,
   emotionVector: [0, 0, 0, 0, 0, 0, 0, 0],
+  direction: '',
   steps: 16, // ~16 avoids ODE destabilisation in the flow-matcher.
   wavBits: 16,
   effectPreset: 'broadcast',
@@ -69,7 +72,8 @@ export const DEFAULT_CLONE_SETTINGS: CloneSettings = {
 /** Whether `value` is a valid stored value for the clone setting `key`. */
 export function acceptsCloneSetting(key: keyof CloneSettings, value: unknown): boolean {
   if (key === 'emotionMode') return value === 'none' || value === 'text' || value === 'vector';
-  if (key === 'emotionText') return typeof value === 'string' && value.length <= 500;
+  if (key === 'emotionText' || key === 'direction')
+    return typeof value === 'string' && value.length <= 500;
   if (key === 'emotionVector')
     return (
       Array.isArray(value) &&

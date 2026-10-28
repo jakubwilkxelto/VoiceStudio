@@ -255,6 +255,10 @@ describe('how picks and the description interact', () => {
 });
 
 describe('designDraftFromTake', () => {
+  it('preserves zero as a stored take seed', () => {
+    expect(designDraftFromTake(historyRow({ seed: 0 })).seed).toBe(0);
+  });
+
   it('treats a take with no recipe as prose whose recognised tags become details', () => {
     const draft = designDraftFromTake(historyRow({ instruct: 'male, very low pitch' }));
     expect(draft.attrs).toMatchObject({ Gender: 'male', Pitch: 'very low pitch' });

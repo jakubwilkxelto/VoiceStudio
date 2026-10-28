@@ -13,15 +13,17 @@ def gguf():
     return importlib.import_module("engines.omnivoice_gguf.backend")
 
 
-def test_loader_presence_does_not_prove_engine_acceleration():
-    """A loader cannot establish that an executable can use a physical GPU."""
+def test_vulkan_loader_without_a_gpu_keeps_cpu_routing():
     from core.device_caps import HostCaps
     from services.engine_routing import resolve_routing
 
-    caps = HostCaps(family="cpu", available_families=("cpu",),
-                    notes=("Vulkan runtime present",))
-    result = resolve_routing(("cuda", "vulkan", "mps", "cpu"), caps)
-    assert result["effective_device"] == "cpu"
+    caps = HostCaps(
+        family="cpu",
+        available_families=("cpu",),
+        notes=("Vulkan runtime loader detected; no compatible GPU family found",),
+    )
+    route = resolve_routing(("cuda", "vulkan", "mps", "cpu"), caps)
+    assert route["effective_device"] == "cpu"
 
 
 def test_pinned_cli_does_not_receive_unsupported_compute_flags(monkeypatch, tmp_path, gguf):

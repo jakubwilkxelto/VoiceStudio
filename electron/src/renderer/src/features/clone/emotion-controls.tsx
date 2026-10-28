@@ -1,10 +1,14 @@
 import { useId, useState } from 'react';
-import { HeartPulseIcon, RotateCcwIcon } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { AudioLinesIcon, HeartPulseIcon, RotateCcwIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useEngines } from '@/hooks/use-engines';
+import { ExternalLink } from '@/components/external-link';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { EXPRESSIVE_DOCS_URL, engineShortName, expressionCaps } from '@/lib/expression';
+import { markExpressionTipSeen } from './expression-tip';
 import {
   DEFAULT_CLONE_SETTINGS,
   patchCloneSettings,
@@ -37,14 +41,24 @@ function resetEmotion() {
   });
 }
 
-/** Engine-gated, per-take emotion controls for cloning (not Voice Design). */
+/**
+ * Per-take emotion for cloning (not Voice Design), always on the composer so
+ * it can be found (#3422). The panel follows the engine: IndexTTS2's graded
+ * controls, a written direction where `instruct` steers delivery, otherwise
+ * an explanation of which engines can.
+ */
 export function EmotionControls({ disabled = false }: { disabled?: boolean }) {
   const { t } = useTranslation();
   const { activeTts } = useEngines();
   const settings = useCloneSettings();
   const [open, setOpen] = useState(false);
   const id = useId();
-  if (!activeTts?.supports_emotion) return null;
+  const caps = expressionCaps(activeTts);
+  const engine = engineShortName(activeTts) || t('engineSidebar.tts');
+  const active =
+    caps.emotion === 'graded'
+      ? settings.emotionMode !== 'none'
+      : caps.emotion === 'direction' && settings.direction.trim() !== '';
 
   const modes: { mode: EmotionMode; label: string }[] = [
     { mode: 'none', label: t('cloneEmotion.off') },
@@ -53,16 +67,23 @@ export function EmotionControls({ disabled = false }: { disabled?: boolean }) {
   ];
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) markExpressionTipSeen();
+      }}
+    >
       <PopoverTrigger
         aria-label={t('cloneEmotion.title')}
         className={cn(
-          buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-          'relative text-muted-foreground hover:text-foreground data-popup-open:bg-secondary data-popup-open:text-foreground',
+          buttonVariants({ variant: 'ghost', size: 'lg' }),
+          'relative px-2.5 text-muted-foreground hover:text-foreground data-popup-open:bg-secondary data-popup-open:text-foreground',
         )}
       >
         <HeartPulseIcon aria-hidden="true" />
-        {settings.emotionMode !== 'none' && (
+        <span className="hidden @min-[640px]/composer:inline">{t('cloneEmotion.title')}</span>
+        {active && (
           <span
             className="absolute top-1 right-1 size-1.5 rounded-full bg-primary"
             aria-hidden="true"
@@ -80,34 +101,81 @@ export function EmotionControls({ disabled = false }: { disabled?: boolean }) {
           <h3 id={id} className="text-sm font-semibold">
             {t('cloneEmotion.title')}
           </h3>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            disabled={disabled}
-            aria-label={t('audiobook.reset')}
-            onClick={resetEmotion}
-          >
-            <RotateCcwIcon aria-hidden="true" />
-          </Button>
+          {caps.emotion !== 'none' && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              disabled={disabled}
+              aria-label={t('audiobook.reset')}
+              onClick={() =>
+                caps.emotion === 'graded' ? resetEmotion() : setCloneSetting('direction', '')
+              }
+            >
+              <RotateCcwIcon aria-hidden="true" />
+            </Button>
+          )}
         </header>
         <div className="min-h-0 space-y-3 overflow-y-auto px-4 pb-4">
-          <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1">
-            {modes.map(({ mode, label }) => (
-              <Button
-                key={mode}
-                type="button"
-                size="sm"
-                variant={settings.emotionMode === mode ? 'secondary' : 'ghost'}
+          {caps.emotion === 'direction' && (
+            <div className="space-y-2">
+              <label htmlFor={id + '-direction'} className="block text-xs font-medium">
+                {t('expression.direction_label')}
+              </label>
+              <textarea
+                id={id + '-direction'}
+                className="min-h-20 w-full resize-y rounded-lg border border-input bg-background/60 p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                maxLength={500}
+                value={settings.direction}
                 disabled={disabled}
-                aria-pressed={settings.emotionMode === mode}
-                onClick={() => setCloneSetting('emotionMode', mode)}
+                placeholder={t('expression.direction_ph')}
+                aria-describedby={id + '-direction-help'}
+                onChange={(event) => setCloneSetting('direction', event.target.value)}
+              />
+              <p id={id + '-direction-help'} className="text-xs text-muted-foreground">
+                {t('expression.direction_help', { engine })}
+              </p>
+            </div>
+          )}
+          {caps.emotion === 'none' && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {t('expression.unsupported', { engine })}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link to="/settings/models/$family" params={{ family: 'tts' }} />}
               >
-                {label}
+                <AudioLinesIcon />
+                {t('engineSidebar.tts')} · {t('modelSettings.models')}
               </Button>
-            ))}
-          </div>
-          {settings.emotionMode === 'text' && (
+            </div>
+          )}
+          {caps.emotion !== 'graded' && caps.tags.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {t('expression.tags_hint', { engine, example: caps.tags[0] })}
+            </p>
+          )}
+          {caps.emotion === 'graded' && (
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1">
+              {modes.map(({ mode, label }) => (
+                <Button
+                  key={mode}
+                  type="button"
+                  size="sm"
+                  variant={settings.emotionMode === mode ? 'secondary' : 'ghost'}
+                  disabled={disabled}
+                  aria-pressed={settings.emotionMode === mode}
+                  onClick={() => setCloneSetting('emotionMode', mode)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          )}
+          {caps.emotion === 'graded' && settings.emotionMode === 'text' && (
             <div className="space-y-3">
               <label htmlFor={id + '-text'} className="block text-xs font-medium">
                 {t('audiobook.emotion_text')}
@@ -142,7 +210,7 @@ export function EmotionControls({ disabled = false }: { disabled?: boolean }) {
               </div>
             </div>
           )}
-          {settings.emotionMode === 'vector' && (
+          {caps.emotion === 'graded' && settings.emotionMode === 'vector' && (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">{t('audiobook.emotion_help')}</p>
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
@@ -174,6 +242,9 @@ export function EmotionControls({ disabled = false }: { disabled?: boolean }) {
               </div>
             </div>
           )}
+          <p className="text-xs">
+            <ExternalLink href={EXPRESSIVE_DOCS_URL}>{t('expression.guide')}</ExternalLink>
+          </p>
         </div>
       </PopoverContent>
     </Popover>

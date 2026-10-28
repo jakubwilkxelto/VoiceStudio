@@ -85,28 +85,76 @@ def cuda_forced() -> bool:
 # Applied (with side effects) by ``model_manager._configure_rocm_if_needed``;
 # read here so ``arch_unsupported()`` doesn't flag a GPU we know how to remap.
 #
-# Values are the TARGET gfx name, not the HSA version string, so callers can
-# check whether the installed wheel actually contains that target before
-# treating the remap as a solution (``hsa_override_for`` derives the env-var
-# form). Remapping onto an architecture the build doesn't ship is not a fix —
-# it just moves the failure from "no kernel for gfx1151" to "no kernel for
-# gfx1100".
-ROCM_GFX_OVERRIDES = {
-    # RDNA 3.5 (Strix Point / Strix Halo APUs) — override to gfx1100
-    "gfx1150": "gfx1100", "gfx1151": "gfx1100",
-    # RDNA 3 (RX 7000 series) — override to gfx1100
-    "gfx1101": "gfx1100", "gfx1102": "gfx1100", "gfx1103": "gfx1100",
-    # RDNA 2 (RX 6000 series) — override to gfx1030
-    "gfx1031": "gfx1030", "gfx1032": "gfx1030", "gfx1034": "gfx1030",
-    # Vega (RX Vega / Radeon VII) — override to gfx900 / gfx906
-    "gfx902": "gfx900", "gfx906": "gfx906",
-    # RDNA 4 (RX 9060 / 9070, gfx1200 / gfx1201) deliberately has NO entry: no
-    # other architecture's kernels run on it, so a remap onto gfx1100 only
-    # crashes. It needs a build that lists it natively — the pinned Linux ROCm
-    # torch 2.8.0 (rocm6.4 index) and the Windows ROCm 7.2.1 recipe both do
-    # (#3418). Remaps never cross a generation; tests/test_rocm_arch_gate.py
-    # enforces that for every entry.
-}
+# The target is DERIVED from the installed wheel's own arch list
+# (``rocm_override_target``), never looked up in a hand-kept table: a table
+# lags every new part (gfx1152, gfx1035, a gfx1201 on a wheel that only ships
+# gfx1200 ...), and a card missing from it silently ran on the CPU (#3418).
+# Remapping onto an architecture the build doesn't ship is not a fix — it just
+# moves the failure — so only targets the wheel lists are ever chosen.
+
+
+def _gfx_parts(gfx: str) -> tuple[str, str, str] | None:
+    """``"gfx1151"`` → ``("11", "5", "1")``; ``"gfx90c"`` → ``("9", "0", "c")``.
+
+    Major / minor / stepping, as LLVM names AMDGPU processors. ``None`` for
+    anything that is not a gfx name."""
+    digits = _normalize_arch(gfx).removeprefix("gfx")
+    if not _normalize_arch(gfx).startswith("gfx") or len(digits) < 3:
+        return None
+    major, minor, step = digits[:-2], digits[-2], digits[-1]
+    if not major.isdigit() or not minor.isdigit() or not step.isalnum():
+        return None
+    return major, minor, step
+
+
+# gfx9 holds three ISAs that cannot run each other's kernels: Vega (the
+# ``gfx9-generic`` family below), CDNA1/2 (gfx908, gfx90a) and CDNA3 (gfx94x,
+# gfx950). Only Vega parts remap, and only onto Vega.
+_GFX9_GENERIC = frozenset({"gfx900", "gfx902", "gfx904", "gfx906", "gfx909", "gfx90c"})
+
+
+def rocm_override_target(gfx: str, arch_list) -> str | None:
+    """The architecture in ``arch_list`` a card missing from it can be remapped
+    onto with ``HSA_OVERRIDE_GFX_VERSION``, or ``None`` when none can work.
+
+    Rules (the same families LLVM's ``gfxN-generic`` targets group):
+
+    * never across an ISA generation — gfx12 (RDNA4) cannot run gfx11 kernels;
+    * within gfx9, Vega only — CDNA parts (gfx908, gfx90a, gfx942) never remap
+      onto Vega, and Vega never onto CDNA;
+    * within gfx10, the same minor revision only — RDNA1 (gfx101x) and RDNA2
+      (gfx103x) are different ISAs;
+    * never onto a NEWER minor revision — gfx1012 (RDNA1) is not gfx1030
+      (RDNA2), but gfx1151 (RDNA3.5) does run gfx1100 (RDNA3) code;
+    * the target must be expressible as an HSA version (digits only);
+    * closest first: the same minor revision, then the lowest stepping.
+
+    ``None`` when the card is natively in ``arch_list`` (nothing to remap) or
+    the list is empty (unknown build: never remap on a guess).
+    """
+    device = _gfx_parts(gfx)
+    if device is None:
+        return None
+    native = _normalize_arch(gfx)
+    build = {_normalize_arch(a) for a in arch_list or ()}
+    if not build or native in build:
+        return None
+    major, minor, _step = device
+    if major == "9" and native not in _GFX9_GENERIC:
+        return None
+    candidates = []
+    for arch in build:
+        parts = _gfx_parts(arch)
+        if parts is None or not arch.removeprefix("gfx").isdigit():
+            continue
+        t_major, t_minor, t_step = parts
+        if major == "9" and _normalize_arch(arch) not in _GFX9_GENERIC:
+            continue
+        if major == "10" and t_minor != minor:
+            continue
+        if t_major == major and int(t_minor) <= int(minor):
+            candidates.append(((t_minor != minor, int(t_minor), int(t_step)), arch))
+    return min(candidates)[1] if candidates else None
 
 
 def gfx_generation(gfx: str) -> str:
@@ -499,8 +547,7 @@ def arch_unsupported(torch) -> tuple[str, tuple[str, ...]] | None:
             # target before any kernel launches — but only counts as a fix if
             # the build actually SHIPS that target. Remapping gfx1151 onto
             # gfx1100 in a wheel that has neither just relocates the failure.
-            target = ROCM_GFX_OVERRIDES.get(gfx) if sys.platform != "win32" else None
-            if target and _normalize_arch(target) in build:
+            if sys.platform != "win32" and rocm_override_target(gfx, arch_list):
                 return None
             return gfx, tuple(arch_list)
 
@@ -854,10 +901,10 @@ __all__ = [
     "arch_unsupported",
     "gfx_for_hsa_override",
     "gfx_generation",
+    "rocm_override_target",
     "hsa_override_for",
     "same_generation_targets",
     "build_arch_list",
-    "ROCM_GFX_OVERRIDES",
     "KERNEL_RISK_MARKER",
     "DIRECTML_MARKER",
     "UNUSABLE_GPU_MARKER",

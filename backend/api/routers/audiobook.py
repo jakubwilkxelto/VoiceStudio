@@ -33,6 +33,7 @@ from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from core import voice_leases
+from services.reference_transcript import stored_reference_transcript
 from core.render_trace import call as trace_call, stage as trace_stage
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
@@ -276,15 +277,15 @@ def _resolve_voice(profile_id: str | None) -> dict:
         kind = "clone"
     if row["is_locked"] and row["locked_audio_path"]:
         out["ref_audio"] = contained_join(VOICES_DIR, row["locked_audio_path"])
-        out["ref_text"] = row["ref_text"]
+        out["ref_text"] = stored_reference_transcript(row)
         out["instruct"] = row["instruct"]
     elif kind == "design":
         out["ref_audio"] = contained_join(VOICES_DIR, row["ref_audio_path"])
-        out["ref_text"] = row["ref_text"] if out["ref_audio"] else None
+        out["ref_text"] = stored_reference_transcript(row) if out["ref_audio"] else None
         out["instruct"] = row["instruct"]
     else:
         out["ref_audio"] = contained_join(VOICES_DIR, row["ref_audio_path"])
-        out["ref_text"] = row["ref_text"]
+        out["ref_text"] = stored_reference_transcript(row)
         out["instruct"] = row["instruct"]
     try:
         if row["seed"] is not None:
@@ -705,7 +706,8 @@ async def _prepare_synth(
 
 
 def _chapter_cache_inputs(chapter, sr, engine_id, resolve, cache_dir, lexicon=None,
-                          language=None, opts=None, voice_map=None, cache_lease=None):
+                          language=None, opts=None, voice_map=None, cache_lease=None,
+                          pause_fill=None):
     """Derive and reserve the same inputs for planning and chapter rendering."""
     import json
 
@@ -786,6 +788,30 @@ def _chapter_cache_inputs(chapter, sr, engine_id, resolve, cache_dir, lexicon=No
     if language:
         sig["\x00language"] = language
         seg_extra_sig = f"{seg_extra_sig}\x00language={language}"
+    # Room tone in the gaps (#3611) changes the chapter's audio. A spoken
+    # segment only changes when its own paragraphs are joined with a gap, so
+    # only those segments are re-keyed. The default (digital silence) adds
+    # nothing to either layer, so existing caches keep hitting. The mode is
+    # resolved once here and the render passes the same value to every join.
+    from services.audio_dsp import pause_fill_mode
+
+    if pause_fill is None:
+        pause_fill = pause_fill_mode()
+    gap_sig, gap_spans = "", None
+    if pause_fill != "silence":
+        sig["\x00pausefill"] = pause_fill
+        paragraph_ms = int((opts or ExpressiveOptions()).join_kwargs().get("paragraph_gap_ms") or 0)
+        if paragraph_ms > 0:
+            from services.chunked_tts import split_paragraphs
+            from services.pronunciation import apply_lexicon
+
+            def gap_spans(span) -> bool:
+                # Same text synthesize_chapter splits: after the lexicon,
+                # which can insert a paragraph break.
+                text = apply_lexicon(span.text, lexicon) if span.text else ""
+                return len(split_paragraphs(text)) > 1
+
+            gap_sig = f"pausefill={pause_fill}"
     marking = will_mark()
     if marking:
         # Provenance-marked chapters cache under their own key (#1169): a
@@ -818,6 +844,8 @@ def _chapter_cache_inputs(chapter, sr, engine_id, resolve, cache_dir, lexicon=No
         "pronunciation lexicon": lex_sig, "expressive settings": expr_sig,
         "voice map": vmap_sig, "watermark": marking,
     }
+    if pause_fill != "silence":
+        inputs["pause fill"] = pause_fill
     if language:
         inputs["language"] = language
     for k, v in resolved.items():
@@ -833,7 +861,8 @@ def _chapter_cache_inputs(chapter, sr, engine_id, resolve, cache_dir, lexicon=No
     seg_cache = SegmentCache(cache_dir, sample_rate=sr, engine_id=engine_id,
                              voice_sig=voice_sigs, extra_sig=seg_extra_sig,
                              vary_repeats=opts.vary_repeats,
-                             legacy_voice_sigs=legacy_voice_sigs, lease=cache_lease)
+                             legacy_voice_sigs=legacy_voice_sigs, lease=cache_lease,
+                             gap_sig=gap_sig, gap_spans=gap_spans)
     seg_cache.reserve(spans)
     return spans, wav_path, legacy_paths, content_id, inputs, seg_cache
 
@@ -883,9 +912,13 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     from services.watermark import mark_synthetic
 
     opts = opts or ExpressiveOptions()
+    from services.audio_dsp import pause_fill_mode
+
+    # One read per chapter render (#3611): the cache keys and every join use it.
+    pause_fill = pause_fill_mode()
     spans, wav_path, legacy_paths, content_id, inputs, seg_cache = _chapter_cache_inputs(
         chapter, sr, engine_id, resolve, cache_dir, lexicon,
-        language, opts, voice_map, cache_lease,
+        language, opts, voice_map, cache_lease, pause_fill=pause_fill,
     )
     for candidate in dict.fromkeys((wav_path, *legacy_paths)):
         if not os.path.exists(candidate):
@@ -919,6 +952,8 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
 
     audio, dur = synthesize_chapter(spans, synth, sr, lexicon=lexicon,
                                     segment_cache=seg_cache, on_progress=on_progress,
+                                    # the fill the cache keys were derived from
+                                    pause_fill=pause_fill,
                                     **opts.join_kwargs())
     # Invisible provenance mark on the assembled chapter (#1169), tensor stage,
     # before the WAV lands in the cache — this single site covers every
@@ -1416,11 +1451,20 @@ async def _render_longform_sse(
         if title:
             done["title"] = str(title)[:200]
         try:
+            completed_chapters = [
+                chapter for index, chapter in enumerate(plan.chapters)
+                if index not in failed
+            ]
             done["summary"] = _render_summary(
-                [c for i, c in enumerate(plan.chapters) if i not in failed],
-                default_voice, voice_map, resolved_lang, fmt, opts)
-        except Exception:  # noqa: BLE001 - the summary is optional detail
-            logger.warning("[%s] render summary skipped", job_id, exc_info=True)
+                completed_chapters,
+                default_voice,
+                voice_map,
+                resolved_lang,
+                fmt,
+                opts,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("[%s] render summary could not be built", job_id, exc_info=True)
         # Loudness verdict only when a preset was requested — off/None paths keep
         # the exact legacy `done` shape (additive, old clients unaffected).
         if norm in LOUDNESS_PRESETS:

@@ -13,6 +13,16 @@
     "surprised": "Surprised",
     "calm": "Calm"
   },
+  "expression": {
+    "direction_label": "Delivery direction",
+    "direction_ph": "e.g. nervous at first, then excited",
+    "direction_help": "Applies to the whole take, as guidance for {{engine}}.",
+    "unsupported": "Emotion isn't available with {{engine}}. IndexTTS2 offers graded emotion; CosyVoice 3 and VoxCPM2 take a written direction.",
+    "tags_hint": "For moments within a line, add reactions such as {{example}} from Insert in the script.",
+    "tags_unsupported": "Grayed tags would be read aloud as words by {{engine}}.",
+    "guide": "Expressive speech guide",
+    "tip": "Tip: shape the delivery with Emotion below, and add reactions such as laughs or sighs from Insert in the script."
+  },
   "cloneQuality": {
     "title": "Audio quality",
     "precision": "WAV precision",
@@ -1669,15 +1679,14 @@
   },
   "gallery": {
     "title": "VoiceStudio Gallery",
-    "search_placeholder": "Search YouTube…",
     "all_voices": "All Voices ({{count}})",
     "no_voices": "No voices yet",
     "download_hint": "Search above to download clips.",
+    "search_placeholder": "Find videos on YouTube…",
     "search_btn": "Search",
     "download_btn": "Download",
     "saving": "Saving…",
     "trim": "Trim",
-    "delete_confirm": "Delete this voice clip?",
     "view_mode_list": "List",
     "view_mode_grid": "Grid",
     "youtube_results": "YouTube Results ({{count}})",
@@ -1719,6 +1728,7 @@
     "upload_failed": "Upload failed: {{message}}",
     "save_failed": "Could not save profile: {{message}}",
     "confirm_delete": "Delete \"{{name}}\"?",
+    "delete_confirm": "Delete the selected voice clip?",
     "delete_failed": "Could not delete: {{message}}",
     "trim_load_failed": "Could not load audio for trimming: {{message}}",
     "delete": "Delete",
@@ -2724,7 +2734,7 @@
     "pricing_detail": "Until they’re public, every commercial deployment is being quoted individually so we can right-size for your team and workload.",
     "request_quote": "Request pricing",
     "footer_email": "Questions? Reach out at hi@voicestudio.sh",
-    "footer_discord": "Join our Discord for community support.",
+    "footer_discord": "Get help from the community on our Discord.",
     "benefit_ip": "Application licence",
     "benefit_ip_desc": "Our licence covers VoiceStudio code. Rights to models and generated output depend on the selected models and their terms.",
     "benefit_cost": "No per-minute fees",
@@ -2849,6 +2859,10 @@
     "pick_voice": "Pick a voice profile…",
     "match_duration": "Match source duration",
     "match_duration_hint": "Time-stretch the converted take (pitch preserved) to land near the source clip's length.",
+    "keep_delivery": "Keep my delivery",
+    "keep_delivery_hint": "Change only the voice. Your timing, pauses and intonation stay as recorded. Off: the clip is transcribed and re-spoken.",
+    "keep_delivery_engine_required": "Keep my delivery needs CosyVoice 3.",
+    "keep_delivery_no_voices": "No voice has a recording to convert into. Clone a voice from a recording, or turn off Keep my delivery.",
     "source_language": "Source speech language (Auto = use the voice profile's language)",
     "convert": "Convert",
     "converting": "Converting…",
@@ -2858,6 +2872,7 @@
   },
   "glossary": {
     "title": "Glossary",
+    "close": "Hide glossary",
     "load_error": "Could not load the glossary: {{message}}",
     "needs_project": "Load a project to use its glossary.",
     "add_error": "Could not add the term: {{message}}",
@@ -2890,8 +2905,7 @@
     "add_term": "Add term",
     "hint": "Every Cinematic translation receives this glossary; manual terms override automatic suggestions.",
     "auto_badge": "auto",
-    "manual_badge": "manual",
-    "close": "Collapse glossary"
+    "manual_badge": "manual"
   },
   "segment": {
     "time": "Time",
@@ -4454,5 +4468,45 @@
     "generating": "Wait until the current take finishes.",
     "name_required": "Enter a name first.",
     "audio_missing": "This take has no audio file to save."
+  },
+  "ggufQuant": {
+    "label": "Model quant",
+    "auto": "Auto: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU or native default",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · installed",
+    "download": "Download {{quant}} ({{size}} MB)",
+    "downloading": "Downloading {{quant}}: {{done}} of {{total}} MB",
+    "using_installed": "Using the installed {{quant}} until the selected quant is downloaded.",
+    "env_pinned": "Pinned to {{quant}} by {{env}}.",
+    "runtime_missing": "The omnivoice-tts runtime is missing. Reinstall VoiceStudio or build it with scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "The bundled omnivoice-tts file is a placeholder, not a working runtime. Reinstall VoiceStudio.",
+    "runtime_integrity": "The omnivoice-tts runtime failed its checksum. Reinstall VoiceStudio.",
+    "runtime_quarantined": "The omnivoice-tts runtime is quarantined by the operating system. Allow it or reinstall VoiceStudio.",
+    "runtime_other": "The omnivoice-tts runtime cannot start. See the engine health check for details.",
+    "weights_missing": "The model weights are not downloaded yet. Download them now or they download on the first generation.",
+    "download_failed": "Weight download failed"
+  },
+  "gpuOffer": {
+    "title": "Use your GPU for faster speech?",
+    "body": "VoiceStudio found {{gpu}}. OmniVoice GGUF can run on it through Vulkan instead of the CPU, using the {{quant}} model.",
+    "body_shared": "VoiceStudio found {{gpu}}, which shares your system memory. OmniVoice GGUF can run on it through Vulkan instead of the CPU, using the {{quant}} model.",
+    "download": "It downloads {{size}} MB once.",
+    "no_download": "Nothing needs to be downloaded.",
+    "licence": "The GGUF model is for noncommercial use; you'll be asked to accept its licence first.",
+    "accept": "Use GPU",
+    "decline": "Not now",
+    "later": "You can change this later in Settings › {{section}}.",
+    "licence_then_retry": "Accept the licence, then press Use GPU again.",
+    "switched": "Now using {{gpu}} for speech.",
+    "switched_downloading": "Now using {{gpu}} for speech. Downloading the {{quant}} model…"
+  },
+  "pauseFill": {
+    "title": "Pauses",
+    "room_tone": "Fill pauses with room tone",
+    "room_tone_note": "[pause] markers and audiobook gaps get the take's own quiet background instead of digital silence, so the sound doesn't cut out between lines.",
+    "env_pinned": "Set by {{env}}. Change or clear it to use this switch."
   }
 }

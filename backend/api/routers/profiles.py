@@ -23,6 +23,7 @@ from core.personalities import get_personalities
 from omnivoice.utils.voice_design import heal_design_instruct, sanitize_instruct
 from core.media_types import media_upload_suffix
 from core.path_security import UnsafePath, resolve_within
+from services.reference_transcript import take_reference_transcript
 from core.profile_images import MAX_IMAGE_BYTES, normalize_portrait
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from core.path_security import upload_suffix
@@ -1156,8 +1157,10 @@ async def lock_profile(
             restore, finalize = _install_staged(staged_path, locked_path)
 
             # Generation pairs the locked take with this text as its
-            # reference transcript, so it must be the whole take's text.
-            ref_text = history["text"] or ""
+            # reference transcript, so it must be exactly what the take says:
+            # the whole text without script markup, or empty (transcribe the
+            # take) when the history row may hold a cut prefix (#3062).
+            ref_text = take_reference_transcript(history["text"])
             # A design voice's saved seed is its identity (#3254): locking must
             # not replace it with the take's seed, or unlocking would lose it.
             lock_seed = seed

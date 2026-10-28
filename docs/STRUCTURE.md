@@ -36,7 +36,7 @@ VoiceStudio/
 │   │   └── setup/               setup-wizard endpoints and model acquisition
 │   ├── core/                    shared infrastructure: configuration, persistence, job/event plumbing,
 │   │                            auth and CSRF, safe paths, analytics consent, version and diagnostics
-│   ├── services/                112 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
+│   ├── services/                116 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
 │   │                            engine selection and loaded-model ownership
 │   ├── engines/                 per-engine adapters: audiocpp, confucius4, cosyvoice_gguf,
 │   │                            cosyvoice_subprocess, dots_tts, indextts, moss_tts_nano_subprocess,
@@ -138,7 +138,7 @@ VoiceStudio/
 
 3. **Each subdirectory owns one concern.** If you can't describe what goes in a directory in one sentence, it's wrong.
 
-4. **Every package has a manifest.** `backend/`, `electron/`, `omnivoice/` each have their own deps declared via `pyproject.toml` / `package.json` — they are independently testable. The JS lockfile is the **repo-root** `bun.lock` (Bun workspace), and `deploy/Dockerfile` installs from it with `--frozen-lockfile`.
+4. **Packages declare dependencies independently.** `backend/`, `electron/`, and `omnivoice/` each have their own `pyproject.toml` or `package.json`, allowing them to be tested separately. The Bun workspace shares one root `bun.lock`, and Docker uses a frozen install that fails rather than modifying it.
 
 ## Where tests live
 

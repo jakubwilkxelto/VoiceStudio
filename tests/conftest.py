@@ -381,6 +381,38 @@ def asr_model_installed(monkeypatch, request):
         monkeypatch.setattr(mod, "asr_model_missing_error", lambda **_kw: None)
 
 
+_MODEL_MANAGER_TEST_REPO = "test/checkpoint"
+
+
+@pytest.fixture
+def fresh_model_manager(monkeypatch):
+    """Load the real model manager while discarding collection-time stubs."""
+    import importlib
+
+    def load(*, force: bool = False):
+        for name in ("core.config", "services.model_manager"):
+            loaded = sys.modules.get(name)
+            if force or (loaded is not None and getattr(loaded, "__file__", None) is None):
+                sys.modules.pop(name, None)
+        return importlib.import_module("services.model_manager")
+
+    return load
+
+
+@pytest.fixture
+def offline_model_manager(fresh_model_manager, monkeypatch):
+    manager = fresh_model_manager()
+    for name in ("_torch", "_OmniVoice", "model"):
+        monkeypatch.setattr(manager, name, None)
+    monkeypatch.setenv("OMNIVOICE_MODEL", _MODEL_MANAGER_TEST_REPO)
+    for name in ("OMNIVOICE_PRELOAD_TTS_ASR", "HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
+        monkeypatch.delenv(name, raising=False)
+    fake_torch = type("TestTorch", (), {"float16": object(), "float32": object()})()
+    monkeypatch.setattr(manager, "_lazy_torch", lambda: fake_torch)
+    monkeypatch.setattr(manager, "get_best_device", lambda: "cpu")
+    return manager
+
+
 @pytest.fixture(autouse=True)
 def _clear_asr_installed_memo(request):
     """The ASR preflight memoizes installed-POSITIVE repos process-wide

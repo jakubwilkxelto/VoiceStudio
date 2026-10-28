@@ -171,7 +171,7 @@ it('keeps distinct model names visible in the compact pack summary', async () =>
   expect(screen.getAllByText(/engineSidebar\.dictation/)).toHaveLength(2);
 });
 
-it('permits selecting a complete pack when the disk is nearly full', async () => {
+it('allows an installed pack to be selected when disk space is low', async () => {
   serveBalancedPack({ installed: true, freeGb: 0.5 });
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -179,18 +179,16 @@ it('permits selecting a complete pack when the disk is nearly full', async () =>
     </QueryClientProvider>,
   );
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  const activate = await screen.findByRole('button', { name: /models\.pack_use/ });
-  fireEvent.click(activate);
+  const action = await screen.findByRole('button', { name: /models\.pack_use/ });
+  expect(action).toBeEnabled();
+  fireEvent.click(action);
   await waitFor(() =>
-    expect(mock.api).toHaveBeenCalledWith(
-      '/api/settings/performance-profile',
-      expect.objectContaining({
-        method: 'PUT',
-        body: JSON.stringify({ tier: 'balanced', family: null }),
-      }),
-    ),
+    expect(mock.api).toHaveBeenCalledWith('/api/settings/performance-profile', {
+      method: 'PUT',
+      body: JSON.stringify({ tier: 'balanced', family: null }),
+    }),
   );
-  expect(activate).toBeEnabled();
+  expect(action).toBeEnabled();
   expect(mock.api).not.toHaveBeenCalledWith('/models/install', expect.anything());
 });
 

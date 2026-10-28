@@ -51,25 +51,17 @@ MAX_PROMPT_CHARS = 1000
 
 
 def dictation_prompt() -> str:
-    """Return the stored vocabulary hint ready for use.
-
-    Anything that is not text counts as unset. Text is trimmed and clipped to
-    ``MAX_PROMPT_CHARS``, so a hand-edited ``prefs.json`` cannot exceed the cap.
-    """
     value = prefs.get(PREF_PROMPT, "")
-    return value.strip()[:MAX_PROMPT_CHARS] if isinstance(value, str) else ""
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:MAX_PROMPT_CHARS]
 
 
 def dictation_transcribe_kwargs(backend) -> dict:
-    """Keyword arguments that give ``backend.transcribe`` the stored hint.
-
-    Returns ``{}`` when no hint is stored or the engine's ``transcribe`` does
-    not name an ``initial_prompt`` parameter.
-    """
     from services.asr_backend import transcribe_request_kwargs
 
     hint = dictation_prompt()
-    return transcribe_request_kwargs(backend, {"initial_prompt": hint if hint else None})
+    return transcribe_request_kwargs(backend, {"initial_prompt": hint or None})
 
 
 def _read_prefs() -> dict:

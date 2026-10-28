@@ -127,20 +127,26 @@ async def transcribe_audio(
         # CTA, BEFORE any backend is constructed (the whisper backends
         # auto-download multi-GB weights from HF on first load).
         from services.asr_backend import asr_model_missing_detail, asr_model_missing_error
-        missing = await asyncio.to_thread(
-            asr_model_missing_error,
-            purpose="transcribe" if use_active_asr else "dictation",
-            require_installed=requested_mode == "reference",
-        )
-        if missing is not None and not use_active_asr:
-            transcribe_missing = await asyncio.to_thread(
+
+        async def _probe_asr(purpose: str, *, installed_only: bool):
+            return await asyncio.to_thread(
                 asr_model_missing_error,
-                purpose="transcribe",
-                require_installed=True,
+                purpose=purpose,
+                require_installed=installed_only,
             )
-            if transcribe_missing is None:
+
+        initial_purpose = "transcribe" if use_active_asr else "dictation"
+        missing = await _probe_asr(
+            initial_purpose,
+            installed_only=requested_mode == "reference",
+        )
+        if missing is not None and initial_purpose == "dictation":
+            installed_transcriber_missing = await _probe_asr(
+                "transcribe", installed_only=True
+            )
+            use_active_asr = installed_transcriber_missing is None
+            if use_active_asr:
                 missing = None
-                use_active_asr = True
         # The selected offline engine's weights are absent, but a reference
         # transcript does not need that engine: generate transcribes through
         # any installed recognizer, so the preview must too (#2929/#2678).

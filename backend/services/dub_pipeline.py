@@ -862,13 +862,13 @@ def _probe_codecs(path: str) -> tuple[str, str]:
         out = subprocess.run(
             local_inputs_only([ffprobe, "-v", "error", "-select_streams", "v:0",
              "-show_entries", "stream=codec_name", "-of", "csv=p=0", path], tool="ffprobe"),
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
         vcodec = (out.stdout or "").strip().lower()
         out = subprocess.run(
             local_inputs_only([ffprobe, "-v", "error", "-select_streams", "a:0",
              "-show_entries", "stream=codec_name", "-of", "csv=p=0", path], tool="ffprobe"),
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
         acodec = (out.stdout or "").strip().lower()
         return vcodec, acodec

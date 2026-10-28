@@ -6,6 +6,7 @@ type Conversion = {
   voice: string;
   search: string;
   match: boolean;
+  keepDelivery: boolean;
   language: string;
   result: ConvertResult | null;
 };
@@ -14,6 +15,7 @@ const empty = (): Conversion => ({
   voice: '',
   search: '',
   match: true,
+  keepDelivery: false,
   language: 'Auto',
   result: null,
 });

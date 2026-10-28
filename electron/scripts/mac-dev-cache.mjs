@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
+  existsSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -20,11 +21,23 @@ export function macDevLeaseDirectory(cacheRoot) {
   return join(homedir(), 'Library', 'Caches', 'VoiceStudio', 'dev-bundle-locks', key);
 }
 
+// /usr/bin/lockf first shipped in macOS 15; older releases lack it but always
+// ship /usr/bin/perl, whose flock() takes the same open-file-description lock.
+const PERL_FLOCK =
+  'use Fcntl qw(:flock); open(my $fh, "+<&=", 3) or die "fd 3: $!\\n";' +
+  ' exit(flock($fh, LOCK_EX | ($ARGV[0] ? 0 : LOCK_NB)) ? 0 : 75);';
+
+export function lockCommand(wait, exists = existsSync) {
+  return exists('/usr/bin/lockf')
+    ? ['/usr/bin/lockf', ['-s', ...(wait ? [] : ['-t', '0']), '3']]
+    : ['/usr/bin/perl', ['-e', PERL_FLOCK, wait ? '1' : '0']];
+}
+
 function lockDescriptor(fd, wait) {
-  // Darwin lockf has a descriptor-only form: lockf [-s] [-t seconds] fd.
-  // The kernel lock survives
+  // Both helpers lock the inherited descriptor 3. The kernel lock survives
   // this helper's exit until every copy of that open descriptor is closed.
-  const result = spawnSync('/usr/bin/lockf', ['-s', ...(wait ? [] : ['-t', '0']), '3'], {
+  const [command, args] = lockCommand(wait);
+  const result = spawnSync(command, args, {
     stdio: ['ignore', 'pipe', 'pipe', fd],
     encoding: 'utf8',
   });

@@ -4,7 +4,8 @@
   <p>
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Trendshift의 VoiceStudio 순위" width="220" height="48" /></a>
   </p>
-  <p><strong>646개 언어를 지원하는 오픈소스 음성 복제, 보이스 디자인, 영상 더빙, 받아쓰기, 음성 전사, 오디오북 제작 도구.</strong></p>
+  <p><strong>내 기기에서 돌아가는 보이스 스튜디오: 646개 언어로 음성 복제, 보이스 디자인, 더빙, 받아쓰기, 음성 전사, 내레이션.</strong><br />
+  내 컴퓨터와 휴대폰에서 실행됩니다. 계정도 API 키도 필요 없으며, 사용자가 허락하지 않는 한 어떤 데이터도 기기 밖으로 나가지 않습니다.</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">웹사이트</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">다운로드</a> ·
@@ -28,137 +29,148 @@
   </p>
 </div>
 
-![Electron 앱 둘러보기: 음성 복제, 보이스 디자인, 더빙, 모델 관리](../../docs/media/electron/voicestudio.gif)
+![앱 둘러보기: 음성 복제, 보이스 디자인, 더빙, 모델 관리](../../docs/media/electron/voicestudio.gif)
 
-## 나의 목소리로, 나의 워크플로를.
+## 할 수 있는 일
 
 | 만들기 | 제작하기 | 연결하기 |
 | :--- | :--- | :--- |
 | 목소리를 복제하거나 직접 디자인 | 타이밍을 맞춘 음성으로 영상 더빙 | 에이전트를 위한 로컬 API와 MCP |
 | 플로팅 위젯으로 받아쓰기 | 스토리, 오디오북, 일괄 작업 | 재사용 가능한 레시피와 감시 폴더 |
 
-기본 엔진인 **VoiceStudio**(k2-fsa/OmniVoice 기반)로 시작하거나 다른 엔진을 선택하세요. [기능 및 엔진 카탈로그](../../docs/feature-catalog.md).
-
-로컬 워크플로는 사용자의 하드웨어에서 실행됩니다. 원격 서비스는 선택 사항이며, 사용 통계 수집은 사용자 동의가 있어야만 이루어집니다.
+기본 엔진인 **VoiceStudio**(k2-fsa/OmniVoice 기반)로 시작하거나, 모델 관리자에서 수십 가지 다른 엔진 중 하나를 고르세요. [기능 및 엔진 카탈로그](../../docs/feature-catalog.md)를 참고하세요.
 
 <details>
-<summary><strong>워크스페이스 살펴보기</strong> · 복제, 더빙, 디자인, 모델</summary>
+<summary><strong>스크린샷</strong></summary>
 
 <table>
   <tr>
-    <td><img src="../../docs/media/electron/voice-cloning.png" alt="기본 제공 데모 음성이 열린 Electron 음성 복제 워크스페이스" width="100%" /></td>
-    <td><img src="../../docs/media/electron/dubbing.png" alt="Electron 영상 더빙 워크스페이스" width="100%" /></td>
+    <td><img src="../../docs/media/electron/voice-cloning.png" alt="기본 제공 데모 음성이 열린 음성 복제 워크스페이스" width="100%" /></td>
+    <td><img src="../../docs/media/electron/dubbing.png" alt="영상 더빙 워크스페이스" width="100%" /></td>
   </tr>
   <tr><td align="center">음성 복제</td><td align="center">영상 더빙</td></tr>
   <tr>
-    <td><img src="../../docs/media/electron/voice-design.png" alt="Electron 보이스 디자인 워크스페이스에서 목소리를 묘사하기" width="100%" /></td>
+    <td><img src="../../docs/media/electron/voice-design.png" alt="보이스 디자인 워크스페이스에서 목소리를 묘사하기" width="100%" /></td>
     <td><img src="../../docs/media/electron/models.png" alt="로컬 음성 모델 설치 및 관리" width="100%" /></td>
   </tr>
   <tr><td align="center">보이스 디자인</td><td align="center">로컬 모델</td></tr>
 </table>
 
-<img width="2628" height="1950" alt="VoiceStudio 데스크톱 워크스페이스" src="https://github.com/user-attachments/assets/b474497d-a453-49a3-a2dd-f023ec6b7659" />
-
 </details>
+
+## 지원 플랫폼
+
+| 플랫폼 | 다운로드 | 가속 | 상태 |
+| :--- | :--- | :--- | :--- |
+| **macOS** (Apple Silicon) | `.dmg` · [가이드](../../docs/install/macos.md) | Metal (MPS) | 안정 |
+| **Windows 10/11** (x64) | `.exe` · [가이드](../../docs/install/windows.md) | NVIDIA CUDA · [AMD ROCm (선택)](../../docs/install/windows-rocm.md) · CPU | 안정 |
+| **Linux** (x64) | `.AppImage` · `.deb` · `snap` · [Nix](../../docs/install/nix.md) · [가이드](../../docs/install/linux.md) | NVIDIA CUDA · CPU | 안정 |
+| **Docker** | [`ghcr.io/debpalash/voicestudio`](../../docs/install/docker.md) | NVIDIA CUDA · AMD ROCm | 안정 |
+| **Android** 10+ | `.apk` · [가이드](../../docs/mobile.md#install) | 기기에서 실행, 오프라인 지원 | 프리뷰 |
+| **iPhone / iPad** (iOS 17+) | `.ipa` (사이드로드) · [가이드](../../docs/mobile.md#install) | 기기에서 실행, 오프라인 지원 | 프리뷰 |
+| **Windows on ARM** | `.exe` · [가이드](../../docs/install/windows.md) | CPU (x64 백엔드를 에뮬레이션으로 실행) | 실험적 |
+| **Intel Mac** | `.dmg` · [이유](../../docs/install/macos.md) | 앱 UI만 지원, 원격 백엔드에 연결 | 제한적 |
+
+데스크톱과 휴대폰 설치 파일은 [최신 릴리스](https://github.com/debpalash/VoiceStudio/releases/latest)에 있고, Docker 이미지는 GHCR에서 받을 수 있습니다. GPU가 없나요? CPU만으로도 모든 기능을 쓸 수 있으며, 속도만 느립니다. 선택 기능인 네이티브 GGUF 엔진은 AMD GPU를 포함해 Vulkan도 사용할 수 있습니다([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). 엔진과 하드웨어별 속도는 [성능](../../docs/performance.md) 문서를 참고하세요.
 
 ## 시작하기
 
-### 명령 한 줄로 설치 (macOS / Linux)
+**macOS / Linux**
 
 ```sh
-# 최신 Electron 릴리스
 curl -fsSL https://voicestudio.sh/install | sh
-
-# 특정 Electron 릴리스 (X.Y.Z를 원하는 버전으로 변경)
-curl -fsSL https://voicestudio.sh/install | sh -s -- --version X.Y.Z
-
-# 현재 main 브랜치를 빌드해 데스크톱 앱 설치
-curl -fsSL https://voicestudio.sh/install | sh -s -- --main
-
-# 데이터는 유지하고 앱만 제거
-curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall
 ```
 
-Windows에서는 PowerShell에서 `irm https://voicestudio.sh/install.ps1 | iex`를 실행하세요.
+**Windows** (PowerShell)
 
-`voicestudio.sh/install`에 접속할 수 없거나 404가 반환되면, 같은 스크립트를
-저장소에서 직접 실행하거나 저장소를 클론한 뒤 `scripts/install.sh`를 실행하세요.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/debpalash/VoiceStudio/main/scripts/install.sh | sh
+```powershell
+irm https://voicestudio.sh/install.ps1 | iex
 ```
 
-릴리스를 내려받으려면 curl과 SHA-256 도구가 필요합니다. `--main`을 쓰려면 Git,
-Node.js 22+, Bun, Rust/Cargo와 플랫폼별 빌드 도구가 필요합니다.
-[설치 스크립트의 요구 사항과 동작](../../docs/install/script.md)을 참고하세요.
-설치 스크립트는 설정, 프로젝트, 모델을 그대로 보존합니다. 이전 버전을 설치하려면
-해당 버전에 Electron 패키지가 있어야 하며, 보관된 Tauri 빌드로 대체 설치하지 않습니다.
+위 표에서 설치 파일을 내려받아도 됩니다. 그런 다음 **음성 복제**를 열고, 목소리를 고르거나 깨끗한 참조 녹음을 추가한 뒤 텍스트를 입력하고 생성하세요. 모델을 내려받기 전에는 항상 먼저 확인을 요청합니다.
 
-또는 [Releases](https://github.com/debpalash/VoiceStudio/releases/latest)에서 내려받은 뒤(macOS `.dmg`, Windows `.exe`, Linux `.AppImage` 또는 `.deb`) 플랫폼별 가이드를 따르세요.
-
-**[macOS](../../docs/install/macos.md) · [Windows](../../docs/install/windows.md) · [Linux](../../docs/install/linux.md) · [Docker](../../docs/install/docker.md)**
-
-| 하드웨어 | 지원 |
-|---|---|
-| NVIDIA GPU (Windows / Linux) | CUDA 가속 |
-| Apple Silicon | Metal (MPS) 가속 |
-| 전용 GPU 없음 (Intel/AMD 내장 그래픽, 구형 PC) | CPU로 모든 기능 사용 가능(속도는 느림). 설치 시 용량이 작은 CPU용 PyTorch 빌드를 설치합니다(여유 디스크 약 5 GB 필요) |
-| Windows on ARM (Snapdragon X 등) | **실험적 지원**, 검증 진행 중: 네이티브 ARM64 앱, 에뮬레이션으로 동작하는 x64 Python 백엔드, CPU 전용 |
-| Intel Mac | 앱 UI만 지원, 원격 백엔드에 연결해서 사용 ([이유](../../docs/install/macos.md)) |
-
-**음성 복제**를 열고 목소리를 고르거나 깨끗한 참조 녹음을 추가한 다음, 텍스트를 입력하고 생성하세요. 안내가 나오면 필요한 모델을 설치하세요. 필요한 하드웨어 사양은 엔진마다 다릅니다. [성능](../../docs/performance.md) 문서를 참고하세요.
-
-### 프롬프트로 설치
-
-코딩 에이전트(Claude Code, Codex, Cursor 등)에 붙여 넣으세요.
-
-```text
-Install the VoiceStudio Electron app on this device and verify it works, following
-https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
-```
-
-[에이전트 가이드](../../docs/install/agent.md)는 하드웨어 감지, 기존 데이터 재사용, 모델 다운로드 전 사용자 확인,
-테스트 생성까지 다룹니다. 스킬을 지원하는 에이전트라면 `npx skills add debpalash/VoiceStudio`를
-실행할 수도 있습니다.
+> [!NOTE]
+> macOS에서 "VoiceStudio가 손상되었기 때문에 열 수 없습니다"라는 메시지는 Gatekeeper가 앱을 차단했다는 뜻이지, 다운로드한 파일이 손상되었다는 뜻이 아닙니다. [Gatekeeper 해결 방법](../../docs/install/macos.md#gatekeeper-quarantine)을 참고하세요.
 
 <details>
-<summary><strong>소스에서 Electron 프리뷰 실행하기</strong></summary>
+<summary><strong>다른 설치 방법</strong>: 특정 버전, 최신 main, 제거, 소스에서 설치, 코딩 에이전트로 설치</summary>
+
+```sh
+curl -fsSL https://voicestudio.sh/install | sh -s -- --version X.Y.Z   # 특정 릴리스
+curl -fsSL https://voicestudio.sh/install | sh -s -- --main            # 최신 main 빌드
+curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall       # 데이터는 남기고 앱만 제거
+```
+
+`voicestudio.sh`에 접속할 수 없다면 저장소에서 스크립트를 바로 실행하세요:
+`curl -fsSL https://raw.githubusercontent.com/debpalash/VoiceStudio/main/scripts/install.sh | sh`.
+요구 사항과 동작: [설치 스크립트 가이드](../../docs/install/script.md).
+
+**소스에서 설치**
 
 ```bash
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
 bun install
-bun run setup:api  # Electron을 시작하기 전에 Python 의존성 준비
+bun run setup:api
 bun run dev
 ```
 
-사전 요구 사항과 백엔드 설정은 [Electron 설정](../../electron/README.md)을 참고하세요.
+[Electron 설정](../../electron/README.md)을 참고하세요.
 
-`bun run smoke-test`를 실행하면 격리된 패키지 Electron 앱을 빌드하고 실행합니다.
-네트워크를 사용하는 관리형 런타임 설치 점검을 하려면 `-- --install`을 덧붙이세요.
+**코딩 에이전트로 설치** (Claude Code, Codex, Cursor 등): 다음 내용을 붙여 넣으세요.
+
+```text
+Install the VoiceStudio app on this device and verify it works, following
+https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
+```
+
+0.5.3 이하 버전(Tauri 앱)에서 업그레이드하나요? [새 앱을 별도로 설치](../../docs/electron-migration.md)하세요.
 
 </details>
-
-> **데스크톱 앱과 웹 UI는 Electron 하나뿐입니다.** 0.5.3이 마지막 Tauri 릴리스였습니다. 기존 Tauri 사용자는 [Electron을 별도로 설치](../../docs/electron-migration.md)해야 합니다. 지원이 종료된 Tauri 셸과 레거시 UI 진입점은 제거되었습니다.
 
 ## 문서
 
 | 필요한 것 | 여기서 시작 |
 |---|---|
 | 설치 도움말 | [문제 해결](../../docs/install/troubleshooting.md) · [모델 다운로드](../../docs/downloading-models.md) |
-| 모델과 음질 | [엔진 가이드](../../docs/engines/README.md) · [벤치마크](../../docs/benchmarks.md) |
+| 가이드 | [다중 화자 더빙](../../docs/dubbing/multi-speaker-guide.md) · [표현력 있는 음성](../../docs/expressive-speech.md) · [더빙 내보내기](../../docs/dubbing/export.md) |
+| 모델과 음질 | [엔진 가이드](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [벤치마크](../../docs/benchmarks.md) |
 | 연동 | [로컬 API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [예제](../../examples/README.md) |
-| 휴대폰 앱 (프리뷰, 오프라인 실행) | [iOS 및 Android](../../docs/mobile.md) |
-| 개발 | [기여하기](../../.github/CONTRIBUTING.md) (첫 PR을 위한 [CLA 서명 안내](../../.github/CONTRIBUTING.md#contribution-licensing)) · [Electron](../../electron/README.md) · [변경 기록](../../CHANGELOG.md) |
+| 휴대폰 앱 | [iOS 및 Android](../../docs/mobile.md) |
+| 개발 | [기여하기](../../.github/CONTRIBUTING.md) (첫 PR 전에 [CLA 서명](../../.github/CONTRIBUTING.md#contribution-licensing) 필요) · [변경 기록](../../CHANGELOG.md) |
 
-에이전트 스킬: `npx skills add debpalash/VoiceStudio` — 오디오 워크플로에는 **voicestudio**를, 저장소 유지 관리에는 **voicestudio-maintainer**를 선택하세요.
+에이전트 스킬: `npx skills add debpalash/VoiceStudio` (오디오 작업에는 **voicestudio**, 저장소 관리에는 **voicestudio-maintainer**).
 
 ## 후원사
 
-후원금은 메인테이너의 작업 시간, 개발 도구, 릴리스 인프라와 테스트 하드웨어에 쓰입니다. 후원으로 얻는 것은 기능이 아니라 크레딧입니다.
+VoiceStudio는 무료이며, 뒤에 유료 클라우드도 없습니다. 후원사 덕분에 개발이 계속됩니다. 후원금은 메인테이너의 작업 시간, 테스트 하드웨어, 코드 서명과 릴리스 인프라에 쓰입니다.
 
-[GitHub Sponsors](https://github.com/sponsors/debpalash) · [Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [등급과 크레딧](../../SPONSORS.md) · [크레딧 요청](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)
+<p>
+    <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="48" /></picture></a>
+</p>
+
+**여기에 귀사의 로고를 올려 보세요.** Development, Company, Strategic 후원 자리는 월 100달러부터 열려 있으며, Community 후원사(25달러)는 이름과 링크가 실립니다. 후원으로 얻는 것은 기능이 아니라 크레딧입니다.
+
+<a href="https://github.com/sponsors/debpalash"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors로 후원하기" /></a>
+[Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [등급과 혜택](../../SPONSORS.md) · [로고 게재 신청](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)
+
+## 팀
+
+### 핵심 팀
+
+<table>
+<tr>
+<td align="center" width="200"><a href="https://github.com/debpalash"><img src="https://github.com/debpalash.png?size=160" width="80" height="80" alt="Palash Debnath"></a><br><b>Palash Debnath</b><br><sub>창시자 · 핵심 팀</sub><br><sub><a href="https://palash.dev">palash.dev</a> · <a href="https://github.com/debpalash">GitHub</a> · <a href="https://x.com/idebpalash">X</a></sub></td>
+<td align="center" width="200"><a href="https://github.com/velixio"><img src="https://github.com/velixio.png?size=160" width="80" height="80" alt="Shimul Debnath"></a><br><b>Shimul Debnath</b><br><sub>핵심 팀</sub><br><sub><a href="https://shimul.me">shimul.me</a> · <a href="https://github.com/velixio">GitHub</a> · <a href="https://x.com/shimuldn">X</a></sub></td>
+</tr>
+</table>
+
+### 기여자
+
+<a href="https://github.com/kevin9327"><img src="https://github.com/kevin9327.png?size=96" width="44" height="44" alt="@kevin9327" title="@kevin9327"></a> <a href="https://github.com/jaketame"><img src="https://github.com/jaketame.png?size=96" width="44" height="44" alt="@jaketame" title="@jaketame"></a> <a href="https://github.com/psiberfunk"><img src="https://github.com/psiberfunk.png?size=96" width="44" height="44" alt="@psiberfunk" title="@psiberfunk"></a> <a href="https://github.com/rudycelekli"><img src="https://github.com/rudycelekli.png?size=96" width="44" height="44" alt="@rudycelekli" title="@rudycelekli"></a> <a href="https://github.com/paoloantinori"><img src="https://github.com/paoloantinori.png?size=96" width="44" height="44" alt="@paoloantinori" title="@paoloantinori"></a> <a href="https://github.com/Chang-Jin-Lee"><img src="https://github.com/Chang-Jin-Lee.png?size=96" width="44" height="44" alt="@Chang-Jin-Lee" title="@Chang-Jin-Lee"></a> <a href="https://github.com/swadhinbiswas"><img src="https://github.com/swadhinbiswas.png?size=96" width="44" height="44" alt="@swadhinbiswas" title="@swadhinbiswas"></a> <a href="https://github.com/BichengWang"><img src="https://github.com/BichengWang.png?size=96" width="44" height="44" alt="@BichengWang" title="@BichengWang"></a> <a href="https://github.com/nirmalchatur"><img src="https://github.com/nirmalchatur.png?size=96" width="44" height="44" alt="@nirmalchatur" title="@nirmalchatur"></a> <a href="https://github.com/Shivendra-Coherent"><img src="https://github.com/Shivendra-Coherent.png?size=96" width="44" height="44" alt="@Shivendra-Coherent" title="@Shivendra-Coherent"></a> <a href="https://github.com/marreiradigital"><img src="https://github.com/marreiradigital.png?size=96" width="44" height="44" alt="@marreiradigital" title="@marreiradigital"></a> <a href="https://github.com/nvtoan0201-swe"><img src="https://github.com/nvtoan0201-swe.png?size=96" width="44" height="44" alt="@nvtoan0201-swe" title="@nvtoan0201-swe"></a>
+
+코드, 버그 제보, 번역, 아이디어를 보내 주신 모든 분께 감사드립니다. [전체 기여자](https://github.com/debpalash/VoiceStudio/graphs/contributors) · [기여하기](../../.github/CONTRIBUTING.md)
 
 ## 라이선스와 책임 있는 사용
 
-[AGPL-3.0](../../LICENSE)은 애플리케이션에 적용되며, 그 조건에 따른 상업적 사용도 포함합니다. 모델 가중치, 토크나이저, 음성, 생성 결과물에 대한 조건은 별개이며, 유료 앱 라이선스가 이러한 권리를 부여하지는 않습니다. 목소리는 반드시 허락을 받은 경우에만 복제하세요. 모델 관리자는 이제 [공유 인벤토리](../../docs/licensing/model-inventory.md)를 바탕으로 버전별 모델 출처 고지, 근거 링크, 미해결 검토 항목을 보여 줍니다. 선택 기능인 [검토 완료 파일 미리보기](../../docs/licensing/model-review-workflow.md)는 일반 다운로드를 제한하지 않으며 상업적 사용 허가를 보증하지도 않습니다. 자세한 내용은 [라이선스 상세](../../LICENSE-NOTICE.md)를 참고하세요.
+앱에는 [AGPL-3.0](../../LICENSE)이 적용되며, 그 조건에 따른 상업적 사용도 가능합니다. 모델 가중치, 음성, 생성 결과물에는 각각의 라이선스가 있으며, 모델 관리자에서 모델별로 확인할 수 있습니다([목록](../../docs/licensing/model-inventory.md)). 목소리는 반드시 그 주인의 허락을 받은 경우에만 복제하세요. 자세한 내용: [LICENSE-NOTICE.md](../../LICENSE-NOTICE.md).

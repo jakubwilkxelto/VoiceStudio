@@ -332,24 +332,9 @@ def test_repo_cache_dir_uses_env_cache(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def model_manager(monkeypatch):
-    for mod_name in ("core.config", "services.model_manager"):
-        if getattr(sys.modules.get(mod_name), "__file__", None) is None:
-            sys.modules.pop(mod_name, None)
-
-    import services.model_manager as mm
-
-    monkeypatch.setattr(mm, "_torch", None)
-    monkeypatch.setattr(mm, "_OmniVoice", None)
-    monkeypatch.setattr(mm, "model", None)
-    monkeypatch.setattr(mm, "_LINK_REPAIR_ATTEMPTED", set())
-    monkeypatch.setenv("OMNIVOICE_MODEL", "test/checkpoint")
-    monkeypatch.delenv("OMNIVOICE_PRELOAD_TTS_ASR", raising=False)
-    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
-    monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
-    monkeypatch.setattr(mm, "_lazy_torch", lambda: SimpleNamespace(float16="float16", float32="float32"))
-    monkeypatch.setattr(mm, "get_best_device", lambda: "cpu")
-    return mm
+def model_manager(offline_model_manager, monkeypatch):
+    monkeypatch.setattr(offline_model_manager, "_LINK_REPAIR_ATTEMPTED", set())
+    return offline_model_manager
 
 
 def _healed_summary(repo_id="test/checkpoint"):

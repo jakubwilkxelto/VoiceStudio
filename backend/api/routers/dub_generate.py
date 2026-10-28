@@ -12,6 +12,7 @@ import torch
 from fastapi import APIRouter, HTTPException
 
 from core import voice_leases
+from services.reference_transcript import stored_reference_transcript
 from core.db import db_conn
 from core.config import DUB_DIR, VOICES_DIR, dub_seg_path
 from core.path_security import contained_join
@@ -624,22 +625,35 @@ async def dub_generate(job_id: str, req: DubRequest):
             except Exception as err:  # noqa: BLE001
                 logger.debug("device cache release skipped: %s", err)
 
-        # Scratch ``mix_*`` WAVs that only exist as assembly input.
-        _mix_temp_paths: list[str] = []
+        mix_temp_paths: list[str] = []
 
-        def _store_mix_wav(start: float, end: float, wav: torch.Tensor, sr: int, seg_key: str):
-            """Spill audio to a job-dir WAV and return its ``all_segment_wavs`` entry."""
-            if wav.shape[-1] <= 0:
-                # atomic_save_wav refuses empty audio; assembly accepts an
-                # in-memory zero-length entry instead.
-                return (start, end, torch.zeros(1, 0), sr)
+        def _segment_storage_path(seg_key: str) -> str:
             path = dub_seg_path(job_id, seg_key)
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            atomic_save_wav(path, wav.detach().cpu(), sr)
+            parent = os.path.dirname(path)
+            os.makedirs(parent, exist_ok=True)
+            return path
+
+        def _remember_mix_scratch(seg_key: str, path: str) -> None:
             if str(seg_key).startswith("mix_"):
-                _mix_temp_paths.append(path)
+                mix_temp_paths.append(path)
+
+        def _store_mix_wav(
+            start: float,
+            end: float,
+            wav: torch.Tensor,
+            sr: int,
+            seg_key: str,
+        ):
+            if wav.shape[-1] == 0:
+                return (start, end, wav.new_empty((1, 0)), sr)
+
+            path = _segment_storage_path(seg_key)
+            disk_audio = wav.detach().cpu()
+            atomic_save_wav(path, disk_audio, sr)
             _release_audio_tensors(wav)
-            return (start, end, path, sr)
+            entry = (start, end, path, sr)
+            _remember_mix_scratch(seg_key, entry[2])
+            return entry
 
         def _entry_num_samples(entry) -> int:
             source = entry[2]
@@ -647,7 +661,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                 return int(source.shape[-1])
             try:
                 return int(audio_info(source).num_frames)
-            except Exception:  # noqa: BLE001 — header unreadable, decode instead
+            except Exception:  # noqa: BLE001
                 from services.audio_io import load_audio
 
                 decoded, _ = load_audio(source)
@@ -843,10 +857,17 @@ async def dub_generate(job_id: str, req: DubRequest):
 
             seg_duration = seg.end - seg.start
             if seg_duration <= 0.05 or not seg.text.strip():
-                sr = backend.sample_rate
-                silence = torch.zeros((1, max(0, int(seg_duration * sr))))
+                silence = torch.zeros(
+                    (1, max(0, int(seg_duration * backend.sample_rate)))
+                )
                 all_segment_wavs.append(
-                    _store_mix_wav(seg.start, seg.end, silence, sr, f"mix_{seg_id}")
+                    _store_mix_wav(
+                        seg.start,
+                        seg.end,
+                        silence,
+                        backend.sample_rate,
+                        f"mix_{seg_id}",
+                    )
                 )
                 try:
                     del silence
@@ -1046,13 +1067,13 @@ async def dub_generate(job_id: str, req: DubRequest):
                     if row:
                         if row["is_locked"] and row["locked_audio_path"]:
                             ref_audio = contained_join(VOICES_DIR, row["locked_audio_path"])
-                            ref_text = row["ref_text"]
+                            ref_text = stored_reference_transcript(row)
                             used_seed = row["seed"]
                         elif row["instruct"] and not row["is_locked"]:
                             used_seed = row["seed"] 
                         else:
                             ref_audio = contained_join(VOICES_DIR, row["ref_audio_path"])
-                            ref_text = row["ref_text"]
+                            ref_text = stored_reference_transcript(row)
                             used_seed = row["seed"]
                             
                         if not instruct_str:
@@ -1588,11 +1609,10 @@ async def dub_generate(job_id: str, req: DubRequest):
 
         os.makedirs(os.path.dirname(track_path), exist_ok=True)
         mix_samples = max(total_samples, 1)
-        # The mix lives in a float32 scratch file so RAM stays flat however
-        # long the video is.
         mix_fd, mix_file = tempfile.mkstemp(
-            prefix=f".{os.path.basename(track_path)}.mix.", suffix=".f32",
             dir=os.path.dirname(track_path),
+            prefix=f".{os.path.basename(track_path)}.",
+            suffix=".raw-f32.mix",
         )
         os.close(mix_fd)
         mix_audio = None
@@ -1625,10 +1645,10 @@ async def dub_generate(job_id: str, req: DubRequest):
                     wav = trim_speech_padding(wav, sr)
 
                 adjusted = wav * gain
-                if adjusted.dim() > 1 and adjusted.shape[0] > 1:
+                if adjusted.shape[0] > 1:
                     adjusted = adjusted.mean(dim=0, keepdim=True)
-                wl = adjusted.shape[-1]
-                natural_dur = wl / sr if wl > 0 else 0.0
+                wl = int(adjusted.shape[-1])
+                natural_dur = wl / sr if wl else 0.0
                 orig_dur = max(0, end - start)
 
                 if strategy == "stretch_video":
@@ -1715,15 +1735,21 @@ async def dub_generate(job_id: str, req: DubRequest):
                     adjusted[0, :fade_samples] *= ramp
                     adjusted[0, -fade_samples:] *= ramp.flip(0)
 
-                s = int(place_at * sr)
-                if s < 0:
-                    adjusted = adjusted[..., -s:]
-                    wl = adjusted.shape[-1]
-                    s = 0
-                e = min(s + wl, total_samples)
-                if s < total_samples and e > s:
-                    block = adjusted[0, : e - s].detach().cpu().float().clamp(-1.0, 1.0).numpy()
-                    mix_audio[s:e] += block
+                start_sample = int(place_at * sr)
+                if start_sample < 0:
+                    adjusted = adjusted[..., -start_sample:]
+                    wl = int(adjusted.shape[-1])
+                    start_sample = 0
+                end_sample = min(start_sample + wl, total_samples)
+                if start_sample < total_samples and end_sample > start_sample:
+                    placed = (
+                        adjusted[0, :end_sample - start_sample]
+                        .detach()
+                        .to(device="cpu", dtype=torch.float32)
+                        .clamp(-1.0, 1.0)
+                        .numpy()
+                    )
+                    mix_audio[start_sample:end_sample] += placed
 
                 try:
                     del wav, adjusted
@@ -1757,9 +1783,9 @@ async def dub_generate(job_id: str, req: DubRequest):
                 os.unlink(mix_file)
             except OSError:
                 pass
-            for scratch in _mix_temp_paths:
+            for path in mix_temp_paths:
                 try:
-                    os.unlink(scratch)
+                    os.unlink(path)
                 except OSError:
                     pass
         # ── Publication ───────────────────────────────────────────────
@@ -1929,10 +1955,10 @@ async def preview_segment(job_id: str, req: SegmentPreviewRequest):
             if row:
                 if row["is_locked"] and row["locked_audio_path"]:
                     ref_audio = contained_join(VOICES_DIR, row["locked_audio_path"])
-                    ref_text = row["ref_text"]
+                    ref_text = stored_reference_transcript(row)
                 elif row["ref_audio_path"]:
                     ref_audio = contained_join(VOICES_DIR, row["ref_audio_path"])
-                    ref_text = row["ref_text"]
+                    ref_text = stored_reference_transcript(row)
                 if not instruct_str and row["instruct"]:
                     instruct_str = row["instruct"]
 

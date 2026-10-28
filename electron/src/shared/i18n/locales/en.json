@@ -679,7 +679,7 @@
     "ffmpeg_missing": "FFmpeg was not found",
     "ffmpeg_current": "Current location",
     "ffmpeg_desc": "If automatic detection fails, provide a custom path to FFmpeg.",
-    "ffmpeg_saved": "FFmpeg path set — restart backend to apply.",
+    "ffmpeg_saved": "FFmpeg path saved — restart the backend to apply it.",
     "audio_tools": "Audio tools",
     "audio_tools_desc": "The media engine (FFmpeg, FFprobe) and video downloader (yt-dlp) the app manages for you.",
     "audio_tools_origin_bundled": "Bundled",
@@ -1467,6 +1467,7 @@
   },
   "glossary": {
     "title": "Translation glossary",
+    "close": "Hide glossary",
     "load_error": "Could not load the glossary: {{message}}",
     "needs_project": "Load a project to use its glossary.",
     "add_error": "Could not add the term: {{message}}",
@@ -1499,8 +1500,7 @@
     "add_term": "Add term",
     "hint": "Every Cinematic translation receives this glossary; manual terms override automatic suggestions.",
     "auto_badge": "Suggested",
-    "manual_badge": "Manual",
-    "close": "Hide glossary"
+    "manual_badge": "Manual"
   },
   "segment": {
     "time": "Time",

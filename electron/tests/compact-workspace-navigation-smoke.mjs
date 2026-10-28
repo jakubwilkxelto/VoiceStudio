@@ -1,9 +1,6 @@
-import { chromium } from 'playwright';
+import { launchSmokeBrowser, openMockedPage } from './smoke-api-mock.mjs';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({
-  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
-  headless: true,
-});
+const browser = await launchSmokeBrowser();
 async function expectFocus(page, locator) {
   await page.waitForFunction(
     (element) => element === document.activeElement,
@@ -12,27 +9,16 @@ async function expectFocus(page, locator) {
   );
 }
 try {
-  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
-  await page.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
-  await page.route(
-    (url) => url.pathname.startsWith('/api/'),
-    (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const fixtures = {
-        '/api/health': { status: 'ok' },
-        '/api/setup/status': { ready: true },
-        '/api/models/install/status': { jobs: [] },
-        '/api/profiles': [],
-        '/api/history': [],
-        '/api/projects': [],
-        '/api/export/history': [],
-        '/api/longform/jobs': { jobs: [] },
-      };
-      return path in fixtures
-        ? route.fulfill({ json: fixtures[path] })
-        : route.fulfill({ status: 404, json: { detail: 'Not mocked' } });
+  const page = await openMockedPage(browser, {
+    viewport: { width: 1200, height: 800 },
+    fixtures: {
+      '/api/profiles': [],
+      '/api/history': [],
+      '/api/projects': [],
+      '/api/export/history': [],
+      '/api/longform/jobs': { jobs: [] },
     },
-  );
+  });
   const routes = [
     ['Voice', 'Clone', '/clone'],
     ['Voice', 'Design', '/design'],

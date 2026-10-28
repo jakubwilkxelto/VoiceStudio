@@ -36,6 +36,11 @@ _CHANGE_CASES = [
     ("English", "It is 3:30 now", "It is three thirty now"),
     ("English", "At 3:00 sharp", "At three o'clock sharp"),
     ("English", "At 12:05 sharp", "At twelve oh five sharp"),
+    # A 24-hour time on the hour is read in hundreds, not with "o'clock".
+    ("English", "Dinner at 19:00 sharp", "Dinner at nineteen hundred sharp"),
+    ("English", "Closes at 0:00 tonight", "Closes at zero hundred tonight"),
+    ("English", "At 12:00 sharp", "At twelve o'clock sharp"),
+    ("English", "At 18:30 sharp", "At eighteen thirty sharp"),
     ("English", "the 21st of May", "the twenty-first of May"),
     ("English", "It costs $5", "It costs five dollars"),
     ("English", "Just $1 more", "Just one dollar more"),
@@ -286,8 +291,6 @@ _UNCHANGED_CASES = [
     ("Malayalam", "5ാം ദിവസം"),            # vowel sign glued after the digits
     ("Malayalam", "ക്5 ദിവസം"),             # virama glued before the digits
     ("Malayalam", "ദിവസം5 കഴിഞ്ഞു"),         # consonant + digits word
-    # Arabic-Indic zero-prefixed code on the num2words path.
-    ("ar", "الرمز \u0660\u0660\u0667 هنا"),
     # Urdu native path keeps the same conservative boundaries
     ("Urdu", "1,000 روپے"),                       # thousands separator
     ("Urdu", "صفحہ 3-5 پڑھیں"),                   # range
@@ -295,7 +298,8 @@ _UNCHANGED_CASES = [
     ("Urdu", "کوڈ ۰۰۷"),                          # native leading-zero code
     ("Urdu", "1234567 نمبر"),                     # 7+ digits: an ID
     ("Urdu", "ورژن 3.5.1"),                       # version string
-    ("ar", "الرمز ٠٠٧"),                         # same class on the num2words path
+    # Arabic num2words must preserve zero-prefixed identifiers.
+    ("ar", "رقم الطلب ٠٠٤٢ محفوظ"),
     # Digit-range rule: only a clean tilde between two numbers is rewritten.
     ("Korean", "서울-부산 3-5일 걸려요"),         # hyphen is never a range mark
     ("Korean", "마감일은 2025-03-14 입니다"),     # ISO date
@@ -406,16 +410,21 @@ def test_native_language_resolution():
     assert text_normalization._num2words_lang("ml") is None
 
 
-def test_urdu_verbalizer_covers_full_integer_range():
-    """Every ≤ 6-digit integer renders in Urdu letters only: no digits, and
-    none of the Arabic look-alikes (ي ك ه ى) that TTS frontends treat as a
-    different language."""
-    from services import number_words_ur as ur
-    arabic_lookalikes = set("\u064a\u0643\u0647\u0649")
-    for n in range(1_000_000):
-        word = ur.cardinal(n)
-        assert word and not any(ch.isdigit() for ch in word), n
-        assert not arabic_lookalikes & set(word), n
+def test_urdu_cardinal_spells_every_supported_integer():
+    """Every supported Urdu cardinal is words-only and uses Urdu glyphs."""
+    from services import number_words_ur
+
+    arabic_lookalikes = {"\u064a", "\u0643", "\u0647", "\u0649"}
+    failures = []
+    for number in range(1_000_000):
+        words = number_words_ur.cardinal(number)
+        if (
+            not words
+            or any(character.isdigit() for character in words)
+            or arabic_lookalikes.intersection(words)
+        ):
+            failures.append((number, words))
+    assert failures == []
 
 
 @pytest.mark.parametrize("n,expected", [

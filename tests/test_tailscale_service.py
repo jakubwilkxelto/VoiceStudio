@@ -24,21 +24,25 @@ _RUNNING = {"BackendState": "Running", "Self": {"DNSName": "box.ts.net.", "Tails
 
 
 def _runner(status_payload, https_ok=True, http_ok=True, serve_config=None):
-    """subprocess.run side_effect: serves the status JSON for `status --json`,
-    the serve config for `serve status --json`, and ok/fail for the serve
-    subcommands based on the --http/--https flag."""
     def run(args, **kw):
         if args[1:3] == ["serve", "status"]:
-            return MagicMock(returncode=0, stdout=json.dumps(serve_config or {}))
+            return MagicMock(returncode=0, stdout=json.dumps(serve_config or {}), stderr="")
         if "status" in args and "--json" in args:
-            return MagicMock(returncode=0, stdout=json.dumps(status_payload))
+            return MagicMock(returncode=0, stdout=json.dumps(status_payload), stderr="")
         if "--https=443" in args:
-            return MagicMock(returncode=0 if https_ok else 1, stdout="",
-                             stderr="" if https_ok else "error enabling https feature: error 404 Not Found")
+            return MagicMock(
+                returncode=0 if https_ok else 1,
+                stdout="",
+                stderr="" if https_ok else "error enabling https feature: 404",
+            )
         if "--http=80" in args:
-            return MagicMock(returncode=0 if http_ok else 1, stdout="",
-                             stderr="" if http_ok else "serve failed")
+            return MagicMock(
+                returncode=0 if http_ok else 1,
+                stdout="",
+                stderr="" if http_ok else "serve failed",
+            )
         return MagicMock(returncode=0, stdout="", stderr="")
+
     return run
 
 

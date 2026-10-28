@@ -12,11 +12,17 @@ ignores.
 | You want | Do this | Works on |
 |---|---|---|
 | A pause | Type `[pause]`, `[pause 500ms]`, or `[pause 1.5s]` in the text | Every engine |
-| Laughter or a sigh | ⊕ Insert → `[laughter]` / `[sigh]` | Default engine (VoiceStudio) |
-| An audible breath **on demand** | `[breath]` in the text | CosyVoice 3 only (opt-in) — see [Breaths](#breaths-specifically) |
+| Laughter or a sigh | ⊕ Insert → `[laughter]` / `[sigh]` | Default engine (VoiceStudio), CosyVoice 3 (`[laughter]`) |
+| An audible breath **on demand** | ⊕ Insert → `[breath]` | CosyVoice 3 only (opt-in) — see [Breaths](#breaths-specifically) |
 | Whispering | Style → `whisper` (the voice-design/style field) | Default engine |
-| Emotion ("excited", "sad", graded intensity) | IndexTTS2's **Voice Cloning → Emotion** controls, Audiobook Production Overrides, or `/generate` / `/ws/tts` APIs; CosyVoice 3 also accepts instruct | Opt-in engines only |
+| Emotion ("scared, then excited", graded intensity) | **Voice Cloning → Emotion**: sliders or a description on IndexTTS2, a written delivery direction on CosyVoice 3 and VoxCPM2. Also Audiobook Production Overrides (IndexTTS2) and the `/generate` / `/ws/tts` APIs | Opt-in engines only |
 | The same take again | Pin the seed / lock the profile | Default engine |
+
+The **Emotion** button sits beside Synthesize on every engine. On an engine
+that can't take emotion it says so and names the engines that can, and the
+⊕ Insert menus (Voice Cloning's script and Audiobook's **Reactions**) gray out
+tags the active engine would read aloud as words. The first take you render
+shows a one-time tip pointing at both.
 
 ## Recovering an interrupted audiobook
 
@@ -51,11 +57,23 @@ for your engine below.
 
 ## What each engine can do today
 
+Clients read the same answer from `GET /engines/tts`: each engine carries
+`expression_caps` — `emotion` is `graded` (IndexTTS2), `direction` (written
+`instruct` steers a cloned voice: CosyVoice 3, VoxCPM2) or `none`, and `tags`
+lists the reaction tags its tokenizer renders.
+
 ### Every engine
 
 - **`[pause Nms]` markers** — `[pause]` (350 ms default), `[pause 500ms]`,
   `[pause 1s]`, up to 10 s. Rendered as real stitched silence, so it works
-  identically on all engines.
+  identically on all engines. **Settings → Pronunciation dictionary → Pauses →
+  Fill pauses with room tone** (off by default; `OMNIVOICE_PAUSE_FILL=room_tone`
+  wins over the switch) fills these gaps, and audiobook line and paragraph gaps,
+  with noise shaped like the take's own quiet background instead of digital
+  zeros, faded over 40 ms into the lines on each side, so the background no
+  longer cuts out at every pause. It is derived from the generated take, needs
+  no model, is reproducible, and falls back to silence when the take has no
+  usable quiet floor. Long-text chunk joins are not changed.
 - **Punctuation** — ellipses, dashes, exclamation marks, and short fragments
   genuinely shape pacing and intonation. Cheap, underrated.
 - **The reference clip is a performance direction.** Zero-shot cloning mirrors
@@ -73,7 +91,7 @@ Pronunciation dictionary matching uses Unicode case-insensitive literal matches.
 
 **Non-verbal tags.** The bundled model natively tokenizes 13 reaction tags
 (`omnivoice/models/omnivoice.py`, `_NONVERBAL_PATTERN`) — the ⊕ Insert button
-at the corner of the Script box lists them all:
+at the corner of the Script box offers them all while this engine is active:
 
 `[laughter]` `[sigh]` `[confirmation-en]` `[question-en]` `[question-ah]`
 `[question-oh]` `[question-ei]` `[question-yi]` `[surprise-ah]`
@@ -151,9 +169,10 @@ install it. CosyVoice 3 honors, inline in the text:
 plus **natural-language instruct** ("speak with a Sichuan accent", "sound
 exhausted") — the backend appends the model's required `<|endofprompt|>`
 terminator for you (`backend/services/tts_backend.py`,
-`CosyVoiceBackend`). One catch: the Studio style field whitelists instruct to
-the default engine's taxonomy, so free-text instruct currently needs the API
-(`POST /generate` with an `instruct` form field, or `/ws/tts`).
+`CosyVoiceBackend`). In **Voice Cloning**, open **Emotion** and write the
+direction in **Delivery direction**; it reaches the model as written. The API
+takes the same text as the `instruct` form field of `POST /generate` (or
+`/ws/tts`).
 
 Setup: clone + install [CosyVoice](https://github.com/FunAudioLLM/CosyVoice)
 (non-trivial: `git clone --recursive`, its requirements, SoX), then set
@@ -166,8 +185,10 @@ VoxCPM2's native convention is an instruct prefix inside the text itself:
 `(speaking fast, out of breath) I can't stop now.` The app maps the
 `instruct` field onto that prefix (`backend/services/tts_backend.py`,
 `VoxCPM2Backend.generate`), and because the convention is literally in-text,
-typing the parenthetical at the start of your text works too. Treat it as
-guidance, not a guarantee — adherence varies by voice and language.
+typing the parenthetical at the start of your text works too. In **Voice
+Cloning**, **Emotion → Delivery direction** fills that field for a cloned
+voice. Treat it as guidance, not a guarantee — adherence varies by voice and
+language.
 
 ### IndexTTS2 (opt-in)
 
@@ -180,12 +201,11 @@ In **Voice Cloning**, select IndexTTS2 and open the **Emotion** (heart-pulse)
 button beside Voice controls. The default is **Off**. Choose **Description**
 for a free-form emotion instruction with an intensity slider (0–0.6, the
 recommended maximum for text emotion in IndexTTS2), or choose **Sliders** for
-the eight individual emotion weights (0–1). The controls are available only
-when the active engine declares emotion support; the reference audio continues
-to define the speaker's voice.
+the eight individual emotion weights (0–1). The reference audio continues to
+define the speaker's voice.
 
 The **Audiobook** tab's Production Overrides also support the description and
-intensity. The multipart **`POST /generate`** API accepts either `emo_text`
+intensity; with any other engine those two fields stay visible but disabled. The multipart **`POST /generate`** API accepts either `emo_text`
 plus optional `emo_alpha`, or `emo_vector` as a JSON array of exactly eight
 finite numbers between 0 and 1. Mixing the two methods, supplying intensity
 without text, or choosing an unsupported engine returns HTTP 422 before
@@ -268,11 +288,13 @@ engine-agnostic tag surface (`[excited]`, `[whispers]`, reaction tags like
 `[breath]`) that lowers to whatever the active engine can really do and
 **visibly degrades** where it can't, plus an Expression panel (emotion
 dropdown + intensity + emotion-reference clip) everywhere in the UI. The
-pronunciation phases have shipped (dictionary + `[[…]]` overrides), and the
-Audiobook tab now carries a first Expression surface — IndexTTS2 emotion
-description + strength, engine-gated. Still spec'd, not shipped: the
-engine-agnostic inline emotion/reaction tag grammar, the emotion-reference
-clip picker, and the Expression panel on the single-shot Voice page. No
+pronunciation phases have shipped (dictionary + `[[…]]` overrides), and so
+has the capability disclosure: Voice Cloning's **Emotion** button and the
+Audiobook emotion fields appear on every engine and say what the active one
+can do, and the Insert menus offer only the tags it renders. Still spec'd, not
+shipped: the engine-agnostic inline emotion/reaction tag grammar (per-span
+emotion inside one take), the emotion-reference clip picker, and a written
+direction for Audiobook renders. No
 promised date — when each lands, this page gets updated in the same PR.
 
 Omitted API join options keep legacy hard joins (zero gaps, no edge trim).

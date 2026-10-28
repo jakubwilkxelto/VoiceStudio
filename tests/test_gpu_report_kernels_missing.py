@@ -429,7 +429,7 @@ def test_a_host_with_no_mismatched_kernels_keeps_its_vendor_verdict(
     sorted(f[:-5] for f in os.listdir(LOCALES_DIR) if f.endswith(".json")),
 )
 def test_every_locale_says_what_the_state_means(locale):
-    """The user-facing strings exist in all 21 locales and keep the
+    """The user-facing strings exist in every locale and keep the
     placeholders the state text interpolates."""
     with open(os.path.join(LOCALES_DIR, f"{locale}.json"), encoding="utf-8") as fh:
         settings = json.load(fh)["settings"]

@@ -110,6 +110,10 @@ class CosyVoiceGGUFBackend(TTSBackend):
         if not Path(reference).is_file():
             raise TTSInputError("CosyVoice GGUF reference recording was not found.")
         if not transcript:
+            from services.tts_backend import required_reference_transcript
+
+            transcript = required_reference_transcript(reference, transcript)
+        if not transcript:
             raise TTSInputError(
                 "CosyVoice GGUF requires the reference transcript to prepare its voice prompt."
             )

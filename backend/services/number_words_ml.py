@@ -49,96 +49,133 @@ _ONE_BEFORE_LAKH = "ഒരു"
 _DECIMAL_POINT = "ദശാംശം"
 _PERCENT = "ശതമാനം"
 
-_VIRAMA = "്"
-_ANUSVARA = "ം"
-_GLIDE_YA = "യ"
-_AYYAYIRAM = "അയ്യായിരം"
-# Independent vowel letter -> dependent vowel sign (inherent "a" has none).
-_VOWEL_SIGNS = {
-    "അ": "", "ആ": "ാ", "ഇ": "ി", "ഈ": "ീ", "ഉ": "ു", "ഊ": "ൂ",
-    "എ": "െ", "ഏ": "േ", "ഐ": "ൈ", "ഒ": "ൊ", "ഓ": "ോ", "ഔ": "ൗ",
+_MAX = 999_999
+
+_I_SIGN = "\u0d3f"  # vowel sign i, the tail of every prefix form
+_VIRAMA = "\u0d4d"
+_GLIDE = "\u0d2f"  # ya
+_FIVE_THOUSAND = "\u0d05\u0d2f\u0d4d\u0d2f\u0d3e\u0d2f\u0d3f\u0d30\u0d02"  # ayyayiram
+_ANUSVARA = "\u0d02"
+_LINK_TAIL = "\u0d24\u0d4d\u0d24\u0d3f"  # tthi
+
+# Independent vowel letter -> dependent sign it becomes after the ya glide.
+# The inherent-a vowel needs no sign at all.
+_VOWEL_TO_SIGN = {
+    "\u0d05": "",
+    "\u0d06": "\u0d3e",
+    "\u0d07": "\u0d3f",
+    "\u0d08": "\u0d40",
+    "\u0d09": "\u0d41",
+    "\u0d0a": "\u0d42",
+    "\u0d0b": "\u0d43",
+    "\u0d0e": "\u0d46",
+    "\u0d0f": "\u0d47",
+    "\u0d10": "\u0d48",
+    "\u0d12": "\u0d4a",
+    "\u0d13": "\u0d4b",
+    "\u0d14": "\u0d57",
 }
-_GEMINATING = ("പ", "ത", "ക", "ച")
+# Stops that geminate after a prefix form: pa, ta, ka, ca.
+_GEMINATING = frozenset("\u0d2a\u0d24\u0d15\u0d1a")
 
 
-def _join(prefix: str, word: str) -> str:
-    """Attach ``word`` to a ``prefix`` that ends in the vowel sign i, with sandhi."""
-    if word.startswith(_AYYAYIRAM):
-        return prefix[:-1] + word[1:]
-    first = word[0]
-    if first in _VOWEL_SIGNS:
-        return prefix + _GLIDE_YA + _VOWEL_SIGNS[first] + word[1:]
+def _fuse(head: str, tail: str) -> str:
+    """Join a prefix form (ending in the i-sign) with the word that follows it."""
+    if not head.endswith(_I_SIGN) or not tail:
+        return head + tail
+    if tail.startswith(_FIVE_THOUSAND):
+        return head[:-1] + tail[1:]
+    first = tail[0]
+    if first in _VOWEL_TO_SIGN:
+        return head + _GLIDE + _VOWEL_TO_SIGN[first] + tail[1:]
     if first in _GEMINATING:
-        return prefix + first + _VIRAMA + word
-    return prefix + word
+        return head + first + _VIRAMA + tail
+    return head + tail
 
 
-def _linking(word: str) -> str:
-    """Form used when more number words follow: final ``-m`` becomes ``-tti``."""
-    return word[: -len(_ANUSVARA)] + "ത്തി" if word.endswith(_ANUSVARA) else word
+def _chain_form(word: str) -> str:
+    """Form a group word takes when another group comes after it."""
+    if word.endswith(_ANUSVARA):
+        return word[:-1] + _LINK_TAIL
+    return word
 
 
-def _below_100(n: int) -> str:
+def _two_digit(n: int) -> str:
+    """Words for 1..99."""
     if n < 10:
         return _UNITS[n]
     if n < 20:
         return _TEENS[n - 10]
     tens, unit = divmod(n, 10)
-    return _TENS[tens] if unit == 0 else _join(_TENS_PREFIX[tens], _UNITS[unit])
+    if unit == 0:
+        return _TENS[tens]
+    return _fuse(_TENS_PREFIX[tens], _UNITS[unit])
 
 
-def _below_1000(n: int) -> str:
+def _three_digit(n: int) -> str:
+    """Words for 1..999 as one compound."""
     hundreds, rest = divmod(n, 100)
     if hundreds == 0:
-        return _below_100(rest)
+        return _two_digit(rest)
     if rest == 0:
         return _HUNDREDS[hundreds]
-    return _join(_HUNDREDS_PREFIX[hundreds], _below_100(rest))
+    return _fuse(_HUNDREDS_PREFIX[hundreds], _two_digit(rest))
 
 
-def _thousands_word(n: int) -> str:
-    """Spoken form of ``n`` thousand for n in 1..99."""
-    if n < 20:
-        return _THOUSANDS_SMALL[n]
-    tens, unit = divmod(n, 10)
+def _thousand_word(k: int) -> str:
+    """Single word for k thousand, k in 1..99."""
+    if k < 20:
+        return _THOUSANDS_SMALL[k]
+    tens, unit = divmod(k, 10)
     if unit == 0:
         return _THOUSANDS_TENS[tens]
-    return _join(_TENS_PREFIX[tens], _THOUSANDS_AFTER_TENS[unit])
+    return _fuse(_TENS_PREFIX[tens], _THOUSANDS_AFTER_TENS[unit])
 
 
 def cardinal(n: int) -> str:
+    """Malayalam words for an integer in 0..999999."""
     if isinstance(n, bool) or not isinstance(n, int):
-        raise TypeError("cardinal() needs an int")
-    if n < 0 or n > 999999:
-        raise ValueError("cardinal() supports 0..999999")
+        raise TypeError(f"Malayalam cardinal expects a plain int, received {type(n).__name__}")
+    if n < 0 or n > _MAX:
+        raise ValueError(f"Malayalam cardinal supports 0 to {_MAX}; {n} is outside that span")
     if n == 0:
         return _ZERO
-    if n < 1000:
-        return _below_1000(n)
 
-    lakhs, rest = divmod(n, 100000)
-    thousands, units = divmod(rest, 1000)
-    parts: list[str] = []
+    lakhs = n // 100_000
+    thousands = (n // 1000) % 100
+    low = n % 1000
+
+    groups: list[str] = []
     if lakhs:
-        head = _ONE_BEFORE_LAKH if lakhs == 1 else _below_100(lakhs)
-        parts.append(f"{head} {_linking(_LAKH) if rest else _LAKH}")
+        lead = _ONE_BEFORE_LAKH if lakhs == 1 else cardinal(lakhs)
+        lakh_word = _chain_form(_LAKH) if (thousands or low) else _LAKH
+        groups.append(f"{lead} {lakh_word}")
     if thousands:
-        word = _thousands_word(thousands)
-        parts.append(_linking(word) if units else word)
-    if units:
-        parts.append(_below_1000(units))
-    return " ".join(parts)
+        word = _thousand_word(thousands)
+        groups.append(_chain_form(word) if low else word)
+    if low:
+        groups.append(_three_digit(low))
+    return " ".join(groups)
+
+
+def _digit_word(ch: str) -> str:
+    if len(ch) != 1 or ch not in "0123456789":
+        raise ValueError(f"fractional part may hold only ASCII digits, found {ch!r}")
+    d = int(ch)
+    return _ZERO if d == 0 else _UNITS[d]
 
 
 def decimal(int_part: int, frac_digits: str) -> str:
-    digits = [_ZERO if int(ch) == 0 else _UNITS[int(ch)] for ch in frac_digits]
-    return " ".join([cardinal(int_part), _DECIMAL_POINT, *digits])
+    """Integer part as a cardinal, the point word, then each fraction digit."""
+    words = [cardinal(int_part), _DECIMAL_POINT]
+    words.extend(_digit_word(ch) for ch in frac_digits)
+    return " ".join(words)
 
 
 def percent(raw: str) -> str:
-    if "." in raw:
-        whole, frac = raw.split(".", 1)
-        body = decimal(int(whole), frac)
-    else:
-        body = cardinal(int(raw))
-    return f"{body} {_PERCENT}"
+    """Read a digit string (optionally with one '.') followed by the percent word."""
+    whole, dot, frac = raw.partition(".")
+    if not whole.isdigit() or not whole.isascii():
+        raise ValueError(f"percentage needs ASCII digits before any point, got {raw!r}")
+    number = decimal(int(whole), frac) if (dot and frac) else cardinal(int(whole))
+    return f"{number} {_PERCENT}"

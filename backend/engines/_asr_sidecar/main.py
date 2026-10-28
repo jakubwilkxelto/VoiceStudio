@@ -85,9 +85,10 @@ def _get_model():
     global _model
     if _model is None:
         from core.execstack import ensure_ctranslate2_loadable
-        ok, detail = ensure_ctranslate2_loadable()
-        if not ok:
-            raise ImportError(f"faster-whisper cannot load CTranslate2: {detail}")
+
+        loadable, detail = ensure_ctranslate2_loadable()
+        if not loadable:
+            raise ImportError(f"CTranslate2 is unavailable to faster-whisper: {detail}")
         from core.windows_rocm.ct2 import prepare_import
 
         prepare_import()

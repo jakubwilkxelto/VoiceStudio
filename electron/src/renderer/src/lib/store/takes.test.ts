@@ -39,6 +39,21 @@ describe('take metadata', () => {
       emotionText: '',
       emotionAlpha: 0.6,
       emotionVector: [0, 0, 0, 0, 0, 0, 0, 0],
+      direction: '',
+    });
+  });
+  it('restores style and delivery direction separately (#3422)', () => {
+    // CosyVoice received "warm, intimate" as one instruct; the snapshot keeps both parts.
+    rememberTake('take', { ...DEFAULT_CLONE_SETTINGS, instruct: 'warm', direction: 'intimate' });
+    expect(takeSettings({ ...item, instruct: 'warm, intimate' })).toMatchObject({
+      instruct: 'warm',
+      direction: 'intimate',
+    });
+    // Legacy history without a snapshot never invents a direction.
+    localStorage.clear();
+    expect(takeSettings({ ...item, instruct: 'warm, intimate' })).toMatchObject({
+      instruct: 'warm, intimate',
+      direction: '',
     });
   });
   it.each([
@@ -170,6 +185,7 @@ describe('take metadata', () => {
       emotionText: 'quietly relieved',
       emotionAlpha: 0.4,
       emotionVector: [0.2, 0, 0, 0, 0, 0, 0, 0],
+      direction: 'nervous, then bold',
       steps: 32,
       wavBits: 24,
       effectPreset: 'raw',

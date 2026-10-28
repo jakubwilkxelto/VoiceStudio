@@ -383,8 +383,8 @@ def _dots_host() -> tuple[bool, str]:
     if sys.platform != "win32":
         return True, ""
     return False, (
-        "dots.tts publishes no Windows install. Run VoiceStudio on Linux or "
-        "macOS, or under WSL2, to use it."
+        "dots.tts publishes no Windows install. Use the audio.cpp dots.tts "
+        "engine instead, which runs natively on Windows."
     )
 
 
@@ -705,7 +705,7 @@ SPECS: dict[str, SidecarSpec] = {
         ),
         venv_args=("--python", "3.10"),
         install_args=("-r", _COSYVOICE_REQUIREMENTS, "{checkout}/third_party/PyWorld"),
-        install_revision="security-floors-v3",
+        install_revision="security-floors-v4",
         torch_pins=("torch==2.7.0", "torchaudio==2.7.0"),
         weights_repo_id="FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
         weights_revision="29e01c4e8d000f4bcd70751be16fa94bf3d85a18",
@@ -1629,7 +1629,7 @@ def _existing_venv_compatible(spec: SidecarSpec, py: Path) -> bool:
     try:
         result = subprocess.run(
             [str(py), "-I", "-c", "import sys; print('%s.%s' % sys.version_info[:2])"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, errors="replace", timeout=15,
         )
         version = result.stdout.strip()
         if result.returncode != 0 or not version or not all(

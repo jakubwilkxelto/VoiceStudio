@@ -51,7 +51,7 @@ from services.segmentation import (
     _words_from_whisper,
     clean_up_segments,
 )
-from services.onset_align import snap_segment_starts
+from services.onset_align import snap_segment_starts, trim_segment_ends
 from services import dub_pipeline
 from core.browser_guard import reject_cross_site_get
 
@@ -1122,6 +1122,22 @@ CLONE_SKIP_HEURISTIC_MSG = (
 )
 
 
+def _align_to_speech(segments, audio, sr, separated_vocals) -> None:
+    """Snap line starts, then trim line ends, to voiced speech (#280, #963, #3419).
+
+    Call only on final speaker-specific lines, after the diarization re-split.
+    Each step is best-effort: a failure leaves the ASR timing in place.
+    """
+    try:
+        snap_segment_starts(segments, audio, sr, separated_vocals=separated_vocals)
+    except Exception as e:
+        logger.warning("onset alignment skipped: %s", e)
+    try:
+        trim_segment_ends(segments, audio, sr, separated_vocals=separated_vocals)
+    except Exception as e:
+        logger.warning("end trimming skipped: %s", e)
+
+
 def _diarization_pipeline_checked():
     """``get_diarization_pipeline(return_error=True)`` behind licence acceptance.
 
@@ -1963,18 +1979,10 @@ async def dub_transcribe_stream(
                 all_words.extend(_words_from_whisper(part))
             except Exception:
                 pass
-            # #280: Whisper often stretches a segment's start back over
-            # leading music/silence (classic case: speech begins at 0:03,
-            # transcript says 0.0 → the dub plays 3 s early). Snap starts
-            # forward to the actual speech onset. `audio_np` is the same
-            # track ASR ran on — vocals.wav when Demucs succeeded. #963:
-            # when it didn't (mixed audio), snapping is disabled — every
-            # footstep/sigh/score cue is a false onset candidate there.
-            try:
-                snap_segment_starts(chunk_segs, audio_np, sr,
-                                    separated_vocals=asr_on_vocals)
-            except Exception as e:
-                logger.warning("onset alignment skipped for chunk %d: %s", i, e)
+            # Onset alignment (#280, #963, #3419) runs on the final
+            # speaker-specific lines after the diarization re-split below,
+            # never here: moving a shared segment's start or end before the
+            # re-split drops a whispered speaker's words from it.
             # Provisional per-chunk labels for the streaming UI only — the
             # final diarization pass below overwrites them. Honor the user's
             # speaker-count hint here too so the interim view doesn't flip
@@ -2340,6 +2348,16 @@ async def dub_transcribe_stream(
 
         from services.segmentation import deduplicate_chunk_segments
         final_segs = deduplicate_chunk_segments(final_segs)
+        # #280: Whisper often stretches a segment's start back over leading
+        # music/silence (speech begins at 0:03, transcript says 0.0 → the dub
+        # plays 3 s early) and its end over trailing breaths. Snap each line to
+        # its speech. `audio_np` is the track ASR ran on — vocals.wav when
+        # Demucs succeeded; #963: on mixed audio snapping is disabled, since
+        # every footstep/sigh/score cue is a false onset. #3419: starts and
+        # ends gate on voiced speech, so this runs only on the final
+        # speaker-specific lines: before the re-split, a whispered speaker
+        # sharing a segment with a voiced one would be cut out of it.
+        _align_to_speech(final_segs, audio_np, sr, asr_on_vocals)
         # Everything this pass derives is committed together at the end, so an
         # SRT import that lands while references are extracted is never mixed
         # with, or overwritten by, this transcript. The clone maps are replaced
@@ -2768,16 +2786,7 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
         scene_cuts = job.get("scene_cuts") or []
         segments = segment_transcript(result, duration=job.get("duration", 0.0), scene_cuts=scene_cuts)
 
-        # #280: snap segment starts forward to the actual speech onset so the
-        # dub doesn't begin seconds before the original speaker does. #963:
-        # only on the separated vocals track — on mixed audio every ambient
-        # sound is a false onset candidate, so snapping is disabled.
-        try:
-            audio_for_onset, onset_sr = sf.read(asr_audio_target, dtype="float32")
-            snap_segment_starts(segments, audio_for_onset, onset_sr,
-                                separated_vocals=asr_on_vocals)
-        except Exception as e:
-            logger.warning("onset alignment skipped: %s", e)
+        # Onset alignment runs after the speaker re-split below (#3419).
 
         diar_pipe = get_diarization_pipeline()
         if diar_pipe:
@@ -2802,6 +2811,15 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
                 segments = assign_speakers_heuristic(segments, num_speakers)
         else:
             segments = assign_speakers_heuristic(segments, num_speakers)
+
+        # #280/#963/#3419: snap each speaker-specific line to its speech, on
+        # the separated vocals only, after the re-split (see the SSE path).
+        try:
+            audio_for_onset, onset_sr = sf.read(asr_audio_target, dtype="float32")
+        except Exception as e:
+            logger.warning("onset alignment skipped: %s", e)
+        else:
+            _align_to_speech(segments, audio_for_onset, onset_sr, asr_on_vocals)
 
         # Previously ran `segment_for_subtitles(segments)` here. Removed 2026-04-21 —
         # that splitter enforces Netflix's 17 CPS reading-speed ceiling which

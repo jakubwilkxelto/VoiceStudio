@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 from dataclasses import asdict
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -243,6 +244,47 @@ def set_offload_after_generation(body: _OffloadAfterGenerationBody):
     return _offload_after_generation_state()
 
 
+# ── Pause fill: digital silence or room tone (#3611) ──────────────────────
+
+
+class _PauseFillBody(BaseModel):
+    mode: Literal["silence", "room_tone"] = Field(
+        ..., description="silence: exact zeros (default); room_tone: the take's own noise floor",
+    )
+
+
+def _pause_fill_state() -> dict:
+    """`mode` is the effective value (env > saved > silence). `env_pinned`
+    means OMNIVOICE_PAUSE_FILL decides and a saved value is ignored."""
+    from services import audio_dsp
+
+    return {
+        "mode": audio_dsp.pause_fill_mode(),
+        "env_pinned": bool((os.environ.get(audio_dsp.PAUSE_FILL_ENV) or "").strip()),
+        "choices": list(audio_dsp.PAUSE_FILL_MODES),
+    }
+
+
+@router.get("/pause-fill")
+def get_pause_fill():
+    """How [pause] markers and audiobook gaps are filled."""
+    return _pause_fill_state()
+
+
+@router.put("/pause-fill")
+def set_pause_fill(body: _PauseFillBody):
+    """Persist the choice. Applies from the next generation, no restart."""
+    from core import prefs
+    from services import audio_dsp
+
+    try:
+        prefs.set_(audio_dsp.PAUSE_FILL_PREF, body.mode)
+    except Exception:
+        logger.exception("set_pause_fill failed")
+        raise HTTPException(status_code=500, detail="Failed to persist setting")
+    return _pause_fill_state()
+
+
 # ── Compute-device override (Settings → Performance) ──────────────────────
 
 
@@ -363,6 +405,7 @@ def _cuda_devices() -> list[dict]:
             ],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=3,
             check=False,
         )

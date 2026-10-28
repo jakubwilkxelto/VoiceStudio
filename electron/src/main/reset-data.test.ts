@@ -99,15 +99,16 @@ it('does not infer ownership from a lookalike ancestor or a model-cache signatur
   expect(await isValidVoiceStudioRoot(cache, null, true)).toBe(true);
 });
 
-it('compares physical model and data paths through aliases', async () => {
+it('resolves aliases before deciding whether models are shared', async () => {
   const roots = await fixture();
-  const alias = join(roots.root, 'models-link');
-  await symlink(roots.models, alias, process.platform === 'win32' ? 'junction' : 'dir');
-  expect(await modelsAreShared(alias, roots.data)).toBe(true);
-  const nested = join(roots.data, 'models');
-  await mkdir(nested);
-  const nestedAlias = join(roots.root, 'nested-link');
-  await symlink(nested, nestedAlias, process.platform === 'win32' ? 'junction' : 'dir');
+  const externalAlias = join(roots.root, 'external-models-link');
+  await symlink(roots.models, externalAlias, process.platform === 'win32' ? 'junction' : 'dir');
+  expect(await modelsAreShared(externalAlias, roots.data)).toBe(true);
+
+  const nestedModels = join(roots.data, 'models');
+  const nestedAlias = join(roots.root, 'nested-models-link');
+  await mkdir(nestedModels);
+  await symlink(nestedModels, nestedAlias, process.platform === 'win32' ? 'junction' : 'dir');
   expect(await modelsAreShared(nestedAlias, roots.data)).toBe(false);
 });
 

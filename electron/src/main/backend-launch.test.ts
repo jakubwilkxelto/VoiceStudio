@@ -130,6 +130,25 @@ it('names the folder to open and refuses setup advice outside a checkout (#2988)
   expect(plan.error).toContain('release installer');
 });
 
+it('sends an Intel Mac checkout to a remote backend instead of setup:api (#3584)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.ready = false;
+  const plan = await resolveSpawnPlan(3900, undefined, 'unsupported_platform');
+  if (!('error' in plan)) throw new Error('expected a host error');
+  expect(plan.setupIssue).toBe('unsupported_platform');
+  expect(plan.error).toContain('backend on another computer');
+  expect(plan.error).not.toContain('incomplete');
+
+  const rosetta = await resolveSpawnPlan(3900, undefined, 'wrong_architecture');
+  if (!('error' in rosetta)) throw new Error('expected a host error');
+  expect(rosetta.error).toContain('arm64');
+  expect(rosetta).not.toHaveProperty('setupIssue');
+
+  // An explicit backend command still wins on any host.
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '["custom-python"]');
+  expect(await resolveSpawnPlan(3900, undefined, 'unsupported_platform')).toHaveProperty('argv');
+});
+
 it('keeps native fault frames when the production log ring overflows', async () => {
   const { BackendSupervisor } = await import('./backend');
   const supervisor = new BackendSupervisor();

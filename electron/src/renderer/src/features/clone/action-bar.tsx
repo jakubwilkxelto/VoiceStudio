@@ -50,6 +50,7 @@ import { PresetVoicePicker } from './preset-voice-picker';
 import { CloneReadinessNotice } from './clone-readiness-notice';
 import { QualityControls } from './quality-controls';
 import { EmotionControls } from './emotion-controls';
+import { ExpressionTip } from './expression-tip';
 import { CloneDemoAction } from './clone-demo';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
 
@@ -378,6 +379,7 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
           onDismiss={clearError}
         />
       )}
+      {!demo && !isGenerating && <ExpressionTip />}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1 rounded-lg bg-background/50 p-1 ring-1 ring-border/50">
           <EngineLanguagePicker />

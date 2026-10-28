@@ -76,7 +76,7 @@ the self-inventory missed `scripts/validate-install-docs.py`, the probe-judge +
 | Preset voice library (no reference audio) | B+ (20+ archetypes) | ✅ **50+ presets** (Kokoro/Qwen) | ❌ | ❌ | They win on count, we win on curation + degenerate-check |
 | Voice design from text description | B | 🟡 (personality descriptors) | ❌ | ❌ | We're ahead (#317 shipped a deterministic mapper) |
 | **Unlimited-length generation (chunk + crossfade)** | ❌ (no auto-chunking) | ✅ `chunked_tts.py` | ✅ (per-subtitle by design) | ❌ | **Gap.** Their crossfade chunker removes the length ceiling |
-| Paralinguistic tags (`[laugh]`, `[sigh]`) | B (13 native reaction tags via ⊕ Insert; no `[breath]` yet) | ✅ (Chatterbox Turbo) | ❌ | ❌ | Near-parity — see docs/expressive-speech.md; CosyVoice 3 adds `[breath]`/`[laughter]` |
+| Paralinguistic tags (`[laughter]`, `[sigh]`) | B (13 native reaction tags via ⊕ Insert, filtered to the active engine; `[breath]` on CosyVoice 3) | ✅ (Chatterbox Turbo) | ❌ | ❌ | Near-parity — see docs/expressive-speech.md; CosyVoice 3 adds `[breath]`/`[laughter]` |
 | Delivery instructions ("whisper", "slowly") | B (instruct field) | ✅ (Qwen NL control) | ❌ | ❌ | Parity-ish |
 | Generation queue w/ cancel + SSE | B+ (job store, SSE replay) | ✅ | ✅ (9-queue pipeline) | n/a | Parity; our SSE reconnect-replay is ahead of voicebox |
 | Post-processing FX chain (reverb/pitch/comp) | B (effect chain exists) | ✅ **Pedalboard, per-profile presets** | ❌ | ❌ | Theirs is richer + has preset UX |

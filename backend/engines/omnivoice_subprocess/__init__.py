@@ -35,6 +35,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from services.expression import OMNIVOICE_INLINE_TAGS
 from services.subprocess_backend import SubprocessBackend
 
 if TYPE_CHECKING:
@@ -51,6 +52,7 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
     id = "omnivoice-subprocess"
     display_name = "OmniVoice (subprocess-isolated, killable on timeout)"
     instruct_vocabulary = "tags"
+    inline_tags = OMNIVOICE_INLINE_TAGS
     supports_voice_design = True
     _DEFAULT_SAMPLE_RATE = 24000
     gpu_compat = ("cuda", "rocm", "mps", "cpu")

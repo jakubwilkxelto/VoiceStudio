@@ -507,3 +507,142 @@ def apply_effects_chain(audio_tensor, sample_rate: int, chain: list[dict]) -> to
         logger.warning("Effects chain failed: %s — returning unmodified audio", e)
         return audio_tensor
 
+
+
+# ── Pause fill (#3611) ──────────────────────────────────────────────────
+#
+# ``[pause]`` markers and audiobook line gaps used to be exact digital zeros.
+# Cloned speech carries a quiet noise floor, so the background dropped to true
+# silence at every gap and came back with the next line: on headphones that
+# sounds gated, and audiobook platforms reject it. "Room tone" fills the gap
+# with noise shaped like the take's own quietest frames instead. Digital
+# silence stays the default.
+
+PAUSE_FILL_PREF = "pause_fill"
+PAUSE_FILL_ENV = "OMNIVOICE_PAUSE_FILL"
+PAUSE_FILL_MODES = ("silence", "room_tone")
+_TONE_FRAME = 1024
+_TONE_FADE_S = 0.04
+#: Frames at or below this are digital silence or a trimmed fade, not room tone.
+_TONE_SILENT_DB = -90.0
+#: A "floor" louder than this is speech, not room tone: fall back to silence.
+_TONE_MAX_DB = -30.0
+_TONE_SEED = 3611
+
+
+def pause_fill_mode() -> str:
+    """The configured fill for pauses: env > Settings > ``silence``."""
+    try:
+        from core import prefs
+
+        value = prefs.resolve(PAUSE_FILL_PREF, env=PAUSE_FILL_ENV, default="silence")
+    except Exception:  # noqa: BLE001 - an unreadable setting keeps the default
+        return "silence"
+    value = str(value or "").strip().lower()
+    return value if value in PAUSE_FILL_MODES else "silence"
+
+
+def _room_tone_profile(spans: list):
+    """``(magnitude spectrum, rms)`` of the quietest non-silent frames, or None.
+
+    The frames come from the synthesized speech itself, so the fill matches
+    the floor the listener hears between words. None when the take has no
+    usable quiet frames (too short, fully silent, or no quiet floor at all).
+    """
+    import numpy as np
+
+    blocks = []
+    for audio in spans:
+        x = audio.detach().to(torch.float32).cpu().numpy()
+        if x.ndim > 1:
+            x = x.reshape(-1, x.shape[-1]).mean(axis=0)
+        n = x.shape[0] // _TONE_FRAME
+        if n:
+            blocks.append(x[: n * _TONE_FRAME].reshape(n, _TONE_FRAME))
+    if not blocks:
+        return None
+    frames = np.concatenate(blocks).astype(np.float64)
+    rms = np.sqrt((frames ** 2).mean(axis=1))
+    live = rms > 10 ** (_TONE_SILENT_DB / 20)
+    if int(live.sum()) < 4:
+        return None
+    quiet = frames[live & (rms <= np.percentile(rms[live], 15))]
+    if quiet.shape[0] < 2:
+        return None
+    level = float(np.sqrt((quiet ** 2).mean()))
+    if level <= 0 or level > 10 ** (_TONE_MAX_DB / 20):
+        return None
+    window = np.hanning(_TONE_FRAME)
+    magnitude = np.abs(np.fft.rfft(quiet * window, axis=1)).mean(axis=0)
+    return magnitude, level
+
+
+def _room_tone(profile, n: int, seed: int):
+    """``n`` samples of seeded noise with the profile's spectrum and level."""
+    import numpy as np
+
+    magnitude, level = profile
+    spectrum = np.fft.rfft(np.random.default_rng(seed).standard_normal(n))
+    shape = np.interp(
+        np.linspace(0.0, 1.0, spectrum.shape[0]),
+        np.linspace(0.0, 1.0, magnitude.shape[0]),
+        magnitude,
+    )
+    noise = np.fft.irfft(spectrum * shape, n)
+    rms = float(np.sqrt((noise ** 2).mean())) if n else 0.0
+    return noise * (level / rms) if rms > 0 else noise
+
+
+def fill_gaps(items: list, sample_rate: int, mode: str | None = None) -> list:
+    """Turn ``[("a", tensor) | ("s", n_samples), ...]`` into tensors to concatenate.
+
+    ``silence`` inserts zeros shaped like the first audio item (the previous
+    behaviour). ``room_tone`` inserts noise shaped like the take's quiet
+    frames, faded in over the last 40 ms of the line before the gap and out
+    over the first 40 ms of the line after it, because trimmed line edges
+    already fade to zero. It falls back to silence when the take has no
+    usable floor. The output is deterministic for the same input.
+    """
+    import numpy as np
+
+    mode = pause_fill_mode() if mode is None else mode
+    ref = next((t for kind, t in items if kind == "a"), None)
+    if ref is None:
+        return [torch.zeros(n, dtype=torch.float32) for kind, n in items if kind == "s"]
+    # Adjacent gaps are one gap: one noise run, one pair of fades.
+    merged: list = []
+    for kind, val in items:
+        if kind == "s" and merged and merged[-1][0] == "s":
+            merged[-1] = ("s", merged[-1][1] + val)
+        else:
+            merged.append((kind, val))
+    profile = None
+    if mode == "room_tone":
+        profile = _room_tone_profile([t for kind, t in merged if kind == "a"])
+    parts = [val for _kind, val in merged]
+    fade_max = int(sample_rate * _TONE_FADE_S)
+    for i, (kind, n) in enumerate(merged):
+        if kind != "s":
+            continue
+        shape = list(ref.shape[:-1]) + [n]
+        if profile is None:
+            parts[i] = torch.zeros(*shape, dtype=ref.dtype, device=ref.device)
+            continue
+        prev = parts[i - 1] if i > 0 and merged[i - 1][0] == "a" else None
+        nxt = parts[i + 1] if i + 1 < len(merged) and merged[i + 1][0] == "a" else None
+        lead = min(fade_max, prev.shape[-1]) if prev is not None else 0
+        tail = min(fade_max, nxt.shape[-1]) if nxt is not None else 0
+        noise = _room_tone(profile, lead + n + tail, _TONE_SEED + i)
+        if prev is not None and lead:
+            ramp = np.linspace(0.0, 1.0, lead, endpoint=False)
+            prev = prev.clone()
+            prev[..., -lead:] += torch.as_tensor(noise[:lead] * ramp, dtype=prev.dtype, device=prev.device)
+            parts[i - 1] = prev
+        gap = torch.as_tensor(noise[lead:lead + n], dtype=ref.dtype, device=ref.device)
+        parts[i] = gap.expand(*shape).clone() if len(shape) > 1 else gap
+        if nxt is not None and tail:
+            ramp = np.linspace(1.0, 0.0, tail, endpoint=False)
+            nxt = nxt.clone()
+            nxt[..., :tail] += torch.as_tensor(noise[lead + n:] * ramp, dtype=nxt.dtype, device=nxt.device)
+            parts[i + 1] = nxt
+    return parts

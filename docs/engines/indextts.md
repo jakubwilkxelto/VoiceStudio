@@ -126,6 +126,13 @@ IndexTTS 2.5 uses `duration_factor` for native duration guidance. VoiceStudio's
 dubbing fit stage remains responsible for exact segment timing. Legacy
 IndexTTS-2 installations continue receiving their `target_tokens` control.
 
+The public **Speed** setting (on `/generate`, Stories, the OpenAI-compatible
+route and `/ws/tts`) is converted to that same duration control: speed 1.25
+asks for 1/1.25 of the natural reading time. An explicit `duration` or
+`duration_factor` takes precedence over speed, so pacing is never applied
+twice. `/ws/tts` also accepts `duration_factor` (0.5–2.0, lower is faster);
+it is relative, so it applies to every streamed sentence.
+
 ## Troubleshooting
 
 ### Engine unavailable

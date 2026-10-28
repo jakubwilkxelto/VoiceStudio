@@ -1515,24 +1515,23 @@ def _configure_rocm_if_needed(torch):
     if sys.platform == "win32":
         return  # Windows uses AMD's exact native matrix, never Linux HSA remaps.
     from core.device_caps import (
-        ROCM_GFX_OVERRIDES,
         build_arch_list,
         hsa_override_for,
+        rocm_override_target,
     )
 
     if os.environ.get("HSA_OVERRIDE_GFX_VERSION"):
         return  # User already set it manually
     try:
-        device_name = torch.cuda.get_device_name(0).lower()
-        # Only AMD GPUs need this — skip NVIDIA
-        if not any(kw in device_name for kw in ("amd", "radeon", "instinct")):
+        # Only ROCm builds take an HSA override. Decided from the build, not
+        # from the marketing name, which says nothing about the runtime.
+        if not getattr(getattr(torch, "version", None), "hip", None):
             return
-        # Try to read the GFX version from the device properties
+        device_name = torch.cuda.get_device_name(0)
         props = torch.cuda.get_device_properties(0)
         gcn_arch = getattr(props, "gcnArchName", "") or ""
         gfx_id = gcn_arch.split(":")[0].strip().lower()
-        target = ROCM_GFX_OVERRIDES.get(gfx_id)
-        if not target:
+        if not gfx_id.startswith("gfx"):
             return
         arch_list = {a.split(":")[0].strip().lower() for a in build_arch_list(torch)}
         if not arch_list:
@@ -1548,15 +1547,18 @@ def _configure_rocm_if_needed(torch):
             logger.info("ROCm: %s (%s) is natively supported by this build; "
                         "no HSA_OVERRIDE_GFX_VERSION needed", device_name, gfx_id)
             return
-        if target not in arch_list:
-            # The remap target isn't in this build either — setting the
+        # Derived from what this wheel ships, so a card newer than any table
+        # still gets the closest same-family target (#3418).
+        target = rocm_override_target(gfx_id, arch_list)
+        if not target:
+            # No architecture this build ships can run the card: setting the
             # override would only change WHICH kernel is missing. Leave it
             # unset so check_device_compatibility() reports the real mismatch
             # and the CPU fallback engages.
             logger.warning(
-                "ROCm: %s (%s) is unsupported by this build and its remap "
-                "target %s is missing too — not setting "
-                "HSA_OVERRIDE_GFX_VERSION.", device_name, gfx_id, target,
+                "ROCm: %s (%s) is unsupported by this build and no same-family "
+                "target is available — not setting HSA_OVERRIDE_GFX_VERSION.",
+                device_name, gfx_id,
             )
             return
         override = hsa_override_for(target)
@@ -3615,45 +3617,87 @@ def _resolve_idle_timeout() -> float:
         return float(IDLE_TIMEOUT_SECONDS)
 
 
+async def run_release(fn, *args):
+    """Run blocking memory-release work on a worker thread (#3558).
+
+    Releasing device memory (gc over the weights, cudaFree waiting on the
+    device, sidecar shutdown) must not run on the event loop, where it stalls
+    every request, health checks included. If the awaiting task is cancelled,
+    this still waits for the worker before re-raising, so a caller holding
+    ``_model_lock`` never releases it while an unload is still running.
+    """
+    task = asyncio.ensure_future(asyncio.to_thread(fn, *args))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.wait({task})
+            except asyncio.CancelledError:
+                continue  # already cancelling; the worker still has to finish
+        if not task.cancelled() and task.exception() is not None:
+            logger.warning("memory release failed after cancellation", exc_info=task.exception())
+        raise
+
+
+def _release_idle_model() -> None:
+    """Unload the idle shared model; a failure must not end the idle reaper."""
+    try:
+        unload_shared_model()
+    except Exception:  # noqa: BLE001 — the reaper must never kill idle_worker
+        logger.warning("idle model unload failed", exc_info=True)
+
+
+def _release_idle_side_models(idle_timeout: float) -> None:
+    """Release the warm ASR and watermark models that sat unused past the timeout."""
+    # The capture/dictation ASR was never idle-released — so once a user
+    # dictated, its model stayed resident for the life of the process while
+    # the TTS model dutifully freed its 3.8 GB. On a 16 GB Mac that left the
+    # backend sitting at ~6.2 GB idle, which is what tipped it into the
+    # memory pressure that gets it killed mid-generate (#1076/#1092/#1093/
+    # #1101). Give it the same bargain the TTS model already makes. Held
+    # off while a live dictation stream has a lease, so nothing is unloaded
+    # mid-sentence.
+    try:
+        from services.asr_backend import (
+            release_idle_capture_backend,
+            release_transcription_backend,
+        )
+
+        released = release_idle_capture_backend(idle_timeout)
+        # The warm transcription ASR gets the same idle bargain.
+        if release_transcription_backend(idle_timeout) or released:
+            free_vram()
+    except Exception:  # noqa: BLE001 — the reaper must never kill idle_worker
+        logger.warning("idle capture-ASR release failed", exc_info=True)
+    # Same bargain for the AudioSeal watermark models, which loaded on the
+    # first embed and were never released. Deliberately only here and not
+    # in the make-room paths: watermarking runs immediately *after* a
+    # generate, so evicting it just before one would only buy a reload.
+    try:
+        from services.watermark import release_idle_models
+
+        release_idle_models(idle_timeout)
+    except Exception:  # noqa: BLE001 — the reaper must never kill idle_worker
+        logger.warning("idle watermark-model release failed", exc_info=True)
+
+
 async def idle_worker():
-    torch = _lazy_torch()
     while True:
         await asyncio.sleep(30)
         idle_timeout = _resolve_idle_timeout()
+        # Releasing device memory is blocking work: gc over a multi-GB model,
+        # cudaFree (which waits for the whole device, including a job another
+        # thread is still running), allocator and cuBLAS cleanup. On the event
+        # loop it froze every request, health checks included, until the app
+        # reported the backend "running but not responding" right after
+        # "Idle timeout reached" (#3558). It runs on a worker thread; the model
+        # lock is still held across it, so no load can interleave.
         async with _model_lock:
             if model is not None and time.time() - _last_used > idle_timeout:
                 logger.info("Idle timeout reached. Unloading VoiceStudio model to free VRAM.")
-                unload_shared_model()
-        # The capture/dictation ASR was never idle-released — so once a user
-        # dictated, its model stayed resident for the life of the process while
-        # the TTS model dutifully freed its 3.8 GB. On a 16 GB Mac that left the
-        # backend sitting at ~6.2 GB idle, which is what tipped it into the
-        # memory pressure that gets it killed mid-generate (#1076/#1092/#1093/
-        # #1101). Give it the same bargain the TTS model already makes. Held
-        # off while a live dictation stream has a lease, so nothing is unloaded
-        # mid-sentence.
-        try:
-            from services.asr_backend import (
-                release_idle_capture_backend,
-                release_transcription_backend,
-            )
-
-            released = release_idle_capture_backend(idle_timeout)
-            # The warm transcription ASR gets the same idle bargain.
-            if release_transcription_backend(idle_timeout) or released:
-                free_vram()
-        except Exception:  # noqa: BLE001 — the reaper must never kill idle_worker
-            logger.warning("idle capture-ASR release failed", exc_info=True)
-        # Same bargain for the AudioSeal watermark models, which loaded on the
-        # first embed and were never released. Deliberately only here and not
-        # in the make-room paths: watermarking runs immediately *after* a
-        # generate, so evicting it just before one would only buy a reload.
-        try:
-            from services.watermark import release_idle_models
-
-            release_idle_models(idle_timeout)
-        except Exception:  # noqa: BLE001 — the reaper must never kill idle_worker
-            logger.warning("idle watermark-model release failed", exc_info=True)
+                await run_release(_release_idle_model)
+        await run_release(_release_idle_side_models, idle_timeout)
 
 def release_tts_side_caches():
     """Drop caches keyed to the TTS model, for when the model itself is released.

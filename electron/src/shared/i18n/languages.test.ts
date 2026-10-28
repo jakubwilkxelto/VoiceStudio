@@ -27,6 +27,7 @@ describe('selectable UI languages', () => {
       'uk',
       'ar',
       'zh-TW',
+      'gl',
     ]);
     expect(LANGUAGES.every(({ label }) => label.trim().length > 0)).toBe(true);
   });

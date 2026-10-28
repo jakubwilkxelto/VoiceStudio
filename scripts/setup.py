@@ -80,13 +80,12 @@ def _installed_torch_is_rocm():
 
 
 def rocm_torch_reinstall_cmd(index_url, python=None):
-    """`uv pip install` argv targeting THIS venv (not whatever uv guesses).
+    """Build the uv argv that reinstalls only torch packages into this script's venv.
 
-    The ROCm index is an extra index and only the torch packages are
-    reinstalled: `--index-url` + `--reinstall` forced every dependency onto
-    PyTorch's index, which has no Pillow 13, so the project's
-    `pillow>=13.0.0` override made the swap unsatisfiable (#3158). Kept equal
-    to Electron's `rocmTorchInstallArgs`.
+    A supplied ``python`` overrides the current interpreter. The ROCm source is
+    an extra index, not a replacement for the default: forcing every dependency
+    through PyTorch's index made resolution impossible (#3158). Keep this argv
+    aligned with Electron's ``rocmTorchInstallArgs``.
     """
     tail = index_url.rstrip("/").rsplit("/", 1)[-1]
     tag = f"+{tail}" if re.fullmatch(r"rocm\d[\d.]*", tail) else ""

@@ -167,6 +167,31 @@
       ]
     },
     {
+      "id": "audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "dots-studio/dots.tts-soar (GGUF repack: audio-cpp/audio.cpp-gguf)",
+      "source_url": "https://huggingface.co/audio-cpp/audio.cpp-gguf/tree/dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c/DotTTS-SOAR-GGUF",
+      "evidence_url": "https://huggingface.co/audio-cpp/audio.cpp-gguf/blob/dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c/README.md",
+      "revision": "dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c",
+      "engines": [
+        "audiocpp-dots"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "One package of the shared audio.cpp GGUF repository (DotTTS-SOAR-GGUF/dots-tts-soar-q8_0.gguf). Licence identifier is the repository README's metadata for the dots.tts packages, not verified permission for this distribution.",
+      "runtime_revision": "dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "backend/engines/audiocpp/bootstrap.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown"
+    },
+    {
       "id": "Systran/faster-whisper-large-v3",
       "license": "mit",
       "commercial_use": false,

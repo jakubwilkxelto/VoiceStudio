@@ -153,6 +153,8 @@ def probe_backends(cli: Path | None = None) -> list[NativeBackend]:
             [str(cli or resolve_cli()), "--list-backends"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
             check=True,
         )

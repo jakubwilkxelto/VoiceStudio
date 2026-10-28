@@ -194,14 +194,13 @@ def test_a_chained_host_oom_is_named_through_several_wrappers(diagnosis):
 # ── the other memory classes must be untouched ──────────────────────────────
 
 
-def test_a_device_oom_keeps_its_own_class_and_vram_remedy(diagnosis):
+def test_cuda_oom_retains_the_device_remedy(diagnosis):
     payload = diagnosis.stream_generation_failure(
-        RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB")
+        RuntimeError("CUDA out of memory. Tried to allocate 768 MiB")
     )
-
     assert payload["docs_topic"] == "GPU_OOM"
     assert payload["retryable"] is True
-    assert "GPU-heavy" in payload["hint"]
+    assert "GPU-heavy apps" in payload["hint"]
 
 
 def test_a_device_oom_nested_in_a_host_oom_keeps_the_device_class(diagnosis):
@@ -232,20 +231,16 @@ def test_torch_device_oom_is_not_misfiled_as_host_ram(diagnosis):
 # ── no private data escapes ─────────────────────────────────────────────────
 
 
-def test_no_exception_text_is_ever_copied(diagnosis):
-    """Constitution I — this surface reports topics, not messages. The reporter's
-    paths and sizes must not ride along in the hint."""
-    secret = "C:/Users/someone/private-voice-sample.wav"
+def test_host_oom_payload_redacts_allocator_details_and_private_paths(diagnosis):
+    private_path = "/home/mira/recordings/confidential.wav"
     payload = diagnosis.stream_generation_failure(
-        RuntimeError(f"{TORCH_CPU_ALLOCATOR} (while reading {secret})")
+        RuntimeError(f"{TORCH_CPU_ALLOCATOR} Source: {private_path}")
     )
-
     assert payload["docs_topic"] == "HOST_MEMORY_EXHAUSTED"
-    for value in payload.values():
-        assert secret not in str(value)
-        assert "someone" not in str(value)
-    # Not even the allocation size the reporter's machine printed.
-    assert "2147483648" not in str(payload)
+    rendered = str(payload)
+    assert private_path not in rendered
+    assert "mira" not in rendered
+    assert "2147483648" not in rendered
 
 
 def test_classifying_an_exception_never_copies_its_text_either(diagnosis):

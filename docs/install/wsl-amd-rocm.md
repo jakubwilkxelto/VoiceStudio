@@ -582,7 +582,7 @@ cache is kept in the ready image.
 |---|---|
 | `rocminfo` shows only the CPU agent | Is `HSA_ENABLE_DXG_DETECTION=1` set (`/etc/profile.d/rocm-wsl.sh`, login shell `bash -l`)? Is `/dev/dxg` present? Is the Adrenalin driver current, and did you reboot after installing it? |
 | `gpu available: False` but `rocminfo` is fine | Run `ldd` on torch's libs to find missing system libraries (error 5). Check that the venv still has the ROCm torch (`torch.version.hip` not `None`). A plain `uv run` without `--no-sync` restores the CUDA build. |
-| Backend log says `Falling back to CPU:` | Read the reason on that line. For an architecture mismatch, try `HSA_OVERRIDE_GFX_VERSION=11.0.0` (RDNA 3) only if your card's `gfx` ID is missing from `torch.cuda.get_arch_list()`. |
+| Backend log says `Falling back to CPU:` | Read the reason on that line. For an architecture mismatch, try `HSA_OVERRIDE_GFX_VERSION=11.0.0` only on an RDNA 3 (gfx11xx) card whose `gfx` ID is missing from `torch.cuda.get_arch_list()`; never on an RX 9000 (RDNA 4, gfx12xx) card, which needs a ROCm build that lists it. |
 | Generation takes minutes, high CPU | `torch.compile` is recompiling: disable it (error 8). The first runs after that still warm up MIOpen. |
 | Breaks after a Windows driver update | Test with `vs-wsl.ps1 check`. If `rocminfo` lost the GPU, roll back the driver or move to a newer librocdxg/ROCm pair from the librocdxg compatibility table. |
 

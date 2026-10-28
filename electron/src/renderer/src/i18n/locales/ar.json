@@ -13,6 +13,16 @@
     "surprised": "المفاجأة",
     "calm": "الهدوء"
   },
+  "expression": {
+    "direction_label": "توجيه الأداء",
+    "direction_ph": "مثلاً: متوتر في البداية، ثم متحمس",
+    "direction_help": "يُطبَّق على التسجيل بأكمله كإرشاد لـ {{engine}}.",
+    "unsupported": "العاطفة غير متاحة مع {{engine}}. يوفّر IndexTTS2 عاطفة متدرّجة، ويقبل CosyVoice 3 وVoxCPM2 توجيهاً مكتوباً.",
+    "tags_hint": "للحظات داخل السطر، أضف تفاعلات مثل {{example}} من «إدراج» في النص.",
+    "tags_unsupported": "سيقرأ {{engine}} الوسوم الرمادية بصوت عالٍ ككلمات.",
+    "guide": "دليل الكلام التعبيري",
+    "tip": "تلميح: شكّل الأداء باستخدام «العاطفة» أدناه، وأضف تفاعلات مثل الضحك أو التنهد من «إدراج» في النص."
+  },
   "cloneQuality": {
     "title": "جودة الصوت",
     "precision": "دقة WAV",
@@ -2834,6 +2844,10 @@
     "pick_voice": "اختر ملف صوت…",
     "match_duration": "مطابقة مدة المصدر",
     "match_duration_hint": "تمديد النتيجة زمنيًا (مع الحفاظ على طبقة الصوت) لتقارب مدة المقطع المصدر.",
+    "keep_delivery": "الحفاظ على أدائي",
+    "keep_delivery_hint": "يتغير الصوت فقط. يبقى توقيتك ووقفاتك ونبرتك كما سُجّلت. عند الإيقاف: يُفرَّغ المقطع نصيًا ثم يُنطق من جديد.",
+    "keep_delivery_engine_required": "يتطلب «الحفاظ على أدائي» محرك CosyVoice 3.",
+    "keep_delivery_no_voices": "لا يوجد صوت له تسجيل للتحويل إليه. استنسخ صوتًا من تسجيل، أو أوقف «الحفاظ على أدائي».",
     "source_language": "لغة الكلام المصدر (تلقائي = لغة ملف تعريف الصوت)",
     "convert": "تحويل",
     "converting": "جارٍ التحويل…",
@@ -4506,5 +4520,45 @@
     "generating": "انتظر حتى تنتهي اللقطة الحالية.",
     "name_required": "أدخل اسمًا أولًا.",
     "audio_missing": "لا يوجد ملف صوتي لهذه اللقطة لحفظه."
+  },
+  "ggufQuant": {
+    "label": "تكميم النموذج",
+    "auto": "تلقائي: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "المعالج المركزي",
+    "target_unverified": "المعالج المركزي أو الاختيار الافتراضي",
+    "option": "{{quant}} · {{size}} م.ب",
+    "option_installed": "{{quant}} · {{size}} م.ب · مثبّت",
+    "download": "تنزيل {{quant}} ({{size}} م.ب)",
+    "downloading": "جارٍ تنزيل {{quant}}: {{done}} من {{total}} م.ب",
+    "using_installed": "يُستخدم {{quant}} المثبّت حتى يكتمل تنزيل التكميم المختار.",
+    "env_pinned": "مثبّت على {{quant}} بواسطة {{env}}.",
+    "runtime_missing": "بيئة تشغيل omnivoice-tts مفقودة. أعد تثبيت VoiceStudio أو ابنها باستخدام scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "ملف omnivoice-tts المرفق عنصر نائب وليس بيئة تشغيل فعلية. أعد تثبيت VoiceStudio.",
+    "runtime_integrity": "فشل التحقق من المجموع الاختباري لبيئة omnivoice-tts. أعد تثبيت VoiceStudio.",
+    "runtime_quarantined": "وضع النظام بيئة omnivoice-tts في الحجر. اسمح بها أو أعد تثبيت VoiceStudio.",
+    "runtime_other": "تعذّر تشغيل بيئة omnivoice-tts. راجع فحص المحرك للتفاصيل.",
+    "weights_missing": "لم تُنزَّل أوزان النموذج بعد. نزّلها الآن وإلا ستُنزَّل عند أول توليد.",
+    "download_failed": "فشل تنزيل الأوزان"
+  },
+  "gpuOffer": {
+    "title": "هل تريد استخدام معالج الرسومات لكلام أسرع؟",
+    "body": "عثر VoiceStudio على {{gpu}}. يمكن لـ OmniVoice GGUF العمل عليه عبر Vulkan بدلًا من المعالج المركزي، باستخدام نموذج {{quant}}.",
+    "body_shared": "عثر VoiceStudio على {{gpu}} الذي يشارك ذاكرة النظام. يمكن لـ OmniVoice GGUF العمل عليه عبر Vulkan بدلًا من المعالج المركزي، باستخدام نموذج {{quant}}.",
+    "download": "يُنزَّل {{size}} م.ب مرة واحدة.",
+    "no_download": "لا يلزم تنزيل أي شيء.",
+    "licence": "نموذج GGUF للاستخدام غير التجاري؛ سيُطلب منك قبول ترخيصه أولًا.",
+    "accept": "استخدام معالج الرسومات",
+    "decline": "ليس الآن",
+    "later": "يمكنك تغيير ذلك لاحقًا من الإعدادات › {{section}}.",
+    "licence_then_retry": "اقبل الترخيص ثم اضغط استخدام معالج الرسومات مرة أخرى.",
+    "switched": "يُستخدم {{gpu}} الآن للكلام.",
+    "switched_downloading": "يُستخدم {{gpu}} الآن للكلام. جارٍ تنزيل نموذج {{quant}}…"
+  },
+  "pauseFill": {
+    "title": "الوقفات",
+    "room_tone": "املأ الوقفات بنغمة الغرفة",
+    "room_tone_note": "تحصل علامات [pause] وفواصل الكتب الصوتية على الخلفية الهادئة للتسجيل نفسه بدلًا من الصمت الرقمي، فلا ينقطع الصوت بين الأسطر.",
+    "env_pinned": "يحدّده {{env}}. غيّره أو امسحه لاستخدام هذا المفتاح."
   }
 }

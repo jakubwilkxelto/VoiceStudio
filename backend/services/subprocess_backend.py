@@ -779,6 +779,22 @@ class SubprocessBackend(TTSBackend):
         legacy int16 frames from existing installations.
         """
         self._check_language(kw.get("language"))
+        msg = {"op": "synthesize", "text": text}
+        # Filter kwargs to JSON-safe primitives. Tensor / Path / etc.
+        # don't survive json.dumps and are silently dropped — the
+        # sidecar can't use them anyway.
+        for k, v in kw.items():
+            if _is_jsonable(v):
+                msg[k] = v
+        return self._exchange(msg, deadline_text=text)
+
+    def _exchange(self, msg: dict, *, deadline_text: str) -> torch.Tensor:
+        """One request/audio-reply round trip with the sidecar.
+
+        Shared by :meth:`generate` and other audio-producing ops (voice
+        conversion, #3421): same pool slot, watchdog, progress handling and
+        audio decoding.
+        """
         # On-pool callers (every HTTP/dub/batch generate, dispatched via
         # run_on_gpu_pool_guarded) already own a pool slot; re-acquiring would
         # self-deadlock on a 1-worker (MPS) pool, so skip it. Off-pool callers
@@ -818,16 +834,9 @@ class SubprocessBackend(TTSBackend):
                 # getattr keeps lightweight protocol-loop test doubles valid;
                 # real instances always initialise _proc in __init__.
                 proc = getattr(self, "_proc", None)
-                msg = {"op": "synthesize", "text": text}
-                # Filter kwargs to JSON-safe primitives. Tensor / Path / etc.
-                # don't survive json.dumps and are silently dropped — the
-                # sidecar can't use them anyway.
-                for k, v in kw.items():
-                    if _is_jsonable(v):
-                        msg[k] = v
                 if getattr(self, "supports_float_transport", False):
                     msg["audio_format"] = "f32le"
-                deadline_s = self._effective_recv_timeout_s(text)
+                deadline_s = self._effective_recv_timeout_s(deadline_text)
                 started_at = time.monotonic()
                 try:
                     self._send(msg)

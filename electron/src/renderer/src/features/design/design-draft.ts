@@ -25,7 +25,7 @@ export interface DesignDraft {
   description: string;
   /** Explicit choices; each holds until the description says something else about it. */
   picks: Record<string, DesignPick>;
-  /** The details the current description maps to. */
+  /** Details inferred from the current description. */
   mapped: Record<string, string>;
 }
 
@@ -36,10 +36,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 function stringEntries(value: unknown): Record<string, string> {
   if (!isPlainObject(value)) return {};
   return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, string] => typeof entry[1] === 'string',
-    ),
-  );
+    Object.entries(value).filter((entry) => typeof entry[1] === 'string'),
+  ) as Record<string, string>;
 }
 
 /** Details that are set (not Auto), recorded as picks made under no description. */
@@ -73,35 +71,30 @@ function blankDraft(): DesignDraft {
 
 export function readDraft(): DesignDraft {
   try {
-    const stored: unknown = JSON.parse(localStorage.getItem(STORAGE) ?? '{}');
-    const value = isPlainObject(stored) ? stored : {};
-    const attrs = mergeDescribedAttrs(stringEntries(value.attrs));
-    let picks: Record<string, DesignPick>;
-    if (!('picks' in value)) {
-      // Saved before descriptions were kept: every detail was a manual choice.
+    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE) ?? '{}');
+    const stored = isPlainObject(parsed) ? parsed : {};
+    const attrs = mergeDescribedAttrs(stringEntries(stored.attrs));
+    let picks: Record<string, DesignPick> = {};
+    if (!Object.prototype.hasOwnProperty.call(stored, 'picks')) {
       picks = explicitPicks(attrs);
-    } else {
-      picks = {};
-      if (isPlainObject(value.picks)) {
-        for (const [category, pick] of Object.entries(value.picks)) {
-          if (
-            isPlainObject(pick) &&
-            typeof pick.value === 'string' &&
-            typeof pick.description === 'string'
-          ) {
-            picks[category] = { value: pick.value, description: pick.description };
-          }
-        }
-      }
+    } else if (isPlainObject(stored.picks)) {
+      const validEntries = Object.entries(stored.picks).flatMap(([category, candidate]) => {
+        if (!isPlainObject(candidate)) return [];
+        const { value, description } = candidate;
+        return typeof value === 'string' && typeof description === 'string'
+          ? [[category, { value, description }] as const]
+          : [];
+      });
+      picks = Object.fromEntries(validEntries);
     }
     return {
-      text: typeof value.text === 'string' ? value.text : '',
+      text: typeof stored.text === 'string' ? stored.text : '',
       attrs,
-      seed: Number.isInteger(value.seed) ? (value.seed as number) : pickDesignSeed(false, null),
-      profileId: typeof value.profileId === 'string' ? value.profileId : null,
-      description: typeof value.description === 'string' ? value.description : '',
+      seed: Number.isInteger(stored.seed) ? (stored.seed as number) : pickDesignSeed(false, null),
+      profileId: typeof stored.profileId === 'string' ? stored.profileId : null,
+      description: typeof stored.description === 'string' ? stored.description : '',
       picks,
-      mapped: stringEntries(value.mapped),
+      mapped: stringEntries(stored.mapped),
     };
   } catch {
     return blankDraft();
@@ -118,19 +111,19 @@ export function writeDraft(draft: DesignDraft) {
 }
 
 /**
- * Replace a Voice Design draft with a saved profile, preset, or new recipe.
- * Any description and picks supplied by the source are preserved. If omitted,
- * they reset instead of leaking another voice's earlier free-form directions.
+ * Replace the draft from a profile, preset, or new recipe. Source prose and
+ * picks are retained when supplied; otherwise both reset so another voice's
+ * free-form directions cannot carry across.
  */
 export function replaceRecipe(current: DesignDraft, recipe: Partial<DesignDraft>): DesignDraft {
-  const next = {
-    ...current,
-    ...recipe,
+  const overlaid = { ...current, ...recipe };
+  return {
+    ...overlaid,
     profileId: recipe.profileId ?? null,
     description: recipe.description ?? '',
     mapped: recipe.mapped ?? {},
+    picks: recipe.picks ?? explicitPicks(overlaid.attrs),
   };
-  return { ...next, picks: recipe.picks ?? explicitPicks(next.attrs) };
 }
 
 /**
@@ -184,11 +177,10 @@ export function designRequestSeed(
 }
 
 /**
- * Merge the server's reading of `described` into the draft. A pick survives
- * unless it was made under an earlier text and that text (now) says something
- * different about the same detail, or about the exclusive detail the pick
- * would wipe. Picks made under `described` itself are newer than the mapping
- * and are always kept.
+ * Reconcile details inferred from a description with the user's explicit picks.
+ * New wording replaces an older pick when it changes that detail (or its
+ * mutually exclusive counterpart); otherwise the pick is reapplied over the
+ * inferred values. Picks made for the current wording also survive a late map.
  */
 export function applyDescription(
   current: DesignDraft,
@@ -196,21 +188,25 @@ export function applyDescription(
   described: string,
 ): DesignDraft {
   const mapped = mergeDescribedAttrs(mapping);
-  const textChanged = (category: string) =>
-    mapped[category] !== (current.mapped[category] ?? 'Auto');
-  const picks: Record<string, DesignPick> = {};
-  let attrs = mapped;
-  for (const [category, pick] of Object.entries(current.picks)) {
-    const outcome = applyVdState(attrs, category, pick.value);
-    const overruled =
-      pick.description !== described &&
-      (textChanged(category) ||
-        (outcome.clearedCategory !== null && textChanged(outcome.clearedCategory)));
-    if (overruled) continue;
-    attrs = outcome.vdStates;
-    picks[category] = pick;
-  }
-  return { ...current, attrs, picks, mapped };
+  const changed = (category: string) =>
+    (mapped[category] ?? 'Auto') !== (current.mapped[category] ?? 'Auto');
+  const reconciled = Object.entries(current.picks).reduce<{
+    attrs: Record<string, string>;
+    picks: Record<string, DesignPick>;
+  }>(
+    (state, [category, pick]) => {
+      const applied = applyVdState(state.attrs, category, pick.value);
+      const textOverridesPick =
+        changed(category) || (applied.clearedCategory !== null && changed(applied.clearedCategory));
+      if (pick.description !== described && textOverridesPick) return state;
+      return {
+        attrs: applied.vdStates,
+        picks: { ...state.picks, [category]: pick },
+      };
+    },
+    { attrs: mapped, picks: {} },
+  );
+  return { ...current, ...reconciled, mapped };
 }
 
 /**
@@ -227,39 +223,42 @@ export function canResetToDescription(
   );
 }
 
-/** Record an explicit choice. Also names the exclusive detail that had to reset, if any. */
+/** Record a deliberate detail choice and report any exclusive detail reset by it. */
 export function pickDetail(
   current: DesignDraft,
   category: string,
   value: string,
 ): { draft: DesignDraft; clearedCategory: string | null } {
-  const { vdStates, clearedCategory } = applyVdState(current.attrs, category, value);
-  const book = new Map(Object.entries(current.picks));
-  book.set(category, { value, description: current.description.trim() });
-  if (clearedCategory) book.delete(clearedCategory);
+  const applied = applyVdState(current.attrs, category, value);
+  const nextPicks = Object.assign({}, current.picks, {
+    [category]: { value, description: current.description.trim() },
+  });
+  if (applied.clearedCategory) delete nextPicks[applied.clearedCategory];
+  const nextProfile = sameAttrs(applied.vdStates, current.attrs) ? current.profileId : null;
+  const draft = {
+    ...current,
+    attrs: applied.vdStates,
+    profileId: nextProfile,
+    picks: nextPicks,
+  };
   return {
-    draft: {
-      ...current,
-      attrs: vdStates,
-      picks: Object.fromEntries(book),
-      profileId: sameAttrs(vdStates, current.attrs) ? current.profileId : null,
-    },
-    clearedCategory,
+    draft,
+    clearedCategory: applied.clearedCategory,
   };
 }
 
-/**
- * What a design take sends as `instruct`. Tag engines get the effective
- * details. Free-form engines get the written text followed by the user's own
- * picks; whatever the text merely mapped to is left out as redundant.
- */
 export function designInstruct(
   draft: Pick<DesignDraft, 'attrs' | 'description' | 'picks'>,
   vocabulary: InstructVocabulary,
 ): string {
-  if (vocabulary !== 'freeform') return buildDesignInstruct(draft.attrs, '').instruct;
-  const ownTags = buildDesignInstruct(pickValues(draft.picks), '').instruct;
-  return [draft.description.trim(), ownTags].filter((part) => part !== '').join(', ');
+  const freeform = vocabulary === 'freeform';
+  const tagSource = freeform ? pickValues(draft.picks) : draft.attrs;
+  const tags = buildDesignInstruct(tagSource, '').instruct;
+  if (!freeform) return tags;
+
+  const prose = draft.description.trim();
+  if (!prose) return tags;
+  return tags ? `${prose}, ${tags}` : prose;
 }
 
 /** The part of the draft that is stored with the take. */
@@ -289,28 +288,29 @@ function parseStoredRecipe(raw: string | null | undefined): StoredRecipe | null 
 }
 
 /**
- * Rebuild the Design workspace from a take. A take with a stored recipe gets
- * its description, picks and mapped details back. An older one returns its
- * whole instruct as the description, and the tags it recognises become the
- * mapped details.
+ * Rebuild Design from a take. Recipes restore prose, picks, and mapped details;
+ * legacy takes use their full instruction as prose and recognise its tags.
  */
 export function designDraftFromTake(item: HistoryItem): DesignDraft {
-  const recipe = parseStoredRecipe(item.design_recipe);
-  const description = recipe?.description ?? item.instruct ?? '';
-  const mapped = mergeDescribedAttrs(recipe?.mapped ?? instructToVdStates(description));
+  const stored = parseStoredRecipe(item.design_recipe);
+  const legacyDescription = item.instruct ?? '';
+  const description = stored ? stored.description : legacyDescription;
+  const describedAttrs = stored ? stored.mapped : instructToVdStates(description);
+  const mapped = mergeDescribedAttrs(describedAttrs);
   const described = description.trim();
+  const restoredPicks: Record<string, DesignPick> = {};
+  if (stored) {
+    Object.entries(stored.picks).forEach(([category, value]) => {
+      restoredPicks[category] = { value, description: described };
+    });
+  }
   const draft: DesignDraft = {
     text: item.text,
     attrs: mapped,
     seed: item.seed ?? pickDesignSeed(false, null),
     profileId: item.profile_id,
     description,
-    picks: Object.fromEntries(
-      Object.entries(recipe?.picks ?? {}).map(([category, value]) => [
-        category,
-        { value, description: described },
-      ]),
-    ),
+    picks: restoredPicks,
     mapped,
   };
   return applyDescription(draft, mapped, described);

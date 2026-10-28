@@ -3,8 +3,12 @@
 VoiceStudio can install AMD's matched native Windows stack when you explicitly
 set `OMNIVOICE_TORCH_VARIANT=rocm`. Source setup and Electron use the same
 checked-in [recipe](../../scripts/windows-rocm-recipe.json) and installer.
-The default Windows setup remains CUDA on NVIDIA, otherwise CPU. This option
-does not enable the Ryzen AI NPU, install a graphics driver, or download models.
+The default Windows setup remains CUDA on NVIDIA, otherwise CPU, so a Radeon
+(including the RX 9070 / 9070 XT and RX 9060, `gfx1201`/`gfx1200`) runs PyTorch
+engines on the CPU until you opt in here; the setup screen's GPU check and
+**Settings → Performance → GPU acceleration** say so and name this opt-in. This
+option does not enable the Ryzen AI NPU, install a graphics driver, or download
+models.
 
 ## Prerequisites and exact scope
 

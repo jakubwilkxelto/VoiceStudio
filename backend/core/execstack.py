@@ -217,15 +217,18 @@ def ensure_ctranslate2_loadable() -> tuple[bool, str]:
         return True, "no CTranslate2 libraries found"
     repaired: list[str] = []
     blocked: list[tuple[str, str]] = []
-    for lib in libs:
-        if has_execstack(lib) is not True:
+    for path in libs:
+        if has_execstack(path) is not True:
             continue
-        changed, detail = clear_execstack(lib)
+        changed, detail = clear_execstack(path)
         if changed:
-            logger.warning("Cleared executable-stack flag on %s (#692)", lib)
-            repaired.append(os.path.basename(lib))
-        elif has_execstack(lib) is not False:
-            blocked.append((lib, detail))
+            logger.warning(
+                "Cleared the executable-stack flag on %s to keep CTranslate2 loadable (#692)",
+                path,
+            )
+            repaired.append(os.path.basename(path))
+        elif has_execstack(path) is not False:
+            blocked.append((path, detail))
     if blocked:
         names = ", ".join(os.path.basename(p) for p, _ in blocked)
         reasons = "; ".join(d for _, d in blocked)

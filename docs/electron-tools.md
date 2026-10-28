@@ -47,6 +47,15 @@ or expression. The result has the same Download action as Clone and Design takes
 in the desktop app it opens the native save dialog for the WAV file and records the
 file in export history. The result is also saved to History.
 
+**Keep my delivery** (#3421) converts the recording itself instead: only the voice
+changes, and the source's timing, pauses, rhythm and intonation stay as recorded.
+Nothing is transcribed, so source language and Match duration do not apply. It
+needs CosyVoice 3 installed (Model Catalogue → Engines); it does not have to be the
+active engine. The target voice needs a reference recording: a clone, or a design
+with a saved sample. Clips longer than about 28 seconds are converted in pieces
+split at pauses; sources over 10 minutes are refused. Voices without a recording
+(designs with no saved sample) are hidden while it is on. The default (off) keeps the transcribe-and-re-speak behaviour.
+
 Media-tool installation retries temporary filesystem locks for up to four seconds,
 including Windows locks after the executable probe. It preserves the existing installation in a sibling backup
 until publication succeeds and attempts to restore it if publication fails. If

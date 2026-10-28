@@ -56,7 +56,11 @@ def _no_hsa_override(monkeypatch):
     # attribute, and this fixture's teardown runs before monkeypatch's undo.
     clear = device_caps.detect_host_caps.cache_clear
     monkeypatch.setattr("sys.platform", "linux")  # Linux HSA remapping contract.
-    monkeypatch.delenv("HSA_OVERRIDE_GFX_VERSION", raising=False)
+    # _configure_rocm_if_needed writes os.environ directly. Registering the
+    # variable first makes teardown remove whatever a test leaves behind;
+    # delenv on an absent variable records no undo.
+    monkeypatch.setenv("HSA_OVERRIDE_GFX_VERSION", "")
+    monkeypatch.delenv("HSA_OVERRIDE_GFX_VERSION")
     clear()
     yield
     clear()
@@ -110,10 +114,78 @@ def test_hsa_override_string_is_derived_from_the_target():
     assert device_caps.hsa_override_for("gfx900") == "9.0.0"
 
 
-def test_every_override_target_has_a_valid_hsa_form():
-    for source, target in device_caps.ROCM_GFX_OVERRIDES.items():
-        assert target.startswith("gfx"), source
+# The hand-kept table this derivation replaced. Every remap it made must still
+# be made, on a wheel that ships the target but not the card.
+_FORMER_TABLE = {
+    "gfx1150": "gfx1100", "gfx1151": "gfx1100",
+    "gfx1101": "gfx1100", "gfx1102": "gfx1100", "gfx1103": "gfx1100",
+    "gfx1031": "gfx1030", "gfx1032": "gfx1030", "gfx1034": "gfx1030",
+    "gfx902": "gfx900",
+}
+_LEGACY_WHEEL = ["gfx900", "gfx906", "gfx908", "gfx90a", "gfx1030", "gfx1100"]
+
+
+@pytest.mark.parametrize("source,target", sorted(_FORMER_TABLE.items()))
+def test_derived_override_reproduces_the_former_table(source, target):
+    assert device_caps.rocm_override_target(source, _LEGACY_WHEEL) == target
+
+
+def test_every_derived_target_has_a_valid_hsa_form():
+    for source in [*_FORMER_TABLE, "gfx1152", "gfx1035", "gfx90c"]:
+        target = device_caps.rocm_override_target(source, _LEGACY_WHEEL)
+        assert target and target.startswith("gfx"), source
         device_caps.hsa_override_for(target)  # must not raise
+
+
+@pytest.mark.parametrize("gfx,archs,expected", [
+    # #3418 class: parts no table listed still get their family's target.
+    ("gfx1152", ["gfx1030", "gfx1100", "gfx1101"], "gfx1100"),  # Krackan Point
+    ("gfx1035", ["gfx1030", "gfx1100"], "gfx1030"),             # Radeon 680M
+    ("gfx1036", ["gfx1030", "gfx1100"], "gfx1030"),
+    ("gfx1201", ["gfx1100", "gfx1200"], "gfx1200"),             # RX 9070 on a gfx1200-only wheel
+    ("gfx1200", ["gfx1100", "gfx1201"], "gfx1201"),             # RX 9060
+    # Closest first: the same minor revision beats the family base.
+    ("gfx1151", ["gfx1100", "gfx1150"], "gfx1150"),
+    # Never across a generation, never onto a newer minor revision.
+    ("gfx1201", ["gfx900", "gfx1030", "gfx1100"], None),
+    ("gfx1012", ["gfx1030", "gfx1100"], None),
+    ("gfx1102", ["gfx1030"], None),
+    # Native, unknown build, not a gfx name: nothing to remap.
+    ("gfx1201", ["gfx1100", "gfx1201"], None),
+    ("gfx1151", [], None),
+    ("sm_89", ["gfx1100"], None),
+    # Targets HSA cannot express (gfx90a) are never chosen.
+    ("gfx90c", ["gfx90a"], None),
+    # gfx9 is three ISAs: CDNA never lands on Vega kernels, nor Vega on CDNA.
+    ("gfx942", _LEGACY_WHEEL, None),
+    ("gfx908", ["gfx900", "gfx906"], None),
+    ("gfx950", ["gfx900", "gfx942"], None),
+    ("gfx906", ["gfx908"], None),
+    ("gfx909", ["gfx900", "gfx908"], "gfx900"),
+    # gfx10 is RDNA1 (101x) and RDNA2 (103x): no remap across them.
+    ("gfx1030", ["gfx1010", "gfx1012"], None),
+    ("gfx1036", ["gfx1010", "gfx1030"], "gfx1030"),
+])
+def test_rocm_override_target_is_derived_from_the_wheel(gfx, archs, expected):
+    assert device_caps.rocm_override_target(gfx, archs) == expected
+
+
+@pytest.mark.parametrize("gfx,archs,hsa", [
+    ("gfx1152", ["gfx1030", "gfx1100"], "11.0.0"),
+    ("gfx1201", ["gfx1100", "gfx1200"], "12.0.0"),
+])
+def test_a_card_no_table_listed_still_runs_on_the_gpu(gfx, archs, hsa):
+    """Regression (#3418): the remap came from a hand-kept table, so a newer
+    card the wheel could run through its family target was reported as a
+    kernel mismatch and routed to the CPU."""
+    import os
+
+    import services.model_manager as mm
+
+    torch = _torch(hip="6.4", gcn_arch=gfx, device_name="AMD Radeon", arch_list=archs)
+    assert device_caps.arch_unsupported(torch) is None
+    mm._configure_rocm_if_needed(torch)
+    assert os.environ.get("HSA_OVERRIDE_GFX_VERSION") == hsa
 
 
 def test_rocm_user_hsa_override_is_trusted_when_the_build_has_the_target(monkeypatch):
@@ -351,13 +423,16 @@ def test_remap_advice_names_a_same_generation_target_the_build_ships(monkeypatch
 
 def test_every_override_stays_within_its_gfx_generation():
     """Recurrence guard: a cross-generation remap (gfx1201 → gfx1100) cannot run,
-    so no entry may ever add one."""
-    for source, target in device_caps.ROCM_GFX_OVERRIDES.items():
-        assert device_caps.gfx_generation(source), source
-        assert device_caps.gfx_generation(source) == device_caps.gfx_generation(target), (
-            source, target,
-        )
-    assert not any(k.startswith("gfx12") for k in device_caps.ROCM_GFX_OVERRIDES)
+    whatever the wheel ships."""
+    every = [f"gfx{n}" for n in (900, 902, 906, 908, 1010, 1012, 1030, 1031, 1035,
+                                 1100, 1102, 1103, 1150, 1151, 1152, 1200, 1201)]
+    for gfx in every:
+        target = device_caps.rocm_override_target(gfx, [a for a in every if a != gfx])
+        if target is not None:
+            assert device_caps.gfx_generation(gfx) == device_caps.gfx_generation(target), (
+                gfx, target,
+            )
+    assert device_caps.rocm_override_target("gfx1201", PRE_RDNA4_ARCHS) is None
 
 
 def test_gfx_generation_and_siblings():

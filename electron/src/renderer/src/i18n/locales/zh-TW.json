@@ -13,6 +13,16 @@
     "surprised": "驚訝",
     "calm": "平靜"
   },
+  "expression": {
+    "direction_label": "演繹指導",
+    "direction_ph": "例如：一開始緊張，然後興奮",
+    "direction_help": "套用於整段錄音，作為 {{engine}} 的演繹指導。",
+    "unsupported": "{{engine}} 不支援情緒控制。IndexTTS2 提供分級情緒；CosyVoice 3 和 VoxCPM2 接受文字指導。",
+    "tags_hint": "如需在一行中的某個時刻加入反應，請從腳本的「插入」中加入 {{example}} 等反應。",
+    "tags_unsupported": "灰色標籤會被 {{engine}} 當作文字唸出來。",
+    "guide": "富有表現力的語音指南",
+    "tip": "提示：用下方的「情緒」塑造演繹，並從腳本的「插入」中加入笑聲或嘆氣等反應。"
+  },
   "cloneQuality": {
     "title": "音訊品質",
     "precision": "WAV 精度",
@@ -2782,6 +2792,10 @@
     "pick_voice": "選擇一個聲音設定檔…",
     "match_duration": "符合來源長度",
     "match_duration_hint": "對結果做時間伸縮(保持音高),使其接近來源音訊的長度。",
+    "keep_delivery": "保留我的演繹",
+    "keep_delivery_hint": "只改變音色。你的節奏、停頓和語調維持錄音原樣。關閉時：先轉寫片段，再重新朗讀。",
+    "keep_delivery_engine_required": "「保留我的演繹」需要 CosyVoice 3。",
+    "keep_delivery_no_voices": "沒有帶錄音的聲音可供轉換。請從錄音複製一個聲音，或關閉「保留我的演繹」。",
     "source_language": "來源語音語言（自動 = 使用語音檔案的語言）",
     "convert": "轉換",
     "converting": "轉換中…",
@@ -4454,5 +4468,45 @@
     "generating": "請等待目前的生成完成。",
     "name_required": "請先輸入名稱。",
     "audio_missing": "此條生成沒有可儲存的音訊檔案。"
+  },
+  "ggufQuant": {
+    "label": "模型量化",
+    "auto": "自動：{{quant}}（{{target}}）",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU 或原生預設",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · 已安裝",
+    "download": "下載 {{quant}}（{{size}} MB）",
+    "downloading": "正在下載 {{quant}}：{{done}} / {{total}} MB",
+    "using_installed": "所選量化下載完成前，使用已安裝的 {{quant}}。",
+    "env_pinned": "已由 {{env}} 固定為 {{quant}}。",
+    "runtime_missing": "缺少 omnivoice-tts 執行環境。請重新安裝 VoiceStudio，或用 scripts/build-omnivoice-tts.sh 建置。",
+    "runtime_placeholder": "隨附的 omnivoice-tts 檔案只是佔位檔，不是可用的執行環境。請重新安裝 VoiceStudio。",
+    "runtime_integrity": "omnivoice-tts 執行環境的檢查碼不符。請重新安裝 VoiceStudio。",
+    "runtime_quarantined": "作業系統隔離了 omnivoice-tts 執行環境。請允許它或重新安裝 VoiceStudio。",
+    "runtime_other": "omnivoice-tts 執行環境無法啟動。詳情請查看引擎檢查。",
+    "weights_missing": "模型權重尚未下載。現在下載，或在首次生成時自動下載。",
+    "download_failed": "權重下載失敗"
+  },
+  "gpuOffer": {
+    "title": "使用 GPU 加快語音生成？",
+    "body": "VoiceStudio 發現了 {{gpu}}。OmniVoice GGUF 可以透過 Vulkan 在它上面執行 {{quant}} 模型，而不是使用 CPU。",
+    "body_shared": "VoiceStudio 發現了共用系統記憶體的 {{gpu}}。OmniVoice GGUF 可以透過 Vulkan 在它上面執行 {{quant}} 模型，而不是使用 CPU。",
+    "download": "只需下載一次，大小 {{size}} MB。",
+    "no_download": "無需下載。",
+    "licence": "GGUF 模型僅限非商業用途；系統會先請你接受其授權條款。",
+    "accept": "使用 GPU",
+    "decline": "暫不",
+    "later": "之後可在 設定 › {{section}} 中變更。",
+    "licence_then_retry": "請先接受授權條款，然後再次點選「使用 GPU」。",
+    "switched": "現在使用 {{gpu}} 生成語音。",
+    "switched_downloading": "現在使用 {{gpu}} 生成語音。正在下載 {{quant}} 模型…"
+  },
+  "pauseFill": {
+    "title": "停頓",
+    "room_tone": "以房間底噪填補停頓",
+    "room_tone_note": "[pause] 標記與有聲書間隔會使用該錄音本身的安靜背景音，而非數位靜音，句子之間的聲音不會突然中斷。",
+    "env_pinned": "由 {{env}} 設定。修改或清除它後才能使用此開關。"
   }
 }

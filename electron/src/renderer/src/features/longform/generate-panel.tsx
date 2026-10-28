@@ -52,7 +52,7 @@ function Note({ children }: { children: string }) {
   );
 }
 
-/** Generate / Stop, the chapter tracker and the render status, kept together. */
+/** Shows the current long-form render state and its available action. */
 export function GeneratePanel({
   mode,
   session,
@@ -69,15 +69,13 @@ export function GeneratePanel({
   const { t } = useTranslation();
   const mine = session.active === mode;
   const status = statusLine(t, session, mine, blocker);
-  // The engine problem already has a visible notice with a fix button on the page.
-  const screenReaderOnly = !mine && blocker === 'engine';
 
   return (
     <div data-slot="generate-panel" className="flex min-h-0 flex-col gap-2">
       {session.failed > 0 && <Note>{t('audiobook.failed_note', { count: session.failed })}</Note>}
-      {session.stopped && session.active === null && <Note>{t('audiobook.stopped_note')}</Note>}
+      {session.stopped && !session.active && <Note>{t('audiobook.stopped_note')}</Note>}
       {mine && session.stage !== 'starting' && (
-        <div className="max-h-[38vh] min-h-0 shrink overflow-y-auto">
+        <div className="max-h-[38vh] min-h-0 overflow-y-auto">
           <GenerationProgress
             chapters={session.chapters}
             assembling={session.stage === 'assembling'}
@@ -88,26 +86,29 @@ export function GeneratePanel({
           />
         </div>
       )}
-      {session.active !== null && !mine && <LongformActivityCard className="shrink-0" />}
-      {status !== '' && (
+      {session.active && !mine && <LongformActivityCard className="shrink-0" />}
+      {status && (
         <p
           id={STATUS_ID}
           role="status"
-          className={cn('shrink-0 text-xs text-muted-foreground', screenReaderOnly && 'sr-only')}
+          className={cn(
+            'text-xs text-muted-foreground',
+            !session.active && blocker === 'engine' && 'sr-only',
+          )}
         >
           {status}
         </p>
       )}
       {mine ? (
-        <Button type="button" variant="outline" className="w-full shrink-0" onClick={onStop}>
+        <Button className="w-full" variant="outline" onClick={onStop}>
           {t('common.stop')}
         </Button>
       ) : (
         <Button
-          type="button"
-          className="w-full shrink-0"
+          className="w-full"
+          variant="default"
           disabled={blocker !== null}
-          aria-describedby={status !== '' ? STATUS_ID : undefined}
+          aria-describedby={status ? STATUS_ID : undefined}
           onClick={onGenerate}
         >
           {t(mode === 'stories' ? 'stories.generateAll' : 'audiobook.create')}

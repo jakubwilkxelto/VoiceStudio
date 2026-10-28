@@ -32,6 +32,11 @@ from services.model_manager import (
 from services.generation_audio import save_generation_wav
 # Compatibility export used by archetype previews and the gallery renderer.
 from services.audio_io import _safe_torchaudio_save
+from services.reference_transcript import (
+    is_legacy_cut_transcript,
+    strip_script_markup,
+    take_reference_transcript,
+)
 from services.binary_preflight import InvalidBinaryError
 from services.model_acceptance import ModelLicenceNotAccepted
 from core import event_bus
@@ -470,6 +475,7 @@ def _resolve_profile_conditioning(row, *, ref_text=None, instruct=None,
             # cache its result onto the profile so it runs ONCE, not on every
             # generate (#1032 perf regression).
             out["persist_ref_text"] = True
+            out["ref_audio_file"] = row["ref_audio_path"]
         if not out["instruct"] and row["instruct"]:
             out["instruct"] = row["instruct"]
         if out["seed"] is None and row["seed"] is not None:
@@ -491,6 +497,21 @@ def _resolve_profile_conditioning(row, *, ref_text=None, instruct=None,
         if prof_lang and prof_lang != "Auto":
             out["language"] = prof_lang
             out["language_from_profile"] = True
+    stored_ref_text = row["ref_text"]
+    if out["ref_text"] and out["ref_text"] == stored_ref_text and is_legacy_cut_transcript(row):
+        # #3062: a voice saved or locked from a take before the fix carries a
+        # cut prefix of the take's text; transcribe the clip instead. The
+        # request may echo the stored value, so both are checked.
+        out["ref_text"] = None
+        if out["ref_audio_path"] and not locked_take and profile_kind != "design":
+            # Replace the cut prefix with the transcript once (#1032). Locked
+            # transcripts are never persisted (unlock must not keep them).
+            out["persist_ref_text"] = True
+            out["replace_ref_text"] = stored_ref_text
+            out["ref_audio_file"] = row["ref_audio_path"]
+    elif out["ref_text"]:
+        # A stored transcript may hold script markup the take never spoke (#3062).
+        out["ref_text"] = strip_script_markup(out["ref_text"]) or None
     return out
 
 
@@ -535,7 +556,8 @@ def _wants_edge_trim(effect_preset, duration=None):
 
 
 def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False,
-                        max_chunk_chars=0, crossfade_ms=0, dropped_sink=None):
+                        max_chunk_chars=0, crossfade_ms=0, dropped_sink=None,
+                        pause_fill=None):
     """Synthesize ``[(text, pause_ms), ...]`` spans and stitch silence between
     them (issue #276).
 
@@ -557,6 +579,9 @@ def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False,
     the whole input, so callers can derive a per-chunk seed. A span that fits
     keeps the plain ``gen_span(text)`` call. ``max_chunk_chars <= 0`` disables
     splitting.
+
+    ``pause_fill`` is ``"silence"`` or ``"room_tone"`` (#3611); None uses the
+    Settings choice (``services.audio_dsp.pause_fill_mode``).
     """
     import torch
 
@@ -599,15 +624,10 @@ def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False,
         total = sum(n for kind, n in items if kind == "s") or 1
         return torch.zeros(total, dtype=torch.float32)
 
-    parts = []
-    for kind, val in items:
-        if kind == "a":
-            parts.append(val)
-        else:
-            shape = list(ref.shape)
-            shape[-1] = val
-            parts.append(torch.zeros(*shape, dtype=ref.dtype, device=ref.device))
-    return torch.cat(parts, dim=-1)
+    from services.audio_dsp import fill_gaps
+
+    # Digital silence or room tone, per Settings (#3611).
+    return torch.cat(fill_gaps(items, sample_rate, pause_fill), dim=-1)
 
 
 def _sanitize_audio(audio_out):
@@ -1542,7 +1562,10 @@ def _root_language_error(exc: BaseException) -> BaseException:
     return getattr(exc, "engine_language_error", exc)
 
 
-def _persist_profile_ref_text(profile_id: str, ref_text: str) -> None:
+def _persist_profile_ref_text(
+    profile_id: str, ref_text: str, replace: Optional[str] = None,
+    ref_audio_file: Optional[str] = None,
+) -> None:
     """Cache an auto-transcribed reference transcript onto its profile row.
 
     #1032 perf regression: profiles saved without a transcript re-ran a FULL
@@ -1551,13 +1574,23 @@ def _persist_profile_ref_text(profile_id: str, ref_text: str) -> None:
     from the row like a user-entered one. The guarded UPDATE only ever fills
     an empty column — it can never overwrite a transcript the user typed or a
     lock wrote — and a failure is logged, never raised (best-effort, same
-    contract as the transcribe itself)."""
+    contract as the transcribe itself).
+
+    ``replace`` is a cut legacy transcript (#3062) the new one may overwrite;
+    it only matches while the row still holds exactly that value.
+
+    The transcript belongs to the clip that was transcribed, so the row must
+    still be unlocked and, given ``ref_audio_file``, still point at that clip:
+    a lock or an audio replace that lands mid-transcribe (a lock may leave the
+    transcript empty, #3062) must not receive the old clip's words."""
     try:
         with db_conn() as conn:
             updated = conn.execute(
                 "UPDATE voice_profiles SET ref_text=? "
-                "WHERE id=? AND (ref_text IS NULL OR ref_text='')",
-                (ref_text, profile_id),
+                "WHERE id=? AND (ref_text IS NULL OR ref_text='' OR ref_text=?) "
+                "AND COALESCE(is_locked, 0)=0 "
+                "AND (? IS NULL OR ref_audio_path=?)",
+                (ref_text, profile_id, replace or "", ref_audio_file, ref_audio_file),
             ).rowcount
         if updated:
             event_bus.emit("profiles", {"action": "updated", "id": profile_id})
@@ -1660,11 +1693,14 @@ async def _finalize_generation(
     if take_mode != "design":
         design_recipe = None
 
+    # The whole text, not a prefix: a take can become a voice whose reference
+    # transcript is this text, and a cut one ends in words the take never
+    # finishes, which OmniVoice then speaks at every chunk seam (#3062).
     def _write_history():
         with db_conn() as conn:
             conn.execute(
                 "INSERT INTO generation_history (id, text, mode, language, instruct, profile_id, audio_path, duration_seconds, generation_time, seed, design_recipe, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (audio_id, text[:200], take_mode,
+                (audio_id, text, take_mode,
                  language or "Auto", instruct or "", resolved_profile_id,
                  audio_filename, audio_dur, gen_time, used_seed, design_recipe, time.time())
             )
@@ -2085,10 +2121,12 @@ async def generate_speech(
     # transcript paired with the original reference); design profiles are
     # excluded (a re-render replaces the sample, stranding a stale transcript).
     persist_ref_text_profile_id = None
+    persist_replace_ref_text = None
+    persist_ref_audio_file = None
     # A transcript the caller sent, before a profile fills in its stored one:
     # an explicit transcript on an over-long clip gets the actionable 400
     # below instead of being silently dropped at the engine boundary (#2281).
-    request_ref_text = (ref_text or "").strip()
+    request_ref_text = strip_script_markup(ref_text)
 
     if profile_id:
         with db_conn() as conn:
@@ -2112,6 +2150,8 @@ async def generate_speech(
             language_from_profile = _cond["language_from_profile"]
             if _cond["persist_ref_text"]:
                 persist_ref_text_profile_id = profile_id
+                persist_replace_ref_text = _cond.get("replace_ref_text")
+                persist_ref_audio_file = _cond.get("ref_audio_file")
     elif ref_audio is not None:
         try:
             suffix = _ref_upload_suffix(ref_audio.filename)
@@ -2122,6 +2162,8 @@ async def generate_speech(
                 ref_lease = _TempReferenceLease(ref_audio_path)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+    # Script markup is never spoken, so it is never part of a transcript (#3062).
+    ref_text = strip_script_markup(ref_text) or None
 
     # #2281: an engine that picks the best passage of a long clip itself
     # (OmniVoice) cannot align a whole-clip transcript. A transcript typed on
@@ -2183,7 +2225,10 @@ async def generate_speech(
         # load + transcribe above happens once per profile, not per generate.
         # Only fills an empty column — a user-entered transcript always wins.
         if ref_text and persist_ref_text_profile_id:
-            _persist_profile_ref_text(persist_ref_text_profile_id, ref_text)
+            _persist_profile_ref_text(
+                persist_ref_text_profile_id, ref_text, replace=persist_replace_ref_text,
+                ref_audio_file=persist_ref_audio_file,
+            )
 
     # #2764: choosing the best 15 s window of a long reference runs the
     # installed recognizer over several windows — minutes on a CPU. Inside the
@@ -2920,7 +2965,11 @@ def list_history():
             if r["audio_path"] and (not p or not os.path.exists(p)):
                 stale_ids.append(r["id"])
             else:
-                alive.append(dict(r))
+                item = dict(r)
+                # What "save as voice" may use as the take's transcript; ""
+                # asks for the take's audio to be transcribed (#3062).
+                item["transcript"] = take_reference_transcript(item.get("text"))
+                alive.append(item)
         if stale_ids:
             conn.executemany(
                 "DELETE FROM generation_history WHERE id=?",

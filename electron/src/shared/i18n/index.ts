@@ -30,6 +30,7 @@ const LOADERS: Record<string, () => Promise<{ default: Record<string, unknown> }
   uk: () => import('./locales/uk.json'),
   ar: () => import('./locales/ar.json'),
   'zh-TW': () => import('./locales/zh-TW.json'),
+  gl: () => import('./locales/gl.json'),
 };
 
 const loading = new Set<string>();
@@ -118,6 +119,7 @@ export const LANGUAGES = [
   { code: 'uk', label: 'Українська' },
   { code: 'ar', label: 'العربية' },
   { code: 'zh-TW', label: '繁體中文' },
+  { code: 'gl', label: 'Galego' },
 ];
 
 export default i18n;

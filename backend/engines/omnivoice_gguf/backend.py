@@ -338,6 +338,35 @@ def _allowed_quant_filenames(quant_map: Optional[dict] = None) -> set[str]:
     return out
 
 
+#: Env pin for the quant: ``auto`` or a tag (``Q4_K_M``, ``Q8_0``, ``BF16``,
+#: ``F32``), or a base filename from quant_map.json.
+QUANT_ENV = "OMNIVOICE_GGUF_QUANT"
+
+
+def env_quant_override() -> Optional[str]:
+    """The base filename ``OMNIVOICE_GGUF_QUANT`` names, or None when unset /
+    ``auto``. An unknown value is returned as-is so generation reports it
+    (a typo must not silently fall back to another precision)."""
+    raw = os.environ.get(QUANT_ENV, "").strip()
+    if not raw or raw.lower() == "auto":
+        return None
+    if raw.lower().endswith(".gguf"):
+        return raw
+    return f"omnivoice-base-{raw.upper()}.gguf"
+
+
+def _persisted_quant_override() -> Optional[str]:
+    """The Settings quant override, or None (auto). Never raises — an
+    unreadable settings DB must not stop generation; auto-select applies."""
+    try:
+        from services.settings_store import get_quant_override
+
+        return get_quant_override()
+    except Exception:  # noqa: BLE001
+        logger.debug("GGUF quant override unreadable; using auto-select", exc_info=True)
+        return None
+
+
 def _sha256_of_file(p: Path, *, chunk: int = 1 << 20) -> str:
     h = hashlib.sha256()
     with p.open("rb") as f:
@@ -349,9 +378,9 @@ def _sha256_of_file(p: Path, *, chunk: int = 1 << 20) -> str:
 def _automatic_entry(quant_map: dict) -> dict:
     """The quant entry the automatic compute policy selects.
 
-    The native runtime cannot enumerate the adapter it will use, so the
-    policy stays on the conservative tier until that capacity is
-    verified. An explicit Settings override is handled by the caller.
+    Sized on the Vulkan adapter the native runtime will open when one is
+    verified (``compute.automatic_compute_class``); the conservative tier
+    otherwise. An explicit override is handled by the caller.
     """
     from .compute import automatic_compute_class
 
@@ -458,6 +487,7 @@ def _is_macos_quarantined(p: Path) -> bool:
             ["/usr/bin/xattr", "-p", "com.apple.quarantine", str(p)],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=2,
         )
         # Exit code 0 means the xattr exists; non-zero usually means
@@ -688,23 +718,35 @@ def _make_backend_class():
             q = self._ensure_quant_map()
 
             # User override wins (allow-listed at write time in settings_store).
-            if self._quant_override and self._quant_override != "auto":
+            override = self._explicit_override()
+            if override:
                 allowed = _allowed_quant_filenames(q)
-                if self._quant_override in allowed:
+                if override in allowed:
                     # Walk both top-level and _extras entries looking for
                     # a quant whose ``base`` matches the override.
                     for _key, entry in _walk_quant_entries(q):
-                        if entry.get("base") == self._quant_override:
+                        if entry.get("base") == override:
                             return entry
 
             # The parent's GPU memory cannot prove the native adapter's capacity.
             return _automatic_entry(q)
 
         def _explicit_override(self) -> str | None:
-            """The quant filename the user pinned in Settings, if any."""
-            if not self._quant_override or self._quant_override == "auto":
+            """The quant filename the user pinned, if any.
+
+            Constructor argument > ``OMNIVOICE_GGUF_QUANT`` > the Settings
+            choice. Env wins over Settings, like every engine choice, so a
+            power-user pin is never silently undone by the UI. Before the
+            Settings read existed the registry (which constructs this class
+            without arguments) never applied a stored override at all.
+            """
+            if self._quant_override is not None:
+                value = self._quant_override
+            else:
+                value = env_quant_override() or _persisted_quant_override()
+            if not value or value == "auto":
                 return None
-            return self._quant_override
+            return value
 
         def _resolve_quant_paths(self, *, download: bool = True) -> tuple[Path, Path, dict]:
             """Return the base+tokenizer paths for this engine.
@@ -1008,6 +1050,8 @@ def _make_backend_class():
                     argv,
                     input=stdin_text,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     capture_output=True,
                     timeout=timeout_s,
                     check=False,

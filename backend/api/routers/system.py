@@ -81,7 +81,7 @@ def _detect_cpu_model() -> str:
         if sys.platform == "darwin":
             import subprocess
             return subprocess.check_output(
-                ["sysctl", "-n", "machdep.cpu.brand_string"], text=True, timeout=5
+                ["sysctl", "-n", "machdep.cpu.brand_string"], text=True, errors="replace", timeout=5
             ).strip()
         return platform.processor() or ""
     except Exception:
@@ -114,11 +114,12 @@ def _detect_os_gpu_name() -> str:
                 ],
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=3,
                 check=False,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
-            names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            names = [line.strip() for line in (result.stdout or "").splitlines() if line.strip()]
             return max(names, key=_gpu_name_priority, default="")
         if sys.platform.startswith("linux"):
             executable = shutil.which("lspci")
@@ -128,11 +129,12 @@ def _detect_os_gpu_name() -> str:
                 [executable, "-mm"],
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=2,
                 check=False,
             )
             names = []
-            for line in result.stdout.splitlines():
+            for line in (result.stdout or "").splitlines():
                 parts = shlex.split(line)
                 if len(parts) >= 4 and parts[1] in {"VGA compatible controller", "3D controller"}:
                     names.append(" ".join(parts[2:4]))
@@ -145,16 +147,18 @@ def _detect_os_gpu_name() -> str:
                 [executable, "SPDisplaysDataType"],
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=3,
                 check=False,
             )
             names = [
                 line.split(":", 1)[1].strip()
-                for line in result.stdout.splitlines()
+                for line in (result.stdout or "").splitlines()
                 if "Chipset Model:" in line
             ]
             return max(names, key=_gpu_name_priority, default="")
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except Exception:  # noqa: BLE001 - best-effort label; it runs at import time
+        # A probe failure must never stop the backend from starting (#3612).
         return ""
     return ""
 
@@ -229,13 +233,14 @@ def _nvidia_live_stats() -> tuple[float, float, float] | None:
             ],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=1.5,
             check=False,
             creationflags=creationflags,
         )
         if result.returncode != 0:
             return None
-        values = [float(value.strip()) for value in result.stdout.splitlines()[0].split(",")]
+        values = [float(value.strip()) for value in (result.stdout or "").splitlines()[0].split(",")]
         if len(values) != 3:
             return None
         utilization, used_mib, total_mib = values

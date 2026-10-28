@@ -1,30 +1,10 @@
-import { chromium } from 'playwright';
+import { launchSmokeBrowser, openMockedPage } from './smoke-api-mock.mjs';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({
-  ...(process.env.CHROMIUM_PATH
-    ? { executablePath: process.env.CHROMIUM_PATH }
-    : { channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' }),
-  headless: true,
-});
+const browser = await launchSmokeBrowser({ fallbackChannel: 'msedge' });
 try {
-  const page = await browser.newPage();
-  await page.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
-  await page.route(
-    (url) => url.pathname.startsWith('/api/'),
-    (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const fixtures = {
-        '/api/health': { status: 'ok' },
-        '/api/setup/status': { ready: true },
-        '/api/models/install/status': { jobs: [] },
-      };
-      return path in fixtures
-        ? route.fulfill({ json: fixtures[path] })
-        : route.fulfill({ status: 404, json: { detail: 'Not mocked' } });
-    },
-  );
+  const page = await openMockedPage(browser);
   const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('pageerror', (error) => errors.push(error.message));
   const stored = {
     id: 'legacy',
     name: 'Legacy project',

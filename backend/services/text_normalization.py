@@ -752,7 +752,10 @@ def _numbers_to_words(text: str, lang: str, locale: Optional[str] = None) -> str
             h, mm = int(m.group(1)), int(m.group(2))
             hw = num2words(h, lang="en")
             if mm == 0:
-                return f"{hw} o'clock"
+                # "o'clock" belongs to the 12-hour dial: a 24-hour hour on the
+                # hour is read in hundreds ("thirteen hundred"), never
+                # "thirteen o'clock" or "zero o'clock".
+                return f"{hw} o'clock" if 1 <= h <= 12 else f"{hw} hundred"
             if mm < 10:
                 return f"{hw} oh {num2words(mm, lang='en')}"
             return f"{hw} {num2words(mm, lang='en')}"

@@ -145,13 +145,12 @@ export function ShortcutSettings() {
         >
           <Textarea
             aria-labelledby="dictation-prompt"
-            className="@2xl:w-80"
             maxLength={1000}
+            className="min-h-20 w-full @2xl:w-96"
             value={hint}
-            // Frozen during a save so keystrokes are not lost when the draft resets.
             disabled={busy || !prefs.data}
-            onChange={({ target }) =>
-              setHintDraft(target.value === storedHint ? null : target.value)
+            onChange={(event) =>
+              setHintDraft(event.target.value === storedHint ? null : event.target.value)
             }
           />
           <Button
@@ -162,9 +161,9 @@ export function ShortcutSettings() {
             {t('common.save')}
           </Button>
           {hintSaveFailed && (
-            <p role="alert" className="text-xs text-destructive">
+            <span role="alert" className="text-xs text-destructive">
               {t('common.error')}
-            </p>
+            </span>
           )}
         </SettingsRow>
         {api && (

@@ -307,18 +307,26 @@ async def unload(model_id: str) -> dict:
     """Unload one model by id. Preserves the original per-id response shapes.
 
     ``tts`` | ``diarization`` | ``sidecar:<id>`` | ``sidecars``. Raises
-    ValueError for an unknown id (router maps to HTTP 400)."""
+    ValueError for an unknown id (router maps to HTTP 400).
+
+    Releasing device memory blocks (gc over the weights, cudaFree waiting on
+    the device, sidecar shutdown), so it runs on a worker thread: on the event
+    loop it stalled every other request, health checks included (#3558)."""
+    if model_id == "tts":
+        async with mm._model_lock:
+            if await mm.run_release(mm.unload_shared_model):
+                return {"unloaded": "tts", "success": True}
+        return {"unloaded": "tts", "success": False, "reason": "not loaded"}
+    return await mm.run_release(_unload_blocking, model_id)
+
+
+def _unload_blocking(model_id: str) -> dict:
+    """Every non-``tts`` branch of :func:`unload`; runs off the event loop."""
     if model_id == "sidecars" or model_id.startswith("sidecar:"):
         from services.subprocess_backend import unload_all_sidecars, unload_sidecar
         n = unload_all_sidecars() if model_id == "sidecars" else unload_sidecar(model_id.split(":", 1)[1])
         return {"unloaded": model_id, "success": n > 0, "count": n,
                 **({} if n > 0 else {"reason": "not running or busy"})}
-
-    if model_id == "tts":
-        async with mm._model_lock:
-            if mm.unload_shared_model():
-                return {"unloaded": "tts", "success": True}
-        return {"unloaded": "tts", "success": False, "reason": "not loaded"}
 
     if model_id == "diarization":
         if mm._diar_pipeline is not None:

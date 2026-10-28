@@ -199,11 +199,14 @@ def test_list_backends_shape(registry_sandbox):
         # Graded-emotion capability (#1208): bool from the class attr; drives
         # the Audiobook expressive panel's emotion gate.
         "supports_emotion",
+        # Speech-to-speech conversion (#3421): Convert's "Keep my delivery".
+        "supports_voice_conversion",
         # Voice Design capability: False = needs a reference clip, so the
         # Design workspace and /generate refuse design; None = undeclared.
         "supports_voice_design",
         # How the engine reads `instruct`: "tags" (closed OmniVoice list) or "freeform".
         "instruct_vocabulary",
+        "expression_caps",
         # Reference-length truth (#2281): seconds of a clone clip the engine
         # uses and how it picks them; None when not verified in-repo.
         "max_ref_seconds", "ref_strategy", "preset_voices", "default_voice",
@@ -236,6 +239,7 @@ def test_list_backends_shape(registry_sandbox):
         )
         # #1208: supports_emotion is always a concrete bool (never a descriptor).
         assert isinstance(entry["supports_emotion"], bool)
+        assert isinstance(entry["supports_voice_conversion"], bool)
 
 
 def test_mlx_audio_curated_models_roster(registry_sandbox):

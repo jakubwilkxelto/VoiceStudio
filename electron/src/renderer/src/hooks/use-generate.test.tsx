@@ -34,6 +34,7 @@ const engine = vi.hoisted(() => ({
   cloning: undefined as boolean | null | undefined,
   presets: undefined as string[] | undefined,
   emotion: undefined as boolean | undefined,
+  caps: undefined as { emotion: 'graded' | 'direction' | 'none'; tags: string[] } | undefined,
 }));
 vi.mock('./use-engines', () => ({
   useEngines: () => ({
@@ -43,6 +44,7 @@ vi.mock('./use-engines', () => ({
       supports_cloning: engine.cloning,
       preset_voices: engine.presets,
       supports_emotion: engine.emotion,
+      expression_caps: engine.caps,
     },
   }),
 }));
@@ -316,33 +318,37 @@ it.each([
 );
 
 it.each([
-  [false, 'design', false],
-  [null, 'none', true],
-  [true, 'none', true],
+  [false, 'design', false, false],
+  [null, 'none', true, true],
+  [true, 'none', true, true],
 ] as const)(
-  'blocks Voice Design on an engine that declares it cannot design (supports_voice_design=%s)',
-  async (design, expectedBlocker, sends) => {
-    engine.design = design;
-    vi.mocked(generateClone).mockReset().mockRejectedValue(new Error('stop'));
-    function DesignConsumer() {
+  'uses the declared Voice Design capability %s',
+  async (capability, expectedBlocker, expectedAllowed, sends) => {
+    engine.design = capability;
+    vi.mocked(generateClone).mockReset().mockRejectedValue(new Error('request ended'));
+    function CapabilityConsumer() {
       const state = useGenerateClone();
       return (
         <button
-          onClick={() => void state.generateDesign({ text: 'Hi', instruct: 'male', seed: 1 })}
+          onClick={() =>
+            void state.generateDesign({ text: 'Capability check', instruct: 'calm', seed: 19 })
+          }
         >
-          blocker {state.designBlocker ?? 'none'} {String(state.canGenerateDesign)}
+          {state.designBlocker ?? 'none'}:{String(state.canGenerateDesign)}
         </button>
       );
     }
     render(
       <QueryClientProvider client={new QueryClient()}>
         <GenerationProvider>
-          <DesignConsumer />
+          <CapabilityConsumer />
         </GenerationProvider>
       </QueryClientProvider>,
     );
-    const button = screen.getByText(`blocker ${expectedBlocker} ${String(sends)}`);
-    fireEvent.click(button);
+    const action = screen.getByRole('button', {
+      name: `${expectedBlocker}:${String(expectedAllowed)}`,
+    });
+    fireEvent.click(action);
     if (sends) await waitFor(() => expect(generateClone).toHaveBeenCalled());
     else {
       await act(async () => {});
@@ -625,5 +631,54 @@ it.each([
       expect(records[`take-${saved}`]?.emotionMode).toBe(saved);
     });
     engine.emotion = undefined;
+  },
+);
+
+it.each([
+  ['CosyVoice (direction)', 'direction', false, 'warm, intimate'],
+  ['OmniVoice after switching back (#3422)', 'none', false, 'warm'],
+  ['Voice Design', 'direction', true, 'male'],
+] as const)(
+  'sends the delivery direction only where instruct steers a clone (%s)',
+  async (_name, emotion, design, instruct) => {
+    engine.vocabulary = 'freeform';
+    engine.design = true;
+    engine.caps = { emotion, tags: [] };
+    patchCloneSettings({
+      text: 'A cloned voice line.',
+      selectedProfileId: 'speaker-direction',
+      instruct: 'warm',
+      direction: '  intimate  ',
+      emotionMode: 'none',
+    });
+    vi.mocked(generateClone).mockReset().mockRejectedValue(new Error('stop'));
+
+    function DirectionConsumer() {
+      const generation = useGenerateClone();
+      return (
+        <button
+          onClick={() =>
+            void (design
+              ? generation.generateDesign({ text: 'A designed voice.', instruct: 'male' })
+              : generation.generate())
+          }
+        >
+          direction render
+        </button>
+      );
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <GenerationProvider>
+          <DirectionConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText('direction render'));
+    await waitFor(() => expect(generateClone).toHaveBeenCalled());
+    expect(vi.mocked(generateClone).mock.calls[0][0].instruct).toBe(instruct);
+    engine.vocabulary = undefined;
+    engine.design = undefined;
+    engine.caps = undefined;
   },
 );

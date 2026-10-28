@@ -232,6 +232,7 @@ def test_catalogue_ct2_reference_is_reused_without_transformers_asr(monkeypatch,
     from collections import OrderedDict
     from services import asr_backend as ab, sherpa_dictation
     from api.routers.setup import models as catalogue
+    from services import model_catalogue
 
     repo = "deepdml/faster-whisper-large-v3-turbo-ct2"
     assert any(item["repo_id"] == repo for item in catalogue.KNOWN_MODELS)
@@ -239,7 +240,7 @@ def test_catalogue_ct2_reference_is_reused_without_transformers_asr(monkeypatch,
     snapshot.mkdir()
     # Sparse stand-in satisfies the real catalogue's completeness check.
     with (snapshot / "model.bin").open("wb") as weights:
-        weights.truncate(catalogue._MIN_WEIGHT_BYTES)
+        weights.truncate(model_catalogue._MIN_WEIGHT_BYTES)
     monkeypatch.setattr(catalogue, "_snapshot_dirs", lambda rid: [str(snapshot)] if rid == repo else [])
     monkeypatch.setattr(catalogue, "_model_supported", lambda _: True)
     monkeypatch.setattr(ab, "asr_model_missing_error", lambda **kw: {"error": "selected model missing"})

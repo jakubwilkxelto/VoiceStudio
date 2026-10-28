@@ -7,7 +7,7 @@ model, so results are repeatable on every platform.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Callable, Mapping, Optional, Sequence
 
 import numpy as np
@@ -82,17 +82,18 @@ class SegmentSpan:
     speaker_id: str = ""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ProsodyFeatures:
-    loudness_db: float
-    rate_hz: float
-    voiced_ratio: float
     active_s: float
+    voiced_ratio: float
+    rate_hz: float
+    loudness_db: float
     pitch_st: Optional[float] = None
     pitch_spread_st: Optional[float] = None
 
     def get(self, name: str) -> Optional[float]:
-        return getattr(self, name)
+        """Return a named measurement, or ``None`` when it is unavailable."""
+        return getattr(self, name, None)
 
 
 @dataclass(frozen=True)
@@ -117,7 +118,7 @@ class Baseline:
         return out
 
 
-@dataclass
+@dataclass(slots=True)
 class MirrorResult:
     id: str
     direction: str = ""
@@ -125,14 +126,10 @@ class MirrorResult:
     z: dict[str, float] = field(default_factory=dict)
     measured: bool = False
 
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "direction": self.direction,
-            "tokens": self.tokens,
-            "z": {name: round(value, 2) for name, value in self.z.items()},
-            "measured": self.measured,
-        }
+    def to_dict(self) -> dict[str, object]:
+        payload = asdict(self)
+        payload["z"] = {name: round(value, 2) for name, value in self.z.items()}
+        return payload
 
 
 def to_mono_analysis_rate(audio: np.ndarray, sr: int) -> np.ndarray:

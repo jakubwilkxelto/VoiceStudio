@@ -6,6 +6,7 @@ import { engineFamilyState, useEngines } from '@/hooks/use-engines';
 import { describeError } from '@/lib/api/client';
 import type { EngineBackend, EngineFamilyState } from '@/lib/api/types';
 import { EngineInstall } from '../engine-install';
+import { AUDIOCPP_TTS_ENGINES, AudioCppRuntimeInstall } from '../audiocpp-runtime-install';
 import { EngineLicense, licensedEngine } from '../engine-license';
 import { EngineHealth } from '../engine-health';
 import { ModelLicense } from '../model-license';
@@ -30,6 +31,7 @@ import { EngineDetails, ModelCount } from './engine-details';
 import { FamilyList } from './family-list';
 import type { FamilyItem } from './family-row';
 import { useEngineSelect } from './use-engine-select';
+import { GGUF_ENGINE, GgufQuantPicker } from './gguf-quant-picker';
 
 type Family = 'tts' | 'asr';
 
@@ -89,6 +91,8 @@ function engineItem(ctx: Context, engine: EngineBackend): FamilyItem {
     <EngineLicense id={licenseId} name={engine.display_name} />
   ) : engine.one_click_install ? (
     <EngineInstall id={engine.id} />
+  ) : AUDIOCPP_TTS_ENGINES.has(engine.id) ? (
+    <AudioCppRuntimeInstall />
   ) : null;
   const singleInfo = single ? describeJob(single, ops) : undefined;
   const fallbackNote =
@@ -99,11 +103,14 @@ function engineItem(ctx: Context, engine: EngineBackend): FamilyItem {
       snippet={engine.available ? null : engine.setup_snippet}
       docsUrl={engine.docs_url}
       tools={
-        <EngineHealth
-          id={engine.id}
-          available={engine.available}
-          isolationMode={engine.isolation_mode}
-        />
+        <>
+          {engine.id === GGUF_ENGINE && engine.available && <GgufQuantPicker />}
+          <EngineHealth
+            id={engine.id}
+            available={engine.available}
+            isolationMode={engine.isolation_mode}
+          />
+        </>
       }
     />
   );

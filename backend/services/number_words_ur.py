@@ -14,9 +14,10 @@ integers, decimals and percentages the way an Urdu speaker reads them:
     alike: 1956 → انیس سو چھپن, 1500 → پندرہ سو. Outside that range
     (1000, 2000 and up) the ہزار form is the spoken one.
 
-Scope matches the conservative rules of :mod:`services.text_normalization`:
-integers 0–999999 (six digits, so کروڑ is out of scope), decimals read as
-"<int> اعشاریہ <digit> <digit>…", percentages as "<number> فیصد".
+Its deliberately narrow scope matches ``services.text_normalization``: only
+integers from 0 through 999 999 are supported, so crore and longer forms stay
+out of scope. Decimals say the integer, ``DECIMAL_WORD``, then each fractional
+digit separately; percentages say the number followed by ``PERCENT_WORD``.
 
 Spelling uses Urdu letters (ی U+06CC, ہ U+06C1, ک U+06A9, ے U+06D2, ھ U+06BE
 for aspirates), never their Arabic look-alikes. Pure Python, no dependencies;
@@ -62,41 +63,39 @@ def _below_thousand(n: int) -> str:
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def cardinal(n: int) -> str:
-    """Render an integer 0 ≤ n ≤ 999999 as Urdu words."""
-    if isinstance(n, bool) or not isinstance(n, int):
-        raise TypeError("cardinal() expects an int")
-    if n < 0 or n > 999_999:
-        raise ValueError("cardinal() supports 0..999999")
+    if type(n) is not int:
+        raise TypeError("Urdu cardinal values must be plain integers")
+    if not 0 <= n <= 999_999:
+        raise ValueError("Urdu cardinal values must be between 0 and 999999")
     if n < 1000:
         return _below_thousand(n)
     if 1100 <= n <= 1999:
-        # Years and amounts alike: 1956 → انیس سو چھپن, 1500 → پندرہ سو.
-        hundreds, rest = divmod(n, 100)
-        head = f"{_BELOW_HUNDRED[hundreds]} {HUNDRED}"
-        return f"{head} {_BELOW_HUNDRED[rest]}" if rest else head
-    lakhs, rest = divmod(n, 100_000)
-    thousands, units = divmod(rest, 1000)
-    parts: list[str] = []
-    if lakhs:
-        parts.append(f"{_BELOW_HUNDRED[lakhs]} {LAKH}")
-    if thousands:
-        parts.append(f"{_BELOW_HUNDRED[thousands]} {THOUSAND}")
-    if units:
-        parts.append(_below_thousand(units))
-    return " ".join(parts)
+        hundreds, remainder = divmod(n, 100)
+        parts = [_BELOW_HUNDRED[hundreds], HUNDRED]
+        if remainder:
+            parts.append(_BELOW_HUNDRED[remainder])
+        return " ".join(parts)
+
+    lakhs = n // 100_000
+    thousands = (n % 100_000) // 1000
+    units = n % 1000
+    grouped_phrases = (
+        f"{_BELOW_HUNDRED[lakhs]} {LAKH}" if lakhs else "",
+        f"{_BELOW_HUNDRED[thousands]} {THOUSAND}" if thousands else "",
+        _below_thousand(units) if units else "",
+    )
+    return " ".join(phrase for phrase in grouped_phrases if phrase)
 
 
 def decimal(int_part: int, frac_digits: str) -> str:
-    """3.14 → تین اعشاریہ ایک چار (fraction digits are read one by one)."""
-    digits = " ".join(_BELOW_HUNDRED[int(d)] for d in frac_digits)
-    return f"{cardinal(int_part)} {DECIMAL_WORD} {digits}"
+    digit_words = (_BELOW_HUNDRED[int(digit)] for digit in frac_digits)
+    return " ".join((cardinal(int_part), DECIMAL_WORD, *digit_words))
 
 
 def percent(raw: str) -> str:
-    """'50' → پچاس فیصد; '2.5' → دو اعشاریہ پانچ فیصد."""
     if "." in raw:
-        a, b = raw.split(".", 1)
-        body = decimal(int(a), b)
+        left, right = raw.split(".", 1)
+        number = decimal(int(left), right)
     else:
-        body = cardinal(int(raw))
-    return f"{body} {PERCENT_WORD}"
+        number = cardinal(int(raw))
+    return f"{number} {PERCENT_WORD}"

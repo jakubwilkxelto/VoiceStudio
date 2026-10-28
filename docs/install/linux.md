@@ -314,17 +314,18 @@ wheel index (`https://download.pytorch.org/whl/rocm6.4` by default) right after
 the dependency sync, leaving every other package on the regular index, matched to the app's pinned `torch==2.8.0` (the rocm6.2 index
 only ever published up to torch 2.5.1). **Settings → Performance → GPU
 acceleration** reports which PyTorch build is installed. The option is ignored
-on macOS and Windows.
+on macOS; on Windows it selects the opt-in stack in
+[windows-rocm.md](windows-rocm.md).
 
 **2. Source checkout.** `OMNIVOICE_TORCH_VARIANT=rocm bun run setup:api` swaps
 torch right after `uv sync`; `bun run dev` then starts the backend from that
 environment, and `bun run dev:api` launches it without re-syncing, so the
-wheel is not reverted (#1665). Running `bun run setup:api` without the
-variable restores the lockfile's CUDA build — a hand-swapped ROCm wheel does
-not survive it. `OMNIVOICE_TORCH_INDEX=<url>` overrides the wheel
-index when you need a different ROCm version — e.g. AMD publishes newer
-driver-matched builds (7.2.x) at `repo.radeon.com` as a `--find-links` page
-rather than a PyPI-style index:
+wheel is not reverted (#1665).
+Running `bun run setup:api` again without `OMNIVOICE_TORCH_VARIANT` restores
+the lockfile's CUDA torch build, replacing any ROCm wheel you installed by
+hand. To choose another ROCm release, set `OMNIVOICE_TORCH_INDEX=<url>`; AMD
+publishes newer driver-matched 7.2.x wheels on `repo.radeon.com` as a
+`--find-links` page rather than a PyPI-compatible index, for example:
 ```bash
 uv pip install --reinstall-package torch --reinstall-package torchaudio \
   --reinstall-package torchvision torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 \
@@ -356,8 +357,13 @@ uv pip install \
 Once a ROCm build of PyTorch is in the venv, detection is automatic —
 `get_best_device()` returns the GPU (ROCm-built PyTorch reports through
 `torch.cuda.is_available()`), and VoiceStudio auto-sets
-`HSA_OVERRIDE_GFX_VERSION` for consumer cards whose GFX ID isn't in the
-official ROCm support matrix. Relaunch and **Settings → Performance → GPU acceleration** should
+`HSA_OVERRIDE_GFX_VERSION` when your card's GFX ID is missing from the
+installed wheel's architecture list. The target comes from that list, not from
+a fixed table: the closest architecture of the same generation and the same or
+an older revision (gfx1152 → gfx1100, gfx1035 → gfx1030, gfx1201 → gfx1200 on
+a wheel that only ships gfx1200). It never crosses a generation, nor RDNA1/RDNA2
+(gfx101x/gfx103x) or Vega/CDNA within gfx9, so an RDNA4
+card on a wheel without any gfx12 target gets no override and a clear message. Relaunch and **Settings → Performance → GPU acceleration** should
 report the GPU device instead of `cpu`. Verify the wheel sees your card:
 
 ```bash
@@ -370,7 +376,8 @@ Notes:
 - Unsupported GFX (e.g. some consumer RDNA cards): if it still won't run, set
   `HSA_OVERRIDE_GFX_VERSION` yourself to a supported architecture **of the same
   generation** before launching (e.g. `export HSA_OVERRIDE_GFX_VERSION=11.0.0`
-  for a gfx11xx card, `10.3.0` for gfx10xx). A remap across generations cannot
+  for a gfx11xx card, `10.3.0` for a gfx103x card; RDNA1 gfx101x cannot use
+  `10.3.0`). A remap across generations cannot
   work, so RDNA4 (gfx12xx) cards need a ROCm build that lists them instead.
   When the build lacks your card, VoiceStudio's GPU architecture notification
   names the exact value to try, or says that no remap exists.

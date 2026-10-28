@@ -40,7 +40,7 @@ def status() -> dict:
         return out
     out["installed"] = True
     try:
-        r = subprocess.run([cli, "status", "--json"], capture_output=True, text=True, timeout=10)
+        r = subprocess.run([cli, "status", "--json"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
         if r.returncode != 0:
             return out
         data = json.loads(r.stdout or "{}")
@@ -56,7 +56,7 @@ def status() -> dict:
 
 def _run(args):
     try:
-        r = subprocess.run(args, capture_output=True, text=True, timeout=20)
+        r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
         if r.returncode != 0:
             diagnostic = (r.stderr or r.stdout or "tailscale serve failed").strip()
             logger.error(
@@ -82,19 +82,25 @@ _LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
 
 
 def _serve_config(cli):
-    """The node's background serve config, or None when it cannot be read."""
+    """Read the machine-wide Tailscale serve configuration safely."""
     try:
-        r = subprocess.run([cli, "serve", "status", "--json"], capture_output=True, text=True, timeout=10)
-        if r.returncode != 0:
-            logger.warning("tailscale serve status exited with code %s", r.returncode)
+        result = subprocess.run(
+            [cli, "serve", "status", "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        if result.returncode != 0:
+            logger.warning("Tailscale serve status exited with code %s", result.returncode)
             return None
-        # Older/newer clients may print a version-skew warning before the JSON.
-        text = r.stdout or ""
-        brace = text.find("{")
-        data = json.loads(text[brace:]) if brace >= 0 else {}
+        output = result.stdout or ""
+        first_object = output.find("{")
+        data = {} if first_object < 0 else json.loads(output[first_object:])
         return data if isinstance(data, dict) else None
-    except Exception:
-        logger.exception("Could not read the Tailscale serve config")
+    except Exception:  # noqa: BLE001
+        logger.exception("Tailscale serve configuration could not be read")
         return None
 
 
@@ -156,7 +162,9 @@ def _pick_port(config: dict, scheme: str, backend_port: int):
 def _url(scheme: str, dns: str, port: int) -> str:
     if not dns:
         return ""
-    return f"{scheme}://{dns}" if port == _DEFAULT_PORTS[scheme] else f"{scheme}://{dns}:{port}"
+    if _DEFAULT_PORTS.get(scheme) == port:
+        return f"{scheme}://{dns}"
+    return f"{scheme}://{dns}:{port}"
 
 
 def serve_enable(port: int | None = None) -> dict:

@@ -26,6 +26,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { to: '/settings/permissions', label: 'permissions.microphone' },
   { to: '/settings/storage', label: 'settings.storage' },
   { to: '/settings/pronunciation', label: 'pronunciation.title' },
+  { to: '/settings/pronunciation', label: 'pauseFill.room_tone' },
   { to: '/settings/media', label: 'settings.audio_tools' },
   { to: '/settings/logs', label: 'settings.logs' },
   { to: '/settings/updates', label: 'updates.tab' },

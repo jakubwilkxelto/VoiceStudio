@@ -37,6 +37,7 @@ import { referenceStore } from '@/lib/store/reference';
 import { beginAppActivity } from '@/lib/app-activity';
 import { isPresetOnly, useTtsReadiness } from './use-tts-readiness';
 import { useEngines } from './use-engines';
+import { expressionCaps } from '@/lib/expression';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
 import { announceDroppedSpeech } from '@/lib/dropped-speech';
 
@@ -172,6 +173,7 @@ function useGenerateController(): UseGenerateClone {
   const blocker = cloneEngineBlocker ?? inputBlocker;
   const activeTts = useEngines().activeTts;
   const instructVocabulary = activeTts?.instruct_vocabulary ?? 'tags';
+  const sendsDirection = expressionCaps(activeTts).emotion === 'direction';
   // An engine that declares it can't design would only fail inside the
   // engine (and /generate refuses it); say so before anything starts.
   const designBlocker: DesignBlocker =
@@ -336,9 +338,13 @@ function useGenerateController(): UseGenerateClone {
         // A preset-only engine that can't design never reads a style
         // instruct, and /generate refuses one there as a design request: the
         // preset voice take keeps working with a leftover instruct (#3413).
-        const free =
+        const style =
           design?.instruct ??
           (presetOnly && activeTts?.supports_voice_design === false ? '' : settings.instruct);
+        // Delivery direction is a per-engine draft like IndexTTS2 emotion: only
+        // engines whose instruct steers a clone receive it; others never see it.
+        const direction = !design && sendsDirection ? settings.direction.trim() : '';
+        const free = [style.trim(), direction].filter(Boolean).join(', ');
         // Only tag-list engines need the text filtered (with warnings); a
         // free-form engine reads whatever was written.
         const wording = free.trim();
@@ -409,20 +415,21 @@ function useGenerateController(): UseGenerateClone {
         toast.success(tr('tts.generationComplete'), { position: 'top-right' });
         if (!design)
           // Record what was actually rendered: a take sent without emotion (an
-          // engine without IndexTTS2 controls, or Off) is saved as neutral, so
-          // reusing it later never adds emotion the recording did not use.
-          rememberTake(
-            result.id,
-            'emoText' in input || 'emoVector' in input
-              ? settings
+          // engine without IndexTTS2 controls, or Off) or without a delivery
+          // direction is saved without it, so reusing it later never adds
+          // direction the recording did not use.
+          rememberTake(result.id, {
+            ...settings,
+            direction,
+            ...('emoText' in input || 'emoVector' in input
+              ? {}
               : {
-                  ...settings,
                   emotionMode: DEFAULT_CLONE_SETTINGS.emotionMode,
                   emotionText: DEFAULT_CLONE_SETTINGS.emotionText,
                   emotionAlpha: DEFAULT_CLONE_SETTINGS.emotionAlpha,
                   emotionVector: [...DEFAULT_CLONE_SETTINGS.emotionVector],
-                },
-          );
+                }),
+          });
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.history }),
           queryClient.invalidateQueries({ queryKey: ['loaded-models'] }),
@@ -459,7 +466,16 @@ function useGenerateController(): UseGenerateClone {
           .catch(() => {});
       }
     },
-    [queryClient, onProgress, blocker, designBlockerFor, instructVocabulary, activeTts, presetOnly],
+    [
+      queryClient,
+      onProgress,
+      blocker,
+      designBlockerFor,
+      instructVocabulary,
+      activeTts,
+      presetOnly,
+      sendsDirection,
+    ],
   );
 
   const cancel = useCallback(() => {

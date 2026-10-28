@@ -63,6 +63,7 @@ const getSystemLanguage = () => {
     'id',
     'uk',
     'ar',
+    'gl',
   ].find((code) => navLang.startsWith(code.split('-')[0]));
   return match || 'en';
 };

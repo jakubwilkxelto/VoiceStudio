@@ -10,6 +10,10 @@
 #
 # Fields:
 #   repo_id    (required) — HuggingFace repository ID
+#   id         (optional) — catalogue identity when several entries download
+#                            different packages from one repo_id. Must be
+#                            "<repo_id>:<package>" and come with allow_patterns
+#                            + required_files; defaults to repo_id.
 #   engines    (required) — backend ids that load this repo; [] for pipeline weights no single engine owns (they list under "Other weights")
 #   label      (required) — Human-readable display name
 #   role       (required) — TTS | ASR | Translation | Diarisation
@@ -60,6 +64,20 @@ models:
       - "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf"
       - "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
     note: "Optional audio.cpp bundle for native voice cloning and up-to-four-speaker diarisation. Research/non-commercial weights and self-hosted outputs; install only after reviewing the licenses."
+
+  # A second package from the same repository: its own catalogue `id`
+  # (`<repo_id>:<package>`) so it installs, reports and uninstalls on its own.
+  - id: "audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0"
+    repo_id: "audio-cpp/audio.cpp-gguf"
+    label: "audio.cpp dots.tts SOAR (Q8_0, multilingual voice cloning)"
+    role: TTS
+    engines: [audiocpp-dots]
+    size_gb: 2.96
+    required_files:
+      - "DotTTS-SOAR-GGUF/dots-tts-soar-q8_0.gguf"
+    allow_patterns:
+      - "DotTTS-SOAR-GGUF/dots-tts-soar-q8_0.gguf"
+    note: "dots.tts on the native audio.cpp runtime, including Windows. Apache-2.0 weights."
 
   # ── ASR (optional — curated per platform) ─────────────────────────────
   # No ASR model is required to boot: TTS-only installs work. Dubbing,

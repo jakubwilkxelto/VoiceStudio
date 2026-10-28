@@ -159,6 +159,45 @@ function preparationStageKey(eventType: unknown) {
   return 'dub.prep_preparing';
 }
 
+type MirrorNotice = {
+  tone: 'error' | 'success' | 'info';
+  key: string;
+  params: Record<string, unknown>;
+};
+
+function describeMirrorOutcome(
+  outcome: Awaited<ReturnType<typeof mirrorDubSourceDelivery>>,
+  failureMessage: string,
+): MirrorNotice {
+  const state =
+    outcome === null
+      ? 'failed'
+      : outcome.applied > 0
+        ? 'applied'
+        : outcome.measured === 0
+          ? 'insufficient'
+          : 'unchanged';
+  const notices = {
+    failed: {
+      tone: 'error',
+      key: 'dub_workflow.mirror_failed',
+      params: { message: failureMessage },
+    },
+    applied: {
+      tone: 'success',
+      key: 'dub_workflow.mirror_applied',
+      params: { count: outcome?.applied ?? 0 },
+    },
+    insufficient: {
+      tone: 'info',
+      key: 'dub_workflow.mirror_insufficient',
+      params: {},
+    },
+    unchanged: { tone: 'info', key: 'dub_workflow.mirror_none', params: {} },
+  } satisfies Record<typeof state, MirrorNotice>;
+  return notices[state];
+}
+
 function bestSplitPoint(text: string) {
   const middle = Math.floor(text.length / 2);
   let best = -1;
@@ -1428,23 +1467,16 @@ export function DubPage() {
                           onClick={() =>
                             void mirrorDubSourceDelivery()
                               .then((outcome) => {
-                                if (!outcome) {
-                                  toast.error(
-                                    t('dub_workflow.mirror_failed', {
-                                      message: dubSession.state.error || t('common.error'),
-                                    }),
-                                  );
-                                } else if (outcome.applied > 0) {
-                                  toast.success(
-                                    t('dub_workflow.mirror_applied', {
-                                      count: outcome.applied,
-                                    }),
-                                  );
-                                } else if (outcome.measured === 0) {
-                                  toast.info(t('dub_workflow.mirror_insufficient'));
-                                } else {
-                                  toast.info(t('dub_workflow.mirror_none'));
-                                }
+                                const notice = describeMirrorOutcome(
+                                  outcome,
+                                  dubSession.state.error || t('common.error'),
+                                );
+                                const emit = {
+                                  error: toast.error,
+                                  success: toast.success,
+                                  info: toast.info,
+                                }[notice.tone];
+                                emit(t(notice.key, notice.params));
                               })
                               .catch((error) =>
                                 toast.error(
@@ -2378,7 +2410,9 @@ export function DubPage() {
                                         onKeyDown={(event) => {
                                           if (event.key === 'Enter') event.currentTarget.blur();
                                           if (event.key === 'Escape') {
-                                            event.currentTarget.value = formatSegmentTime(segment.start);
+                                            event.currentTarget.value = formatSegmentTime(
+                                              segment.start,
+                                            );
                                             event.currentTarget.blur();
                                           }
                                         }}
@@ -2388,7 +2422,9 @@ export function DubPage() {
                                             segment.start,
                                           );
                                           if (start === null) {
-                                            event.currentTarget.value = formatSegmentTime(segment.start);
+                                            event.currentTarget.value = formatSegmentTime(
+                                              segment.start,
+                                            );
                                             return;
                                           }
                                           const timing = clampSegmentEdit(
@@ -2400,7 +2436,9 @@ export function DubPage() {
                                               duration: session.duration || undefined,
                                             },
                                           );
-                                          event.currentTarget.value = formatSegmentTime(timing.start);
+                                          event.currentTarget.value = formatSegmentTime(
+                                            timing.start,
+                                          );
                                           moveResizeDubSegment(segment.id, timing);
                                         }}
                                       />
@@ -2415,7 +2453,9 @@ export function DubPage() {
                                         onKeyDown={(event) => {
                                           if (event.key === 'Enter') event.currentTarget.blur();
                                           if (event.key === 'Escape') {
-                                            event.currentTarget.value = formatSegmentTime(segment.end);
+                                            event.currentTarget.value = formatSegmentTime(
+                                              segment.end,
+                                            );
                                             event.currentTarget.blur();
                                           }
                                         }}
@@ -2425,7 +2465,9 @@ export function DubPage() {
                                             segment.end,
                                           );
                                           if (end === null) {
-                                            event.currentTarget.value = formatSegmentTime(segment.end);
+                                            event.currentTarget.value = formatSegmentTime(
+                                              segment.end,
+                                            );
                                             return;
                                           }
                                           const timing = clampSegmentEdit(

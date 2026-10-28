@@ -474,10 +474,18 @@ function samePath(left: string, right: string): boolean {
     : normalizedLeft === normalizedRight;
 }
 
+/** A source checkout that cannot launch, and the setup screen that explains why. */
+export interface SpawnPlanError {
+  error: string;
+  /** Set when no local setup can succeed on this host (Intel Mac, #3584). */
+  setupIssue?: 'unsupported_platform';
+}
+
 export async function resolveSpawnPlan(
   port: number,
   packagedProject?: string,
-): Promise<SpawnPlan | { error: string }> {
+  hostIssue: ReturnType<typeof platformSetupIssue> = platformSetupIssue(),
+): Promise<SpawnPlan | SpawnPlanError> {
   const root = backendRoot();
   const override = parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD);
   if (override) return { argv: override, cwd: root };
@@ -493,6 +501,27 @@ export async function resolveSpawnPlan(
   // Setup is explicit: `uv run` can sync gigabytes inside the health-check
   // deadline and repeat that download after every restart (#2184).
   const portArg = ['--port', String(port)];
+  // PyTorch publishes no Intel-Mac wheels, so `uv sync` cannot resolve the lock
+  // there and every module stays missing (#3584). Advising `setup:api` would
+  // only repeat that failure; say what does work instead.
+  if (hostIssue === 'unsupported_platform') {
+    return {
+      error:
+        'This Intel Mac cannot run the local VoiceStudio backend: PyTorch no longer publishes ' +
+        'Intel-Mac wheels, so `bun run setup:api` cannot install it. Connect the app to a ' +
+        'VoiceStudio backend on another computer, or run the backend on an Apple Silicon Mac, ' +
+        'Windows or Linux.',
+      setupIssue: 'unsupported_platform',
+    };
+  }
+  if (hostIssue === 'wrong_architecture') {
+    return {
+      error:
+        `This checkout runs Intel (x64) Electron under Rosetta on an Apple Silicon Mac, and Intel-Mac ` +
+        `PyTorch wheels do not exist. Open a native (arm64) terminal in ${root}, delete node_modules ` +
+        'and .venv, run `bun install` and `bun run setup:api` with an arm64 Bun, then start the app again.',
+    };
+  }
   const python = venvPython(root);
   // Only a source checkout reaches this point: an installed app returned above
   // with its app-managed runtime, which the setup screen repairs in-app (#3480).
@@ -1059,6 +1088,14 @@ export class BackendSupervisor extends EventEmitter<{
       const plan = await resolveSpawnPlan(this.port, this.runtimeProject ?? undefined);
       if (gen !== this.generation) return;
       if ('error' in plan) {
+        if (plan.setupIssue) {
+          // Same screen an installed app shows on this host: remote-backend
+          // guidance instead of a Retry that can never succeed.
+          this.setupIssue = plan.setupIssue;
+          this.pushLog('err', plan.error);
+          this.setStage('setup_required', { message: undefined });
+          return;
+        }
         this.setStage('failed', { message: plan.error });
         return;
       }

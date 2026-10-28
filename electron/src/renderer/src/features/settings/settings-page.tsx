@@ -12,6 +12,7 @@ import { StorageSettings } from './storage-settings';
 import { MediaTools } from './media-tools';
 import { LogSettings } from './log-settings';
 import { PronunciationSettings } from './pronunciation-settings';
+import { PauseFillSettings } from './pause-fill-settings';
 import { PermissionsSettings } from './permissions-settings';
 import { UsageSettings } from './usage-settings';
 import { OpenApiSettings } from './openapi-settings';
@@ -46,17 +47,30 @@ import { AppearanceResetButton, AppearanceSettings, GeneralSettings } from './se
 import { rememberSettingsRoute } from '@/lib/settings-route';
 import { useXeltoVisibleSettings } from '@/xelto/admin-visibility'; // XELTO: hide admin pages
 
+// Pause fill (#3611) sits with the pronunciation dictionary: both shape how
+// the generated speech sounds.
+function SpeechOutputSettings() {
+  return (
+    <>
+      <PauseFillSettings />
+      <PronunciationSettings />
+    </>
+  );
+}
+
 const extraSettings = [
   {
     to: '/settings/pronunciation',
     label: 'pronunciation.title',
     Icon: SpellCheckIcon,
-    Component: PronunciationSettings,
+    Component: SpeechOutputSettings,
     fields: [
       'pronunciation.title',
       'pronunciation.help',
       'pronunciation.test_label',
       'pronunciation.backup_title',
+      'pauseFill.title',
+      'pauseFill.room_tone',
     ],
   },
   {

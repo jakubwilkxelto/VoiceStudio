@@ -133,6 +133,25 @@ test("failed dependency sync never continues into setup or reports success", asy
   );
 });
 
+test("an Intel Mac stops before syncing and names the remote-backend path (#3584)", async () => {
+  let ran = false;
+  await assert.rejects(
+    setupApi({
+      platform: "darwin",
+      arch: "x64",
+      selectVariant: async () => "native",
+      log: () => {},
+      repairNativeLibraries: async () => {},
+      run: () => {
+        ran = true;
+        return { status: 0 };
+      },
+    }),
+    /Intel Macs cannot install the local backend[\s\S]*backend on another computer/,
+  );
+  assert.equal(ran, false);
+});
+
 test("root setup command and every dev restart preserve the chosen CPU environment", () => {
   const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
   assert.equal(pkg.scripts["setup:api"], "node scripts/setup-api.mjs");

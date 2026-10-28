@@ -672,7 +672,10 @@ busy and the Radeon idle, and **Settings → About → Run self-check** says the
 compute device is `cpu`.
 
 **Cause:** the default install has the NVIDIA CUDA build of PyTorch (or the
-CPU-only build when no NVIDIA driver is present), and neither can drive AMD GPUs. This is not a driver problem on your side. Open
+CPU-only build when no NVIDIA driver is present), and neither can drive AMD GPUs. This is not a driver problem on your side.
+ROCm is opt-in on Linux and Windows (macOS has no ROCm), so the installer never
+picks it on its own; the setup screen's GPU check names the installed build and
+the opt-in for your OS. Open
 **Settings → Performance → GPU acceleration**: it names your card, the installed
 PyTorch build and, for every engine, whether it uses the GPU.
 

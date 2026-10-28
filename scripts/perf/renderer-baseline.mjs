@@ -38,7 +38,7 @@ const eagerRows = eager.map((file) => {
 });
 const sum = (rows, key) => rows.reduce((total, row) => total + row[key], 0);
 
-const LOCALE = /^(ar|de|es|fr|hi|id|it|ja|ko|nl|pl|pt|ru|sv|th|tr|uk|vi|zh-CN|zh-TW)-/;
+const LOCALE = /^(ar|de|es|fr|hi|id|it|ja|ko|nl|pl|pt|ru|sv|th|tr|uk|vi|zh-CN|zh-TW|gl)-/;
 const locales = js.filter((a) => LOCALE.test(a.name));
 
 console.log('### Renderer bundle');

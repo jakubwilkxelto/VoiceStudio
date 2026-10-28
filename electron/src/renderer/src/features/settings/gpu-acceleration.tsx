@@ -1,6 +1,8 @@
 import { ZapIcon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/button';
+import { GpuOfferText, useGpuOffer } from '@/components/gpu-offer';
 import { apiJson } from '@/lib/api/client';
 import { SettingsRow, SettingsSection } from './settings-layout';
 
@@ -66,6 +68,39 @@ const ENGINE_CODES = new Set([
   'not_installed',
 ]);
 
+/** The GPU offer's permanent home: shown while the host qualifies and the
+ * GGUF engine is not in use, whatever was answered on the one-time banner. */
+function GpuOfferRow() {
+  const { t } = useTranslation();
+  const offer = useGpuOffer();
+  const status = offer.status;
+  if (!status?.eligible || status.active) return null;
+  return (
+    <SettingsRow
+      id="gpu-offer"
+      title={t('gpuOffer.title')}
+      description={
+        <span className="block space-y-1">
+          <GpuOfferText status={status} />
+          {offer.needsLicence && (
+            <span className="block text-xs">{t('gpuOffer.licence_then_retry')}</span>
+          )}
+          {offer.failed && (
+            <span role="alert" className="block text-xs text-destructive">
+              {t('common.error')}
+            </span>
+          )}
+        </span>
+      }
+    >
+      <Button size="sm" disabled={offer.busy} onClick={() => void offer.answer(true)}>
+        <ZapIcon />
+        {t('gpuOffer.accept')}
+      </Button>
+    </SettingsRow>
+  );
+}
+
 export function GpuAcceleration() {
   const { t } = useTranslation();
   const query = useQuery({
@@ -87,6 +122,7 @@ export function GpuAcceleration() {
   const onGpu = engines.filter((engine) => engine.code.startsWith('gpu')).length;
   return (
     <SettingsSection icon={ZapIcon} title={t('settings.gpu_report_title')}>
+      <GpuOfferRow />
       <SettingsRow
         id="gpu-report-summary"
         title={t('settings.gpu_report_summary')}

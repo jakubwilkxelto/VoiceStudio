@@ -711,3 +711,158 @@ def test_convert_unsupported_pick_keeps_auto_detect(client, monkeypatch, clone_p
     res = _post_convert(client, clone_profile, match_duration="0", language="Klingon")
     assert res.status_code == 200, res.text
     assert asr.calls[0]["language"] is None
+
+
+# ── Keep my delivery (#3421): speech-to-speech, no transcript ───────────────
+#
+# The recording goes to an engine that declares supports_voice_conversion;
+# ASR never runs. ffmpeg decode is stubbed.
+
+import numpy as np  # noqa: E402
+
+
+def _vc_engine(engine_id):
+    cls = _make_fake_engine(engine_id)
+    cls.supports_voice_conversion = True
+    cls.max_vc_source_seconds = 10.0
+    cls.vc_calls = []
+
+    def convert_voice(self, source_audio, *, ref_audio, seed=None):
+        import soundfile as sf
+
+        audio, sr = sf.read(source_audio, dtype="float32")
+        type(self).vc_calls.append((source_audio, ref_audio, len(audio) / sr))
+        return torch.full((1, len(audio)), 0.1)
+
+    cls.convert_voice = convert_voice
+    return cls
+
+
+@pytest.fixture()
+def profile():
+    from core.db import db_conn, init_db
+
+    init_db()
+    pid = f"vp-keep-{uuid.uuid4().hex[:8]}"
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT INTO voice_profiles (id, name, kind, ref_audio_path, ref_text, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (pid, "Keep Target", "clone", "convert-ref.wav", "reference words", 0.0),
+        )
+    yield pid
+    _delete_profile_and_takes(pid)
+
+
+def _stub_decode(monkeypatch, seconds):
+    import services.voice_conversion as vc
+
+    async def decode(path, sr, *, max_s=None):
+        n = int((min(seconds, max_s) if max_s else seconds) * sr)
+        t = np.arange(n) / sr
+        return (0.3 * np.sin(2 * np.pi * 180 * t)).astype(np.float32)
+
+    monkeypatch.setattr(vc, "decode_mono", decode)
+
+
+def _no_asr(monkeypatch):
+    import services.asr_backend as ab
+
+    def boom(**kw):
+        raise AssertionError("Keep my delivery must not transcribe")
+
+    monkeypatch.setattr(ab, "load_active_asr_backend", boom)
+    monkeypatch.setattr(ab, "asr_model_missing_error", boom)
+
+
+def _post(client, pid, **extra):
+    return client.post(
+        "/convert",
+        data={"profile_id": pid, "keep_delivery": "1", **extra},
+        files={"audio": ("source.wav", b"RIFF-fake-wav-bytes", "audio/wav")},
+    )
+
+
+def test_keep_delivery_converts_the_recording_without_asr(client, monkeypatch, profile):
+    vc_cls = _vc_engine(f"vc-{uuid.uuid4().hex[:6]}")
+    plain = _make_fake_engine(f"plain-{uuid.uuid4().hex[:6]}")
+    monkeypatch.setitem(_tts_mod()._REGISTRY, vc_cls.id, vc_cls)
+    monkeypatch.setitem(_tts_mod()._REGISTRY, plain.id, plain)
+    # The active engine cannot convert; the installed one that can is used.
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", plain.id)
+    _no_asr(monkeypatch)
+    _stub_decode(monkeypatch, 25.0)
+
+    r = _post(client, profile)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["engine"] == vc_cls.id and body["text"] == ""
+    # 25 s split under the 10 s cap (minus margin): every piece fits, none lost.
+    pieces = [c[2] for c in vc_cls.vc_calls]
+    assert len(pieces) >= 3 and max(pieces) <= 8.0 + 1e-6
+    assert abs(sum(pieces) - 25.0) < 0.01
+    assert body["duration_s"] == pytest.approx(25.0, abs=0.05)
+    assert plain.calls == []  # never re-spoken
+
+    from core.db import db_conn
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT mode FROM generation_history WHERE id=?", (body["id"],)
+        ).fetchone()
+    assert row["mode"] == "convert"
+
+
+def test_keep_delivery_prefers_the_active_engine(client, monkeypatch, profile):
+    first = _vc_engine(f"vca-{uuid.uuid4().hex[:6]}")
+    active = _vc_engine(f"vcb-{uuid.uuid4().hex[:6]}")
+    monkeypatch.setitem(_tts_mod()._REGISTRY, first.id, first)
+    monkeypatch.setitem(_tts_mod()._REGISTRY, active.id, active)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", active.id)
+    _no_asr(monkeypatch)
+    _stub_decode(monkeypatch, 2.0)
+
+    r = _post(client, profile)
+    assert r.status_code == 200, r.text
+    assert r.json()["engine"] == active.id
+    assert first.vc_calls == []
+
+
+def test_keep_delivery_without_a_conversion_engine_says_what_to_install(client, monkeypatch, profile):
+    monkeypatch.setattr(_tts_mod(), "voice_conversion_engine_ids", lambda: [])
+    _no_asr(monkeypatch)
+    r = _post(client, profile)
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["error"] == "voice_conversion_engine_missing"
+    assert "CosyVoice 3" in detail["message"]
+
+
+def test_split_lands_in_the_pause_and_respects_the_cap():
+    from services.voice_conversion import split_audio
+
+    sr = 16000
+    speech = lambda s: (0.3 * np.sin(2 * np.pi * 200 * np.arange(int(s * sr)) / sr)).astype(np.float32)
+    # 7 s speech, 0.5 s pause, 7 s speech: a 10 s cap must cut inside the pause.
+    audio = np.concatenate([speech(7.0), np.zeros(int(0.5 * sr), np.float32), speech(7.0)])
+    bounds = split_audio(audio, sr, 10.0)
+    assert bounds[0][0] == 0 and bounds[-1][1] == len(audio)
+    assert all(b - a <= 10 * sr for a, b in bounds)
+    assert all(bounds[i][1] == bounds[i + 1][0] for i in range(len(bounds) - 1))
+    assert 7.0 * sr <= bounds[0][1] <= 7.5 * sr
+    assert split_audio(audio[: 3 * sr], sr, 10.0) == [(0, 3 * sr)]
+    assert split_audio(np.zeros(0, np.float32), sr, 10.0) == []
+
+
+def test_keep_delivery_refuses_an_overlong_source(client, monkeypatch, profile):
+    import services.voice_conversion as vc
+
+    vc_cls = _vc_engine(f"vcl-{uuid.uuid4().hex[:6]}")
+    monkeypatch.setitem(_tts_mod()._REGISTRY, vc_cls.id, vc_cls)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", vc_cls.id)
+    monkeypatch.setattr(vc, "MAX_SOURCE_S", 5.0)
+    _no_asr(monkeypatch)
+    _stub_decode(monkeypatch, 30.0)
+    r = _post(client, profile)
+    assert r.status_code == 422
+    assert "longer than" in r.json()["detail"]
+    assert vc_cls.vc_calls == []

@@ -28,18 +28,20 @@ from services.hf_auth import token_for_endpoint
 from services.hf_revisions import revision_for
 from utils import hf_progress
 from utils import download_aggregator
-# Weight-floor scan (MM2-07 / #352) lives in ``models.py`` — the lowest module in
-# the setup import graph — so install-time validation here, the first-run
-# install-state detector (#622), and load-time repair share one set of floors and
-# can't drift apart. ``_MIN_WEIGHT_BYTES``/``_WEIGHT_FLOORS`` re-exported for tests.
-from .models import (  # noqa: F401
+# Weight floors and package files live in ``services/model_catalogue.py`` (via
+# ``models.py``), so install-time validation here, the first-run install-state
+# detector (#622), and load-time repair share one set of floors.
+from services.model_catalogue import _package_files
+
+from .models import (
     KNOWN_MODELS,
     invalidate_cache,
+    model_key,
+    shares_repo,
+    _snapshot_dirs,
     snapshot_is_complete,
     disk_full_message,
     disk_space_error,
-    _MIN_WEIGHT_BYTES,
-    _WEIGHT_FLOORS,
 )
 
 logger = logging.getLogger("omnivoice.setup.download")
@@ -194,6 +196,12 @@ def _xet_active() -> bool:
     if importlib.util.find_spec("hf_xet") is None:
         return False
     return os.environ.get("HF_HUB_DISABLE_XET", "").strip().lower() not in {"1", "true", "yes", "on"}
+
+
+def _hub_repo_of(key: str) -> str:
+    """Hub repository a catalogue identity downloads from."""
+    model = next((m for m in KNOWN_MODELS if model_key(m) == key), None)
+    return model["repo_id"] if model else key
 
 
 def _repo_cancelled(repo_id: str) -> bool:
@@ -386,7 +394,7 @@ def _validate_snapshot_has_weights(repo_id: str, snapshot_path: str) -> None:
 
     Delegates to ``models.snapshot_is_complete`` so configuration-only pipeline
     repositories use their declared required files instead of a weight floor."""
-    model = next((m for m in KNOWN_MODELS if m["repo_id"] == repo_id), {"repo_id": repo_id})
+    model = next((m for m in KNOWN_MODELS if model_key(m) == repo_id), {"repo_id": repo_id})
     if snapshot_is_complete(model, snapshot_path):
         return
     if model.get("config_only"):
@@ -582,8 +590,9 @@ def _segmented_retry_log_phrase(disable: bool, retry: bool) -> str:
 async def install_model(req: InstallModelRequest):
     """Download one HF repo snapshot; progress goes through the shared
     ``/setup/download-stream`` SSE feed."""
+    # ``req.repo_id`` is the catalogue identity; Hub calls use ``hub_repo``.
     model_spec = next(
-        (model for model in KNOWN_MODELS if model["repo_id"] == req.repo_id),
+        (model for model in KNOWN_MODELS if model_key(model) == req.repo_id),
         None,
     )
     if model_spec is None:
@@ -591,9 +600,10 @@ async def install_model(req: InstallModelRequest):
             status_code=400,
             detail=(
                 f"Unknown model: {req.repo_id!r}. Known: "
-                + ", ".join(m["repo_id"] for m in KNOWN_MODELS)
+                + ", ".join(model_key(m) for m in KNOWN_MODELS)
             ),
         )
+    hub_repo = model_spec["repo_id"]
     allow_patterns = list(model_spec.get("allow_patterns") or []) or None
     target = (req.target or "local").strip() or "local"
     if target != "local":
@@ -626,10 +636,12 @@ async def install_model(req: InstallModelRequest):
             return
         from services import hf_cache_rollback
         with _active_installs_lock:
-            busy = {
-                repo for repo in _cache_before.repos
-                if repo != req.repo_id and repo in _active_installs
+            # Another package of the same Hub repo may be installing too:
+            # map every other active install to the Hub repo it writes.
+            writing = {
+                _hub_repo_of(key) for key in _active_installs if key != req.repo_id
             }
+            busy = {repo for repo in _cache_before.repos if repo in writing}
         try:
             hf_cache_rollback.rollback(_cache_before, skip=busy)
         except Exception:  # noqa: BLE001 — cleanup must not mask the cancel
@@ -665,7 +677,7 @@ async def install_model(req: InstallModelRequest):
                 from services import hf_cache_rollback
                 _cache_before = hf_cache_rollback.capture(
                     _hf_constants.HF_HUB_CACHE,
-                    [req.repo_id, *(d["repo_id"] for d in model_spec.get("dependencies") or ())],
+                    [hub_repo, *(d["repo_id"] for d in model_spec.get("dependencies") or ())],
                 )
             except Exception:  # noqa: BLE001 — install proceeds without rollback data
                 logger.warning("model install %s: cache state could not be recorded", req.repo_id)
@@ -676,8 +688,8 @@ async def install_model(req: InstallModelRequest):
             # (Xet feeds bytes into whatever tqdm_class is supplied), bound the
             # parallel-files worker count, and honour an optional mirror endpoint.
             dl_kwargs: dict = {
-                "repo_id": req.repo_id,
-                "revision": revision_for(req.repo_id),
+                "repo_id": hub_repo,
+                "revision": revision_for(hub_repo),
                 "max_workers": _download_max_workers(),
             }
             from services.token_resolver import resolve as resolve_token
@@ -722,7 +734,7 @@ async def install_model(req: InstallModelRequest):
             # the overall aggregator so its bar/ETA are correct from the first
             # event. Degrades gracefully (totals=None) on older/gated repos.
             _preflight_kwargs = {
-                "repo_id": req.repo_id,
+                "repo_id": hub_repo,
                 "revision": dl_kwargs["revision"],
                 "dry_run": True,
             }
@@ -822,6 +834,9 @@ async def install_model(req: InstallModelRequest):
                     if (
                         not _segmented_disabled
                         and not allow_patterns
+                        # Whole-repo entries only: its progress and cancel keys
+                        # are the Hub repo id.
+                        and req.repo_id == hub_repo
                         and _segmented_enabled()
                         and not _xet_active()
                     ):
@@ -855,7 +870,7 @@ async def install_model(req: InstallModelRequest):
                     _validate_snapshot_has_weights(req.repo_id, _snapshot_path)
                     from huggingface_hub.constants import HF_HUB_CACHE
                     from services.hf_revisions import remember_revision
-                    remember_revision(req.repo_id, dl_kwargs["revision"], HF_HUB_CACHE)
+                    remember_revision(hub_repo, dl_kwargs["revision"], HF_HUB_CACHE)
                     # A pipeline config is not a runnable installation by itself.
                     # Download its reviewed dependencies only inside this explicit
                     # install action, retaining the parent cancellation/retry flow.
@@ -1142,7 +1157,13 @@ async def cancel_install(req: InstallModelRequest):
 
 @router.delete("/models/{repo_id:path}")
 def delete_model(repo_id: str):
-    """Remove every cached revision of a repo from the HF cache."""
+    """Remove an installed model from the HF cache.
+
+    A whole-repo entry removes every cached revision of its repo. An entry that
+    shares its Hub repository with other catalogue entries removes only the
+    files it selected, so uninstalling one package never deletes another's.
+    """
+    model = next((m for m in KNOWN_MODELS if model_key(m) == repo_id), None)
     hf_progress.emit({
         "repo_id": repo_id,
         "filename": repo_id,
@@ -1150,35 +1171,47 @@ def delete_model(repo_id: str):
         "phase": "delete_start",
     })
     try:
-        from huggingface_hub import scan_cache_dir
-        info = scan_cache_dir()
-        commits = [
-            rev.commit_hash
-            for entry in info.repos if entry.repo_id == repo_id
-            for rev in entry.revisions
-        ]
-        if not commits:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"Model {repo_id!r} isn't installed. Nothing to delete — "
-                    "run POST /models/install first if you want a fresh download."
-                ),
-            )
-        strategy = info.delete_revisions(*commits)
-        strategy.execute()
+        if model is not None and shares_repo(model):
+            freed = delete_package_files(model)
+            if freed is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"Model {repo_id!r} isn't installed. Nothing to delete — "
+                        "run POST /models/install first if you want a fresh download."
+                    ),
+                )
+        else:
+            from huggingface_hub import scan_cache_dir
+            info = scan_cache_dir()
+            commits = [
+                rev.commit_hash
+                for entry in info.repos if entry.repo_id == repo_id
+                for rev in entry.revisions
+            ]
+            if not commits:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"Model {repo_id!r} isn't installed. Nothing to delete — "
+                        "run POST /models/install first if you want a fresh download."
+                    ),
+                )
+            strategy = info.delete_revisions(*commits)
+            strategy.execute()
+            freed = strategy.expected_freed_size
         hf_progress.emit({
             "repo_id": repo_id,
             "filename": repo_id,
             "downloaded": 0, "total": 0, "pct": 1.0,
             "phase": "delete_done",
-            "freed_bytes": strategy.expected_freed_size,
+            "freed_bytes": freed,
         })
         invalidate_cache()
         return {
             "deleted": True,
             "repo_id": repo_id,
-            "freed_bytes": strategy.expected_freed_size,
+            "freed_bytes": freed,
         }
     except HTTPException:
         raise
@@ -1190,3 +1223,58 @@ def delete_model(repo_id: str):
                 "Close any process using the model (e.g. the app's main dub job) and retry."
             ),
         )
+
+
+def delete_package_files(model: dict) -> "int | None":
+    """Delete one package's files from a Hub repo other entries share.
+
+    Removes every snapshot file the entry's ``allow_patterns`` select, unless a
+    sibling entry also selects it, then each blob no remaining snapshot file
+    points to. Returns the bytes freed, or None when nothing was installed.
+    """
+    siblings = [
+        other for other in KNOWN_MODELS
+        if other is not model and other.get("repo_id") == model["repo_id"]
+    ]
+    removed_any = False
+    freed = 0
+    for snapshot in _snapshot_dirs(model["repo_id"]):
+        repo_dir = os.path.dirname(os.path.dirname(snapshot))
+        shared = {path for other in siblings for path in _package_files(other, snapshot)}
+        for path in _package_files(model, snapshot):
+            if path in shared:
+                continue
+            target = os.path.realpath(path) if os.path.islink(path) else None
+            try:
+                if target is None:
+                    freed += os.path.getsize(path)
+                os.remove(path)
+                removed_any = True
+            except FileNotFoundError:
+                continue
+            if target and os.path.isfile(target) and not _blob_referenced(repo_dir, target):
+                freed += os.path.getsize(target)
+                os.remove(target)
+        _prune_empty_dirs(snapshot)
+    return freed if removed_any else None
+
+
+def _blob_referenced(repo_dir: str, blob: str) -> bool:
+    """True when any snapshot file of this repo still resolves to ``blob``."""
+    for root, _dirs, files in os.walk(os.path.join(repo_dir, "snapshots")):
+        for name in files:
+            path = os.path.join(root, name)
+            if os.path.islink(path) and os.path.realpath(path) == blob:
+                return True
+    return False
+
+
+def _prune_empty_dirs(snapshot: str) -> None:
+    for root, _dirs, _files in os.walk(snapshot, topdown=False):
+        if root != snapshot and not os.listdir(root):
+            try:
+                os.rmdir(root)
+            except OSError:
+                # Best-effort tidy-up: a dir that gained a file (a sibling
+                # package's concurrent download) or is locked stays in place.
+                continue

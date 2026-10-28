@@ -16,7 +16,7 @@
      "repo_id": {
       "maxLength": 200,
       "minLength": 3,
-      "pattern": "^[A-Za-z0-9][\\w.-]*/[\\w.-]+$",
+      "pattern": "^[A-Za-z0-9][\\w.-]*/[\\w.-]+(?::[\\w.-]+)?$",
       "title": "Repo Id",
       "type": "string"
      }
@@ -739,6 +739,11 @@
       "contentMediaType": "application/octet-stream",
       "title": "Audio",
       "type": "string"
+     },
+     "keep_delivery": {
+      "default": false,
+      "title": "Keep Delivery",
+      "type": "boolean"
      },
      "language": {
       "default": "",
@@ -2463,6 +2468,38 @@
     "title": "FitOptions",
     "type": "object"
    },
+   "GGUFGpuOfferAnswer": {
+    "properties": {
+     "accept": {
+      "title": "Accept",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "accept"
+    ],
+    "title": "GGUFGpuOfferAnswer",
+    "type": "object"
+   },
+   "GGUFQuantRequest": {
+    "properties": {
+     "quant": {
+      "anyOf": [
+       {
+        "maxLength": 128,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "\"auto\", a quant tag (Q4_K_M, Q8_0, BF16, F32) or its base filename; omitted on download means the selected quant.",
+      "title": "Quant"
+     }
+    },
+    "title": "GGUFQuantRequest",
+    "type": "object"
+   },
    "GlossaryTerm": {
     "properties": {
      "note": {
@@ -3635,7 +3672,7 @@
      "repo_id": {
       "maxLength": 200,
       "minLength": 3,
-      "pattern": "^[A-Za-z0-9][\\w.-]*/[\\w.-]+$",
+      "pattern": "^[A-Za-z0-9][\\w.-]*/[\\w.-]+(?::[\\w.-]+)?$",
       "title": "Repo Id",
       "type": "string"
      }
@@ -5565,6 +5602,24 @@
      "enabled"
     ],
     "title": "_OffloadAfterGenerationBody",
+    "type": "object"
+   },
+   "_PauseFillBody": {
+    "properties": {
+     "mode": {
+      "description": "silence: exact zeros (default); room_tone: the take's own noise floor",
+      "enum": [
+       "silence",
+       "room_tone"
+      ],
+      "title": "Mode",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode"
+    ],
+    "title": "_PauseFillBody",
     "type": "object"
    },
    "_PerformanceProfileBody": {
@@ -7930,6 +7985,64 @@
     ]
    }
   },
+  "/api/settings/pause-fill": {
+   "get": {
+    "description": "How [pause] markers and audiobook gaps are filled.",
+    "operationId": "get_pause_fill_api_settings_pause_fill_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Pause Fill",
+    "tags": [
+     "settings"
+    ]
+   },
+   "put": {
+    "description": "Persist the choice. Applies from the next generation, no restart.",
+    "operationId": "set_pause_fill_api_settings_pause_fill_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/_PauseFillBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Set Pause Fill",
+    "tags": [
+     "settings"
+    ]
+   }
+  },
   "/api/settings/perf/offload-after-generation": {
    "get": {
     "description": "Whether the in-process TTS model moves to system RAM after generation.",
@@ -10234,7 +10347,7 @@
   },
   "/convert": {
    "post": {
-    "description": "Convert a spoken clip into an existing voice profile's voice.\n\nMultipart form: ``audio`` (the source clip), ``profile_id`` (an existing\nvoice profile), optional ``match_duration`` (default on \u2014 atempo the take\ntoward the source clip's length, clamped to 0.5\u20132.0\u00d7).\n\nReturns JSON ``{audio_url, text, duration_s, id}`` \u2014 the take is saved to\nOUTPUTS_DIR and served from the ``/audio`` mount like every other take.",
+    "description": "Convert a spoken clip into an existing voice profile's voice.\n\nMultipart form: ``audio`` (the source clip), ``profile_id`` (an existing\nvoice profile), optional ``match_duration`` (default on \u2014 atempo the take\ntoward the source clip's length, clamped to 0.5\u20132.0\u00d7), optional\n``keep_delivery`` (default off \u2014 convert the recording itself so the\nspeaker's timing, rhythm and intonation are kept, #3421; no transcript).\n\nReturns JSON ``{audio_url, text, duration_s, id}`` \u2014 the take is saved to\nOUTPUTS_DIR and served from the ``/audio`` mount like every other take.",
     "operationId": "convert_speech_convert_post",
     "requestBody": {
      "content": {
@@ -12920,6 +13033,146 @@
      }
     },
     "summary": "List Llm Backends"
+   }
+  },
+  "/engines/omnivoice-gguf/gpu-offer": {
+   "get": {
+    "description": "The one-time \"use your GPU?\" offer: eligibility, GPU, quant, download size.",
+    "operationId": "omnivoice_gguf_gpu_offer_engines_omnivoice_gguf_gpu_offer_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Omnivoice Gguf Gpu Offer"
+   },
+   "post": {
+    "description": "Accept (switch to GGUF on Vulkan and fetch the weights) or decline the\noffer. An unaccepted model licence answers 403 so the app shows its\nlicence dialog first.",
+    "operationId": "answer_omnivoice_gguf_gpu_offer_engines_omnivoice_gguf_gpu_offer_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GGUFGpuOfferAnswer"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Answer Omnivoice Gguf Gpu Offer"
+   }
+  },
+  "/engines/omnivoice-gguf/quants": {
+   "get": {
+    "operationId": "omnivoice_gguf_quants_engines_omnivoice_gguf_quants_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Omnivoice Gguf Quants"
+   }
+  },
+  "/engines/omnivoice-gguf/quants/download": {
+   "post": {
+    "operationId": "download_omnivoice_gguf_quant_engines_omnivoice_gguf_quants_download_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GGUFQuantRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Download Omnivoice Gguf Quant"
+   }
+  },
+  "/engines/omnivoice-gguf/quants/select": {
+   "post": {
+    "operationId": "select_omnivoice_gguf_quant_engines_omnivoice_gguf_quants_select_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GGUFQuantRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Select Omnivoice Gguf Quant"
    }
   },
   "/engines/select": {
@@ -16106,7 +16359,7 @@
   },
   "/models/{repo_id}": {
    "delete": {
-    "description": "Remove every cached revision of a repo from the HF cache.",
+    "description": "Remove an installed model from the HF cache.\n\nA whole-repo entry removes every cached revision of its repo. An entry that\nshares its Hub repository with other catalogue entries removes only the\nfiles it selected, so uninstalling one package never deletes another's.",
     "operationId": "delete_model_models__repo_id__delete",
     "parameters": [
      {

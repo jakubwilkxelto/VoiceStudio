@@ -13,6 +13,16 @@
     "surprised": "Surprise",
     "calm": "Calme"
   },
+  "expression": {
+    "direction_label": "Indication de jeu",
+    "direction_ph": "p. ex. nerveux au début, puis enthousiaste",
+    "direction_help": "S’applique à toute la prise, comme indication pour {{engine}}.",
+    "unsupported": "L’émotion n’est pas disponible avec {{engine}}. IndexTTS2 propose une émotion graduée ; CosyVoice 3 et VoxCPM2 acceptent une indication écrite.",
+    "tags_hint": "Pour un moment précis dans une ligne, ajoutez des réactions comme {{example}} via Insérer dans le script.",
+    "tags_unsupported": "{{engine}} lirait les balises grisées à voix haute comme des mots.",
+    "guide": "Guide de la voix expressive",
+    "tip": "Astuce : façonnez le jeu avec Émotion ci-dessous et ajoutez des réactions comme des rires ou des soupirs via Insérer dans le script."
+  },
   "cloneQuality": {
     "title": "Qualité audio",
     "precision": "Précision WAV",
@@ -1789,7 +1799,7 @@
     "addLine": "Ajouter une ligne",
     "addChapter": "Ajouter un chapitre",
     "clearConfirm": "Effacer les {{count}} entrées du script et tout texte importé en attente ? Cette action est irréversible.",
-    "clearScript": "Vider le script",
+    "clearScript": "Effacer le script",
     "clearScriptHint": "Supprime tout le script : toutes les lignes et tous les chapitres",
     "clearConfirmScript": "Effacer définitivement l’intégralité de ce manuscrit ?",
     "chapterN": "Chapitre {{n}}",
@@ -2784,6 +2794,10 @@
     "pick_voice": "Choisir un profil de voix…",
     "match_duration": "Aligner sur la durée source",
     "match_duration_hint": "Étire le résultat dans le temps (hauteur préservée) pour approcher la durée du clip source.",
+    "keep_delivery": "Garder mon interprétation",
+    "keep_delivery_hint": "Seule la voix change. Votre rythme, vos pauses et votre intonation restent tels qu'enregistrés. Désactivé : le clip est transcrit puis réénoncé.",
+    "keep_delivery_engine_required": "« Garder mon interprétation » nécessite CosyVoice 3.",
+    "keep_delivery_no_voices": "Aucune voix ne possède d’enregistrement vers lequel convertir. Clonez une voix à partir d’un enregistrement ou désactivez Garder mon interprétation.",
     "source_language": "Langue de la parole source (Auto = langue du profil vocal)",
     "convert": "Convertir",
     "converting": "Conversion…",
@@ -4456,5 +4470,45 @@
     "generating": "Attendez la fin de la prise en cours.",
     "name_required": "Saisissez d’abord un nom.",
     "audio_missing": "Cette prise n’a pas de fichier audio à enregistrer."
+  },
+  "ggufQuant": {
+    "label": "Quantification du modèle",
+    "auto": "Auto : {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU ou choix natif par défaut",
+    "option": "{{quant}} · {{size}} Mo",
+    "option_installed": "{{quant}} · {{size}} Mo · installé",
+    "download": "Télécharger {{quant}} ({{size}} Mo)",
+    "downloading": "Téléchargement de {{quant}} : {{done}} sur {{total}} Mo",
+    "using_installed": "{{quant}} installé est utilisé jusqu’au téléchargement de la quantification choisie.",
+    "env_pinned": "Fixé sur {{quant}} par {{env}}.",
+    "runtime_missing": "Le moteur omnivoice-tts est absent. Réinstallez VoiceStudio ou compilez-le avec scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "Le fichier omnivoice-tts fourni est un espace réservé, pas un moteur fonctionnel. Réinstallez VoiceStudio.",
+    "runtime_integrity": "La somme de contrôle du moteur omnivoice-tts est invalide. Réinstallez VoiceStudio.",
+    "runtime_quarantined": "Le système a mis le moteur omnivoice-tts en quarantaine. Autorisez-le ou réinstallez VoiceStudio.",
+    "runtime_other": "Le moteur omnivoice-tts ne démarre pas. Consultez le contrôle du moteur pour les détails.",
+    "weights_missing": "Les poids du modèle ne sont pas encore téléchargés. Téléchargez-les maintenant, sinon ils le seront à la première génération.",
+    "download_failed": "Échec du téléchargement des poids"
+  },
+  "gpuOffer": {
+    "title": "Utiliser votre GPU pour une voix plus rapide ?",
+    "body": "VoiceStudio a trouvé {{gpu}}. OmniVoice GGUF peut l’utiliser via Vulkan au lieu du CPU, avec le modèle {{quant}}.",
+    "body_shared": "VoiceStudio a trouvé {{gpu}}, qui partage la mémoire système. OmniVoice GGUF peut l’utiliser via Vulkan au lieu du CPU, avec le modèle {{quant}}.",
+    "download": "Téléchargement unique de {{size}} Mo.",
+    "no_download": "Rien à télécharger.",
+    "licence": "Le modèle GGUF est réservé à un usage non commercial ; vous devrez d’abord accepter sa licence.",
+    "accept": "Utiliser le GPU",
+    "decline": "Plus tard",
+    "later": "Vous pourrez changer cela dans Réglages › {{section}}.",
+    "licence_then_retry": "Acceptez la licence, puis appuyez de nouveau sur Utiliser le GPU.",
+    "switched": "{{gpu}} est maintenant utilisé pour la voix.",
+    "switched_downloading": "{{gpu}} est maintenant utilisé pour la voix. Téléchargement du modèle {{quant}}…"
+  },
+  "pauseFill": {
+    "title": "Pauses",
+    "room_tone": "Remplir les pauses avec l'ambiance de la pièce",
+    "room_tone_note": "Les marqueurs [pause] et les blancs des livres audio reçoivent le fond calme de la prise au lieu d'un silence numérique, pour que le son ne se coupe pas entre les lignes.",
+    "env_pinned": "Défini par {{env}}. Modifiez-le ou supprimez-le pour utiliser cet interrupteur."
   }
 }

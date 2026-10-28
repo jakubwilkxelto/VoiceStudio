@@ -12,7 +12,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
-import i18n from '../i18n';
+import i18n, { LANGUAGES } from '../i18n';
 
 const captureLocales = import.meta.glob('../i18n/locales/*.json', {
   eager: true,
@@ -221,7 +221,7 @@ describe('CaptureWidget', () => {
   const typeCalls = () => mocks.holder.calls.filter(([c]) => c === 'simulate_type');
 
   it('provides a translated Inserted outcome in every supported locale', () => {
-    expect(Object.keys(captureLocales)).toHaveLength(21);
+    expect(Object.keys(captureLocales)).toHaveLength(LANGUAGES.length);
     for (const [path, locale] of Object.entries(captureLocales)) {
       expect(locale.capture.inserted, path).toBeTruthy();
       if (!path.endsWith('/en.json')) expect(locale.capture.inserted, path).not.toBe('Inserted');

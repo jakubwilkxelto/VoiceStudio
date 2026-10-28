@@ -87,6 +87,20 @@ def _duration_factor(text: str, language: str, duration: float) -> float:
     return max(0.5, min(float(duration) / natural_s, 2.0))
 
 
+def _speed_duration(text: str, language: str, speed: object) -> float | None:
+    """The target duration a public ``speed`` multiplier asks for, if any."""
+    from services.speech_rate import expected_duration
+
+    try:
+        rate = float(speed)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(rate) or rate <= 0 or abs(rate - 1.0) < 1e-6:
+        return None
+    natural_s = expected_duration(text, language)
+    return natural_s / rate if natural_s > 0 else None
+
+
 class IndexTTS2Backend(SubprocessBackend):
     """IndexTTS 2.5 (Bilibili) — isolated subprocess with IndexTTS-2 fallback.
 
@@ -309,6 +323,13 @@ class IndexTTS2Backend(SubprocessBackend):
 
         # Duration control — codec frame rate ≈ 21 Hz.
         duration = kw.get("duration")
+        if duration is None and kw.get("duration_factor") is None:
+            # Public ``speed`` (every route sends it) has no native IndexTTS
+            # knob, and was silently dropped (#3588). Express it as the
+            # duration it implies, so it reaches both 2.5 (relative factor)
+            # and legacy IndexTTS-2 (target tokens). Explicit duration
+            # controls win, so speed is never applied twice.
+            duration = _speed_duration(text, language, kw.get("speed"))
         if duration is not None:
             target_tokens = int(float(duration) * 21)
             if target_tokens > 0:

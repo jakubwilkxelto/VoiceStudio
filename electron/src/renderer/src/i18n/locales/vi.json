@@ -13,6 +13,16 @@
     "surprised": "Ngạc nhiên",
     "calm": "Bình tĩnh"
   },
+  "expression": {
+    "direction_label": "Chỉ dẫn diễn đạt",
+    "direction_ph": "vd: lúc đầu lo lắng, sau đó hào hứng",
+    "direction_help": "Áp dụng cho toàn bộ bản thu, làm hướng dẫn cho {{engine}}.",
+    "unsupported": "Không thể dùng cảm xúc với {{engine}}. IndexTTS2 có cảm xúc theo mức độ; CosyVoice 3 và VoxCPM2 nhận chỉ dẫn bằng văn bản.",
+    "tags_hint": "Cho các khoảnh khắc trong một dòng, hãy thêm phản ứng như {{example}} từ Chèn trong kịch bản.",
+    "tags_unsupported": "{{engine}} sẽ đọc to các thẻ màu xám thành chữ.",
+    "guide": "Hướng dẫn giọng nói biểu cảm",
+    "tip": "Mẹo: điều chỉnh cách diễn đạt bằng Cảm xúc bên dưới, và thêm phản ứng như tiếng cười hoặc tiếng thở dài từ Chèn trong kịch bản."
+  },
   "cloneQuality": {
     "title": "Chất lượng âm thanh",
     "precision": "Độ chính xác WAV",
@@ -2782,6 +2792,10 @@
     "pick_voice": "Chọn hồ sơ giọng nói…",
     "match_duration": "Khớp thời lượng nguồn",
     "match_duration_hint": "Kéo giãn kết quả theo thời gian (giữ nguyên cao độ) để gần bằng độ dài clip nguồn.",
+    "keep_delivery": "Giữ cách thể hiện của tôi",
+    "keep_delivery_hint": "Chỉ đổi giọng. Nhịp, chỗ ngắt và ngữ điệu của bạn giữ nguyên như bản ghi. Tắt: đoạn âm thanh được chép lời rồi đọc lại.",
+    "keep_delivery_engine_required": "Giữ cách thể hiện của tôi cần CosyVoice 3.",
+    "keep_delivery_no_voices": "Không có giọng nào có bản ghi để chuyển đổi sang. Hãy nhân bản giọng từ một bản ghi, hoặc tắt Giữ cách thể hiện của tôi.",
     "source_language": "Ngôn ngữ giọng nói nguồn (Tự động = ngôn ngữ của hồ sơ giọng nói)",
     "convert": "Chuyển đổi",
     "converting": "Đang chuyển đổi…",
@@ -4454,5 +4468,45 @@
     "generating": "Hãy đợi bản hiện tại hoàn tất.",
     "name_required": "Hãy nhập tên trước.",
     "audio_missing": "Bản này không có tệp âm thanh để lưu."
+  },
+  "ggufQuant": {
+    "label": "Lượng tử hóa mô hình",
+    "auto": "Tự động: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU hoặc mặc định gốc",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · đã cài",
+    "download": "Tải {{quant}} ({{size}} MB)",
+    "downloading": "Đang tải {{quant}}: {{done}} / {{total}} MB",
+    "using_installed": "Dùng {{quant}} đã cài cho đến khi tải xong bản lượng tử đã chọn.",
+    "env_pinned": "Được cố định ở {{quant}} bởi {{env}}.",
+    "runtime_missing": "Thiếu runtime omnivoice-tts. Cài lại VoiceStudio hoặc dựng bằng scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "Tệp omnivoice-tts đi kèm chỉ là tệp giữ chỗ, không phải runtime hoạt động. Cài lại VoiceStudio.",
+    "runtime_integrity": "Checksum của runtime omnivoice-tts không khớp. Cài lại VoiceStudio.",
+    "runtime_quarantined": "Hệ điều hành đã cách ly runtime omnivoice-tts. Cho phép hoặc cài lại VoiceStudio.",
+    "runtime_other": "Runtime omnivoice-tts không khởi động được. Xem kiểm tra engine để biết chi tiết.",
+    "weights_missing": "Chưa tải trọng số mô hình. Tải ngay, nếu không sẽ tải ở lần tạo đầu tiên.",
+    "download_failed": "Tải trọng số thất bại"
+  },
+  "gpuOffer": {
+    "title": "Dùng GPU để tạo giọng nhanh hơn?",
+    "body": "VoiceStudio đã tìm thấy {{gpu}}. OmniVoice GGUF có thể chạy trên đó qua Vulkan thay cho CPU, với mô hình {{quant}}.",
+    "body_shared": "VoiceStudio đã tìm thấy {{gpu}}, dùng chung bộ nhớ hệ thống. OmniVoice GGUF có thể chạy trên đó qua Vulkan thay cho CPU, với mô hình {{quant}}.",
+    "download": "Tải {{size}} MB một lần.",
+    "no_download": "Không cần tải gì.",
+    "licence": "Mô hình GGUF chỉ dùng phi thương mại; bạn sẽ được yêu cầu chấp nhận giấy phép trước.",
+    "accept": "Dùng GPU",
+    "decline": "Để sau",
+    "later": "Bạn có thể đổi sau trong Cài đặt › {{section}}.",
+    "licence_then_retry": "Hãy chấp nhận giấy phép, rồi nhấn Dùng GPU lần nữa.",
+    "switched": "Giọng nói giờ dùng {{gpu}}.",
+    "switched_downloading": "Giọng nói giờ dùng {{gpu}}. Đang tải mô hình {{quant}}…"
+  },
+  "pauseFill": {
+    "title": "Khoảng dừng",
+    "room_tone": "Lấp khoảng dừng bằng âm nền phòng",
+    "room_tone_note": "Dấu [pause] và các khoảng trống trong sách nói sẽ có nền yên tĩnh của chính bản thu thay vì im lặng kỹ thuật số, để âm thanh không bị ngắt giữa các dòng.",
+    "env_pinned": "Được đặt bởi {{env}}. Hãy đổi hoặc xóa để dùng công tắc này."
   }
 }

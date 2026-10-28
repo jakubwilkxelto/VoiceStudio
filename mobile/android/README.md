@@ -294,7 +294,8 @@ physical RAM are disabled, using decimal GB (`min_ram_gb * 1,000,000,000`).
 Downloads start only from a user action, use Hugging Face with hf-mirror.com
 fallback, resume with HTTP Range, enforce Wi-Fi unless mobile data is explicitly
 allowed, and reject low storage. A server ignoring Range restarts that file.
-Redirects stay HTTPS on Hugging Face/HF CDN or mirror hosts. The dedicated
+Redirects stay HTTPS on the default port, on Hugging Face/HF CDN or mirror hosts
+and their subdomains, matching iOS. The dedicated
 client never carries computer credentials. Incomplete files remain resumable;
 Delete removes them too. Every file must match size and SHA-256 before an
 installation marker is written; native loads reuse verification while the file stamp

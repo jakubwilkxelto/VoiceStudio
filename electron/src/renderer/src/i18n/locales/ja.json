@@ -13,6 +13,16 @@
     "surprised": "驚き",
     "calm": "落ち着き"
   },
+  "expression": {
+    "direction_label": "演技の指示",
+    "direction_ph": "例：最初は緊張気味、その後わくわくした様子で",
+    "direction_help": "テイク全体に適用され、{{engine}} への指示として使われます。",
+    "unsupported": "{{engine}} では感情を指定できません。IndexTTS2 は段階的な感情に、CosyVoice 3 と VoxCPM2 は文章による指示に対応しています。",
+    "tags_hint": "行の途中の瞬間には、スクリプトの「挿入」から {{example}} などのリアクションを追加してください。",
+    "tags_unsupported": "グレーのタグは {{engine}} が単語として読み上げてしまいます。",
+    "guide": "表現豊かな音声ガイド",
+    "tip": "ヒント：下の「感情」で話し方を調整し、スクリプトの「挿入」から笑い声やため息などのリアクションを追加できます。"
+  },
   "cloneQuality": {
     "title": "音声品質",
     "precision": "WAV精度",
@@ -2782,6 +2792,10 @@
     "pick_voice": "ボイスプロファイルを選択…",
     "match_duration": "元の長さに合わせる",
     "match_duration_hint": "結果をタイムストレッチ(ピッチ維持)して、ソースクリップの長さに近づけます。",
+    "keep_delivery": "自分の話し方を保つ",
+    "keep_delivery_hint": "声だけを変えます。タイミング、間、抑揚は録音のまま残ります。オフ：クリップを文字起こしして読み直します。",
+    "keep_delivery_engine_required": "「自分の話し方を保つ」には CosyVoice 3 が必要です。",
+    "keep_delivery_no_voices": "変換先の録音を持つボイスがありません。録音からボイスをクローンするか、「自分の話し方を保つ」をオフにしてください。",
     "source_language": "元の音声の言語（自動 = ボイスプロファイルの言語）",
     "convert": "変換",
     "converting": "変換中…",
@@ -4454,5 +4468,45 @@
     "generating": "現在のテイクが終わるまでお待ちください。",
     "name_required": "まず名前を入力してください。",
     "audio_missing": "このテイクには保存できる音声ファイルがありません。"
+  },
+  "ggufQuant": {
+    "label": "モデルの量子化",
+    "auto": "自動: {{quant}}（{{target}}）",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU またはネイティブ既定",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · インストール済み",
+    "download": "{{quant}} をダウンロード（{{size}} MB）",
+    "downloading": "{{quant}} をダウンロード中: {{done}} / {{total}} MB",
+    "using_installed": "選択した量子化のダウンロードが終わるまで、インストール済みの {{quant}} を使います。",
+    "env_pinned": "{{env}} により {{quant}} に固定されています。",
+    "runtime_missing": "omnivoice-tts ランタイムがありません。VoiceStudio を再インストールするか、scripts/build-omnivoice-tts.sh でビルドしてください。",
+    "runtime_placeholder": "同梱の omnivoice-tts はプレースホルダーで、動作するランタイムではありません。VoiceStudio を再インストールしてください。",
+    "runtime_integrity": "omnivoice-tts ランタイムのチェックサムが一致しません。VoiceStudio を再インストールしてください。",
+    "runtime_quarantined": "OS が omnivoice-tts ランタイムを隔離しました。許可するか VoiceStudio を再インストールしてください。",
+    "runtime_other": "omnivoice-tts ランタイムを起動できません。詳細はエンジンの診断を確認してください。",
+    "weights_missing": "モデルの重みはまだダウンロードされていません。今ダウンロードするか、初回生成時に自動で取得されます。",
+    "download_failed": "重みのダウンロードに失敗しました"
+  },
+  "gpuOffer": {
+    "title": "GPU を使って音声をもっと速く生成しますか？",
+    "body": "VoiceStudio は {{gpu}} を検出しました。OmniVoice GGUF は CPU の代わりに Vulkan 経由でこの GPU 上で {{quant}} モデルを実行できます。",
+    "body_shared": "VoiceStudio はシステムメモリを共有する {{gpu}} を検出しました。OmniVoice GGUF は CPU の代わりに Vulkan 経由でこの GPU 上で {{quant}} モデルを実行できます。",
+    "download": "{{size}} MB を一度だけダウンロードします。",
+    "no_download": "ダウンロードは不要です。",
+    "licence": "GGUF モデルは非商用利用向けです。先にライセンスへの同意を求められます。",
+    "accept": "GPU を使う",
+    "decline": "今はしない",
+    "later": "あとで 設定 › {{section}} から変更できます。",
+    "licence_then_retry": "ライセンスに同意してから、もう一度「GPU を使う」を押してください。",
+    "switched": "音声に {{gpu}} を使用しています。",
+    "switched_downloading": "音声に {{gpu}} を使用しています。{{quant}} モデルをダウンロード中…"
+  },
+  "pauseFill": {
+    "title": "ポーズ",
+    "room_tone": "ポーズをルームトーンで埋める",
+    "room_tone_note": "[pause] マーカーやオーディオブックの間に、デジタル無音ではなくその録音自体の静かな背景音を入れ、行の間で音が途切れないようにします。",
+    "env_pinned": "{{env}} で設定されています。このスイッチを使うには変更するか削除してください。"
   }
 }

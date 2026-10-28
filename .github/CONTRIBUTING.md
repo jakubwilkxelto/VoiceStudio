@@ -444,8 +444,8 @@ hard rules from the first prompt.
   *implementation* is fine; platform-divergent *default behavior* is a P0.
   Platform-only features go behind an explicit opt-in (Settings toggle, env
   var, or CLI flag).
-- **i18n — all 21 locales (hard rule):** every user-facing string goes through
-  `t('...')` and the key must exist in **all 21** files of the catalog the code
+- **i18n — every locale (hard rule):** every user-facing string goes through
+  `t('...')` and the key must exist in **every** file of the catalog the code
   uses: `electron/src/shared/i18n/locales/` (checked by
   `tests/test_locale_parity.py`) or `electron/src/renderer/src/i18n/locales/`
   (checked by `bun run --cwd electron locale:check`). Translate; don't copy

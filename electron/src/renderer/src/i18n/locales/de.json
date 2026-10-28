@@ -13,6 +13,16 @@
     "surprised": "Überraschung",
     "calm": "Ruhe"
   },
+  "expression": {
+    "direction_label": "Vortragsanweisung",
+    "direction_ph": "z. B. zuerst nervös, dann begeistert",
+    "direction_help": "Gilt für die ganze Aufnahme, als Anleitung für {{engine}}.",
+    "unsupported": "Mit {{engine}} ist keine Emotion verfügbar. IndexTTS2 bietet abgestufte Emotionen; CosyVoice 3 und VoxCPM2 nehmen eine schriftliche Anweisung an.",
+    "tags_hint": "Für Momente innerhalb einer Zeile fügen Sie Reaktionen wie {{example}} über „Einfügen“ im Skript hinzu.",
+    "tags_unsupported": "Ausgegraute Tags würde {{engine}} als Wörter vorlesen.",
+    "guide": "Leitfaden für ausdrucksstarke Sprache",
+    "tip": "Tipp: Gestalten Sie den Vortrag unten mit „Emotion“ und fügen Sie über „Einfügen“ im Skript Reaktionen wie Lachen oder Seufzen hinzu."
+  },
   "cloneQuality": {
     "title": "Audioqualität",
     "precision": "WAV-Präzision",
@@ -2782,6 +2792,10 @@
     "pick_voice": "Stimmprofil wählen…",
     "match_duration": "Quelldauer angleichen",
     "match_duration_hint": "Streckt das Ergebnis zeitlich (Tonhöhe bleibt erhalten), damit es etwa so lang wird wie der Quellclip.",
+    "keep_delivery": "Meinen Vortrag beibehalten",
+    "keep_delivery_hint": "Nur die Stimme ändert sich. Timing, Pausen und Betonung bleiben wie aufgenommen. Aus: Der Clip wird transkribiert und neu gesprochen.",
+    "keep_delivery_engine_required": "„Meinen Vortrag beibehalten“ benötigt CosyVoice 3.",
+    "keep_delivery_no_voices": "Keine Stimme hat eine Aufnahme, in die konvertiert werden kann. Klone eine Stimme aus einer Aufnahme oder schalte „Meinen Vortrag beibehalten“ aus.",
     "source_language": "Sprache der Quellaufnahme (Auto = Sprache des Stimmprofils)",
     "convert": "Konvertieren",
     "converting": "Konvertiere…",
@@ -4454,5 +4468,45 @@
     "generating": "Warte, bis die aktuelle Aufnahme fertig ist.",
     "name_required": "Gib zuerst einen Namen ein.",
     "audio_missing": "Diese Aufnahme hat keine Audiodatei zum Speichern."
+  },
+  "ggufQuant": {
+    "label": "Modell-Quantisierung",
+    "auto": "Auto: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU oder native Standardwahl",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · installiert",
+    "download": "{{quant}} herunterladen ({{size}} MB)",
+    "downloading": "{{quant}} wird heruntergeladen: {{done}} von {{total}} MB",
+    "using_installed": "Das installierte {{quant}} wird verwendet, bis die gewählte Quantisierung heruntergeladen ist.",
+    "env_pinned": "Durch {{env}} auf {{quant}} festgelegt.",
+    "runtime_missing": "Die omnivoice-tts-Laufzeit fehlt. Installiere VoiceStudio neu oder baue sie mit scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "Die mitgelieferte omnivoice-tts-Datei ist ein Platzhalter, keine funktionierende Laufzeit. Installiere VoiceStudio neu.",
+    "runtime_integrity": "Die Prüfsumme der omnivoice-tts-Laufzeit stimmt nicht. Installiere VoiceStudio neu.",
+    "runtime_quarantined": "Die omnivoice-tts-Laufzeit wurde vom Betriebssystem unter Quarantäne gestellt. Erlaube sie oder installiere VoiceStudio neu.",
+    "runtime_other": "Die omnivoice-tts-Laufzeit startet nicht. Details zeigt die Engine-Prüfung.",
+    "weights_missing": "Die Modellgewichte sind noch nicht heruntergeladen. Lade sie jetzt herunter, sonst geschieht das bei der ersten Generierung.",
+    "download_failed": "Download der Gewichte fehlgeschlagen"
+  },
+  "gpuOffer": {
+    "title": "Grafikkarte für schnellere Sprachausgabe nutzen?",
+    "body": "VoiceStudio hat {{gpu}} gefunden. OmniVoice GGUF kann darauf statt auf der CPU über Vulkan laufen, mit dem Modell {{quant}}.",
+    "body_shared": "VoiceStudio hat {{gpu}} gefunden, das den Arbeitsspeicher mitnutzt. OmniVoice GGUF kann darauf statt auf der CPU über Vulkan laufen, mit dem Modell {{quant}}.",
+    "download": "Einmaliger Download von {{size}} MB.",
+    "no_download": "Es muss nichts heruntergeladen werden.",
+    "licence": "Das GGUF-Modell ist nur für nichtkommerzielle Nutzung; du wirst zuerst gebeten, seine Lizenz zu akzeptieren.",
+    "accept": "GPU nutzen",
+    "decline": "Nicht jetzt",
+    "later": "Du kannst das später unter Einstellungen › {{section}} ändern.",
+    "licence_then_retry": "Akzeptiere die Lizenz und drücke dann erneut auf GPU nutzen.",
+    "switched": "{{gpu}} wird jetzt für Sprache verwendet.",
+    "switched_downloading": "{{gpu}} wird jetzt für Sprache verwendet. Das Modell {{quant}} wird heruntergeladen…"
+  },
+  "pauseFill": {
+    "title": "Pausen",
+    "room_tone": "Pausen mit Raumklang füllen",
+    "room_tone_note": "[pause]-Marker und Hörbuch-Lücken erhalten den leisen Hintergrund der Aufnahme statt digitaler Stille, damit der Klang zwischen den Zeilen nicht abbricht.",
+    "env_pinned": "Durch {{env}} festgelegt. Ändere oder entferne den Wert, um diesen Schalter zu nutzen."
   }
 }

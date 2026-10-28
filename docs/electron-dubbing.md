@@ -84,7 +84,11 @@ reading the source body or starting a preview mux. Local NLLB batches scale with
 bounding batch multiplied by beam count.
 
 The backend remains responsible for separation, ASR, speaker cloning, translation,
-TTS, fitting, mixing and export. Electron reuses Tauri's speaker binding and
+TTS, fitting, mixing and export. When the vocals were separated, each line starts on
+detected speech and ends after its last spoken sound (#3419): a sigh, breath, footstep
+or rustle before a line no longer sets its start, and trailing breaths and silence are
+trimmed from its slot. Whispered lines keep the energy-based start. Without separated
+vocals, the transcription timestamps are kept. Electron reuses Tauri's speaker binding and
 segment generation helpers. A stream close without a terminal event is a failure,
 not success. Cancellation aborts the HTTP stream and requests backend task/job
 cancellation. Edits, target language, track metadata and task IDs persist locally across reloads.

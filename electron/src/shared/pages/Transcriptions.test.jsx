@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { requestDictationCapture, copyToClipboard, toast, readiness, apiJson } = vi.hoisted(() => ({
@@ -47,17 +47,19 @@ describe('Transcriptions capture entry point', () => {
     toast.error.mockReset();
   });
 
-  it('shows the effective shortcut and starts the shared recorder from the empty state', async () => {
+  it('shows the shortcut and starts dictation from the empty state', async () => {
     render(<TranscriptionsPage />);
-    expect(screen.getByText('Super+Shift+V', { selector: 'kbd' })).toBeInTheDocument();
 
+    expect(screen.getByText('Super+Shift+V', { selector: 'kbd' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Start dictation' }));
+
     await waitFor(() => expect(requestDictationCapture).toHaveBeenCalledWith('start'));
   });
 
-  it('reports a capture-controller failure', async () => {
-    requestDictationCapture.mockRejectedValueOnce(new Error('event channel unavailable'));
+  it('reports a rejected capture request', async () => {
+    requestDictationCapture.mockRejectedValueOnce(new Error('recorder unavailable'));
     render(<TranscriptionsPage />);
+
     fireEvent.click(screen.getByRole('button', { name: 'Start dictation' }));
 
     await waitFor(() =>
@@ -67,26 +69,29 @@ describe('Transcriptions capture entry point', () => {
     );
   });
 
-  it('keeps the capture action available for whitespace-only searches', () => {
+  it('treats whitespace search as empty and keeps the labelled action', () => {
     render(<TranscriptionsPage />);
     fireEvent.change(screen.getByRole('textbox', { name: 'Search transcripts…' }), {
       target: { value: '   ' },
     });
 
-    const button = screen.getByRole('button', { name: 'Start dictation' });
-    expect(button.querySelector(':scope > svg')).toBeInTheDocument();
-    expect(button.querySelector(':scope > span')).toHaveTextContent('Start dictation');
     expect(screen.getByText('No transcripts saved yet')).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'Start dictation' });
+    const label = within(button).getByText('Start dictation');
+    expect(button.children).toHaveLength(2);
+    expect(button.children[0]).toBeInstanceOf(SVGElement);
+    expect(button.children[1]).toBe(label);
   });
 
-  it('moves the single capture action to the header once history exists', () => {
-    addTranscription({ text: 'Existing transcript.', language: 'en' });
+  it('moves the sole capture action to the header after history exists', async () => {
     render(<TranscriptionsPage />);
+    act(() => addTranscription({ text: 'A saved thought.', language: 'en' }));
 
-    const button = screen.getByRole('button', { name: 'Start dictation' });
-    expect(button.closest('.txn-header__right')).toBeInTheDocument();
-    expect(button.querySelector(':scope > svg')).toBeInTheDocument();
-    expect(button.querySelector(':scope > span')).toHaveTextContent('Start dictation');
+    const buttons = await screen.findAllByRole('button', { name: 'Start dictation' });
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].closest('.txn-header__right')).not.toBeNull();
+    const label = within(buttons[0]).getByText('Start dictation');
+    expect(Array.from(buttons[0].children)).toEqual([expect.any(SVGElement), label]);
     expect(screen.queryByText('No transcripts saved yet')).not.toBeInTheDocument();
   });
 

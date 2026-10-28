@@ -13,6 +13,16 @@
     "surprised": "Verrassing",
     "calm": "Kalmte"
   },
+  "expression": {
+    "direction_label": "Voordrachtsaanwijzing",
+    "direction_ph": "bijv. eerst nerveus, daarna enthousiast",
+    "direction_help": "Geldt voor de hele opname, als richtlijn voor {{engine}}.",
+    "unsupported": "Emotie is niet beschikbaar met {{engine}}. IndexTTS2 biedt geleidelijke emotie; CosyVoice 3 en VoxCPM2 accepteren een geschreven aanwijzing.",
+    "tags_hint": "Voor momenten binnen een regel voeg je reacties zoals {{example}} toe via Invoegen in het script.",
+    "tags_unsupported": "Grijze tags zou {{engine}} hardop als woorden voorlezen.",
+    "guide": "Gids voor expressieve spraak",
+    "tip": "Tip: geef de voordracht vorm met Emotie hieronder en voeg reacties zoals lachen of zuchten toe via Invoegen in het script."
+  },
   "cloneQuality": {
     "title": "Audiokwaliteit",
     "precision": "WAV-precisie",
@@ -2782,6 +2792,10 @@
     "pick_voice": "Kies een stemprofiel…",
     "match_duration": "Bronduur aanhouden",
     "match_duration_hint": "Rekt het resultaat in de tijd (toonhoogte blijft behouden) tot ongeveer de lengte van de bronclip.",
+    "keep_delivery": "Mijn voordracht behouden",
+    "keep_delivery_hint": "Alleen de stem verandert. Je timing, pauzes en intonatie blijven zoals opgenomen. Uit: de clip wordt uitgeschreven en opnieuw ingesproken.",
+    "keep_delivery_engine_required": "Mijn voordracht behouden vereist CosyVoice 3.",
+    "keep_delivery_no_voices": "Geen enkele stem heeft een opname om naar om te zetten. Kloon een stem uit een opname of zet Mijn voordracht behouden uit.",
     "source_language": "Taal van de brongesproken tekst (Auto = taal van het stemprofiel)",
     "convert": "Converteren",
     "converting": "Converteren…",
@@ -4454,5 +4468,45 @@
     "generating": "Wacht tot de huidige opname klaar is.",
     "name_required": "Voer eerst een naam in.",
     "audio_missing": "Deze opname heeft geen audiobestand om op te slaan."
+  },
+  "ggufQuant": {
+    "label": "Modelkwantisatie",
+    "auto": "Auto: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU of systeemstandaard",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · geïnstalleerd",
+    "download": "{{quant}} downloaden ({{size}} MB)",
+    "downloading": "{{quant}} downloaden: {{done}} van {{total}} MB",
+    "using_installed": "De geïnstalleerde {{quant}} wordt gebruikt tot de gekozen kwantisatie is gedownload.",
+    "env_pinned": "Vastgezet op {{quant}} door {{env}}.",
+    "runtime_missing": "De omnivoice-tts-runtime ontbreekt. Installeer VoiceStudio opnieuw of bouw hem met scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "Het meegeleverde omnivoice-tts-bestand is een tijdelijke aanduiding, geen werkende runtime. Installeer VoiceStudio opnieuw.",
+    "runtime_integrity": "De controlesom van de omnivoice-tts-runtime klopt niet. Installeer VoiceStudio opnieuw.",
+    "runtime_quarantined": "Het besturingssysteem heeft de omnivoice-tts-runtime in quarantaine gezet. Sta hem toe of installeer VoiceStudio opnieuw.",
+    "runtime_other": "De omnivoice-tts-runtime start niet. Zie de enginecontrole voor details.",
+    "weights_missing": "De modelgewichten zijn nog niet gedownload. Download ze nu, anders gebeurt dat bij de eerste generatie.",
+    "download_failed": "Downloaden van gewichten mislukt"
+  },
+  "gpuOffer": {
+    "title": "Je GPU gebruiken voor snellere spraak?",
+    "body": "VoiceStudio heeft {{gpu}} gevonden. OmniVoice GGUF kan daarop via Vulkan draaien in plaats van op de CPU, met het {{quant}}-model.",
+    "body_shared": "VoiceStudio heeft {{gpu}} gevonden, die je systeemgeheugen deelt. OmniVoice GGUF kan daarop via Vulkan draaien in plaats van op de CPU, met het {{quant}}-model.",
+    "download": "Eenmalige download van {{size}} MB.",
+    "no_download": "Er hoeft niets gedownload te worden.",
+    "licence": "Het GGUF-model is voor niet-commercieel gebruik; je wordt eerst gevraagd de licentie te accepteren.",
+    "accept": "GPU gebruiken",
+    "decline": "Niet nu",
+    "later": "Je kunt dit later wijzigen via Instellingen › {{section}}.",
+    "licence_then_retry": "Accepteer de licentie en druk daarna opnieuw op GPU gebruiken.",
+    "switched": "{{gpu}} wordt nu gebruikt voor spraak.",
+    "switched_downloading": "{{gpu}} wordt nu gebruikt voor spraak. Het {{quant}}-model wordt gedownload…"
+  },
+  "pauseFill": {
+    "title": "Pauzes",
+    "room_tone": "Pauzes vullen met ruimtetoon",
+    "room_tone_note": "[pause]-markeringen en luisterboekpauzes krijgen de stille achtergrond van de opname zelf in plaats van digitale stilte, zodat het geluid tussen regels niet wegvalt.",
+    "env_pinned": "Ingesteld door {{env}}. Wijzig of wis het om deze schakelaar te gebruiken."
   }
 }

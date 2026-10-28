@@ -13,6 +13,16 @@
     "surprised": "Sorpresa",
     "calm": "Calma"
   },
+  "expression": {
+    "direction_label": "Indicación de interpretación",
+    "direction_ph": "p. ej., nervioso al principio y luego emocionado",
+    "direction_help": "Se aplica a toda la toma, como guía para {{engine}}.",
+    "unsupported": "La emoción no está disponible con {{engine}}. IndexTTS2 ofrece emoción graduada; CosyVoice 3 y VoxCPM2 aceptan una indicación escrita.",
+    "tags_hint": "Para momentos dentro de una línea, añade reacciones como {{example}} desde Insertar en el guion.",
+    "tags_unsupported": "{{engine}} leería en voz alta como palabras las etiquetas en gris.",
+    "guide": "Guía de voz expresiva",
+    "tip": "Consejo: da forma a la interpretación con Emoción, abajo, y añade reacciones como risas o suspiros desde Insertar en el guion."
+  },
   "cloneQuality": {
     "title": "Calidad de audio",
     "precision": "Precisión WAV",
@@ -2784,6 +2794,10 @@
     "pick_voice": "Elige un perfil de voz…",
     "match_duration": "Igualar duración de origen",
     "match_duration_hint": "Estira el resultado en el tiempo (conservando el tono) para acercarlo a la duración del clip de origen.",
+    "keep_delivery": "Mantener mi interpretación",
+    "keep_delivery_hint": "Solo cambia la voz. Tu ritmo, pausas y entonación se mantienen como se grabaron. Desactivado: el clip se transcribe y se vuelve a locutar.",
+    "keep_delivery_engine_required": "«Mantener mi interpretación» necesita CosyVoice 3.",
+    "keep_delivery_no_voices": "Ninguna voz tiene una grabación a la que convertir. Clona una voz a partir de una grabación o desactiva Mantener mi interpretación.",
     "source_language": "Idioma del habla de origen (Auto = idioma del perfil de voz)",
     "convert": "Convertir",
     "converting": "Convirtiendo…",
@@ -4456,5 +4470,45 @@
     "generating": "Espera a que termine la toma actual.",
     "name_required": "Escribe primero un nombre.",
     "audio_missing": "Esta toma no tiene archivo de audio para guardar."
+  },
+  "ggufQuant": {
+    "label": "Cuantización del modelo",
+    "auto": "Auto: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU o predeterminado nativo",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · instalado",
+    "download": "Descargar {{quant}} ({{size}} MB)",
+    "downloading": "Descargando {{quant}}: {{done}} de {{total}} MB",
+    "using_installed": "Se usa el {{quant}} instalado hasta que se descargue la cuantización elegida.",
+    "env_pinned": "Fijado en {{quant}} por {{env}}.",
+    "runtime_missing": "Falta el runtime omnivoice-tts. Reinstala VoiceStudio o compílalo con scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "El archivo omnivoice-tts incluido es un marcador, no un runtime funcional. Reinstala VoiceStudio.",
+    "runtime_integrity": "La suma de verificación del runtime omnivoice-tts no coincide. Reinstala VoiceStudio.",
+    "runtime_quarantined": "El sistema puso en cuarentena el runtime omnivoice-tts. Permítelo o reinstala VoiceStudio.",
+    "runtime_other": "El runtime omnivoice-tts no arranca. Consulta la comprobación del motor para más detalles.",
+    "weights_missing": "Los pesos del modelo aún no están descargados. Descárgalos ahora o se descargarán en la primera generación.",
+    "download_failed": "Error al descargar los pesos"
+  },
+  "gpuOffer": {
+    "title": "¿Usar tu GPU para una voz más rápida?",
+    "body": "VoiceStudio encontró {{gpu}}. OmniVoice GGUF puede funcionar en ella con Vulkan en lugar de la CPU, usando el modelo {{quant}}.",
+    "body_shared": "VoiceStudio encontró {{gpu}}, que comparte la memoria del sistema. OmniVoice GGUF puede funcionar en ella con Vulkan en lugar de la CPU, usando el modelo {{quant}}.",
+    "download": "Se descargan {{size}} MB una sola vez.",
+    "no_download": "No hace falta descargar nada.",
+    "licence": "El modelo GGUF es para uso no comercial; primero se te pedirá aceptar su licencia.",
+    "accept": "Usar GPU",
+    "decline": "Ahora no",
+    "later": "Puedes cambiarlo luego en Ajustes › {{section}}.",
+    "licence_then_retry": "Acepta la licencia y vuelve a pulsar Usar GPU.",
+    "switched": "Ahora se usa {{gpu}} para la voz.",
+    "switched_downloading": "Ahora se usa {{gpu}} para la voz. Descargando el modelo {{quant}}…"
+  },
+  "pauseFill": {
+    "title": "Pausas",
+    "room_tone": "Rellenar pausas con tono de sala",
+    "room_tone_note": "Los marcadores [pause] y los huecos de los audiolibros reciben el fondo silencioso de la propia toma en lugar de silencio digital, para que el sonido no se corte entre líneas.",
+    "env_pinned": "Lo fija {{env}}. Cámbialo o bórralo para usar este interruptor."
   }
 }

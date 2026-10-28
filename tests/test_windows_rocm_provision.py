@@ -20,13 +20,17 @@ def test_shared_installer_exists_without_importing_native_packages():
     assert not ({"torch", "torchaudio", "torchvision", "ctranslate2"} & (set(sys.modules) - before))
 
 
-@pytest.mark.parametrize("platform,version,architecture", [
-    ("linux", (3, 12), "win-amd64"),
-    ("win32", (3, 11), "win-amd64"),
-    ("win32", (3, 12), "win-arm64"),
-    ("win32", (3, 12), "win32"),
-])
-def test_wrong_target_refused_before_install(platform, version, architecture):
+@pytest.mark.parametrize(
+    "platform,version,architecture",
+    [
+        ("win32", (3, 12), "win-arm64"),
+        ("darwin", (3, 12), "win-amd64"),
+        ("win32", (3, 12), "win32"),
+        ("win32", (3, 13), "win-amd64"),
+    ],
+    ids=("arm-wheel", "mac-host", "x86-wheel", "newer-python"),
+)
+def test_recipe_rejects_an_unsupported_runtime(platform, version, architecture):
     with pytest.raises(RuntimeError, match="x64 Python 3.12"):
         module("recipe").validate_target(platform, version, architecture)
 
@@ -65,6 +69,43 @@ def test_only_named_checked_wheel_is_written(tmp_path):
     wheel = module("artifacts").checked_wheel(archive, destination, config)
     assert wheel.read_bytes() == b"wheel"
     assert list(destination.iterdir()) == [wheel]
+
+
+def test_partial_wheel_is_removed_when_output_write_fails(tmp_path, monkeypatch):
+    archive, config = archive_fixture(tmp_path)
+    destination = tmp_path / "output"
+    destination.mkdir()
+    expected_output = destination / config["wheel_member"].rsplit("/", 1)[-1]
+    artifacts = module("artifacts")
+    original_open = artifacts.Path.open
+    failure = OSError("simulated storage failure")
+
+    class FailingWriter:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.stream.close()
+
+        def write(self, data):
+            self.stream.write(data[:2])
+            raise failure
+
+    def open_path(path, *args, **kwargs):
+        stream = original_open(path, *args, **kwargs)
+        if path == expected_output and args and args[0] == "wb":
+            return FailingWriter(stream)
+        return stream
+
+    monkeypatch.setattr(artifacts.Path, "open", open_path)
+    with pytest.raises(OSError) as caught:
+        artifacts.checked_wheel(archive, destination, config)
+
+    assert caught.value is failure
+    assert list(destination.iterdir()) == []
 
 
 @pytest.mark.parametrize("field", ["archive_sha256", "wheel_sha256"])

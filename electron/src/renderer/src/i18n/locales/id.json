@@ -13,6 +13,16 @@
     "surprised": "Terkejut",
     "calm": "Tenang"
   },
+  "expression": {
+    "direction_label": "Arahan penyampaian",
+    "direction_ph": "mis. gugup di awal, lalu bersemangat",
+    "direction_help": "Berlaku untuk seluruh take, sebagai panduan bagi {{engine}}.",
+    "unsupported": "Emosi tidak tersedia dengan {{engine}}. IndexTTS2 menawarkan emosi bertingkat; CosyVoice 3 dan VoxCPM2 menerima arahan tertulis.",
+    "tags_hint": "Untuk momen di dalam satu baris, tambahkan reaksi seperti {{example}} dari Sisipkan di skrip.",
+    "tags_unsupported": "Tag berwarna abu-abu akan dibacakan sebagai kata oleh {{engine}}.",
+    "guide": "Panduan ucapan ekspresif",
+    "tip": "Tips: bentuk penyampaian dengan Emosi di bawah, dan tambahkan reaksi seperti tawa atau desahan dari Sisipkan di skrip."
+  },
   "cloneQuality": {
     "title": "Kualitas audio",
     "precision": "Presisi WAV",
@@ -2782,6 +2792,10 @@
     "pick_voice": "Pilih profil suara…",
     "match_duration": "Samakan durasi sumber",
     "match_duration_hint": "Regangkan hasil secara waktu (nada tetap) agar mendekati panjang klip sumber.",
+    "keep_delivery": "Pertahankan pembawaan saya",
+    "keep_delivery_hint": "Hanya suara yang berubah. Tempo, jeda, dan intonasi Anda tetap seperti rekaman. Mati: klip ditranskripsi lalu diucapkan ulang.",
+    "keep_delivery_engine_required": "Pertahankan pembawaan saya memerlukan CosyVoice 3.",
+    "keep_delivery_no_voices": "Tidak ada suara dengan rekaman untuk dijadikan tujuan konversi. Klon suara dari rekaman, atau matikan Pertahankan pembawaan saya.",
     "source_language": "Bahasa ucapan sumber (Otomatis = bahasa profil suara)",
     "convert": "Konversi",
     "converting": "Mengonversi…",
@@ -4454,5 +4468,45 @@
     "generating": "Tunggu hingga take saat ini selesai.",
     "name_required": "Masukkan nama terlebih dahulu.",
     "audio_missing": "Take ini tidak memiliki file audio untuk disimpan."
+  },
+  "ggufQuant": {
+    "label": "Kuantisasi model",
+    "auto": "Otomatis: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU atau bawaan native",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · terpasang",
+    "download": "Unduh {{quant}} ({{size}} MB)",
+    "downloading": "Mengunduh {{quant}}: {{done}} dari {{total}} MB",
+    "using_installed": "{{quant}} yang terpasang dipakai sampai kuantisasi pilihan selesai diunduh.",
+    "env_pinned": "Dikunci ke {{quant}} oleh {{env}}.",
+    "runtime_missing": "Runtime omnivoice-tts tidak ada. Pasang ulang VoiceStudio atau bangun dengan scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "Berkas omnivoice-tts bawaan hanyalah placeholder, bukan runtime yang berfungsi. Pasang ulang VoiceStudio.",
+    "runtime_integrity": "Checksum runtime omnivoice-tts tidak cocok. Pasang ulang VoiceStudio.",
+    "runtime_quarantined": "Sistem operasi mengarantina runtime omnivoice-tts. Izinkan atau pasang ulang VoiceStudio.",
+    "runtime_other": "Runtime omnivoice-tts tidak bisa berjalan. Lihat pemeriksaan mesin untuk detail.",
+    "weights_missing": "Bobot model belum diunduh. Unduh sekarang, atau akan diunduh saat pembuatan pertama.",
+    "download_failed": "Gagal mengunduh bobot"
+  },
+  "gpuOffer": {
+    "title": "Pakai GPU untuk suara lebih cepat?",
+    "body": "VoiceStudio menemukan {{gpu}}. OmniVoice GGUF bisa berjalan di sana lewat Vulkan, bukan di CPU, dengan model {{quant}}.",
+    "body_shared": "VoiceStudio menemukan {{gpu}} yang berbagi memori sistem. OmniVoice GGUF bisa berjalan di sana lewat Vulkan, bukan di CPU, dengan model {{quant}}.",
+    "download": "Mengunduh {{size}} MB sekali saja.",
+    "no_download": "Tidak ada yang perlu diunduh.",
+    "licence": "Model GGUF untuk penggunaan nonkomersial; Anda akan diminta menerima lisensinya dulu.",
+    "accept": "Pakai GPU",
+    "decline": "Nanti saja",
+    "later": "Anda bisa mengubahnya nanti di Pengaturan › {{section}}.",
+    "licence_then_retry": "Terima lisensinya, lalu tekan Pakai GPU lagi.",
+    "switched": "Suara sekarang memakai {{gpu}}.",
+    "switched_downloading": "Suara sekarang memakai {{gpu}}. Mengunduh model {{quant}}…"
+  },
+  "pauseFill": {
+    "title": "Jeda",
+    "room_tone": "Isi jeda dengan nada ruangan",
+    "room_tone_note": "Penanda [pause] dan jeda buku audio mendapat latar senyap dari rekaman itu sendiri, bukan keheningan digital, sehingga suara tidak terputus di antara baris.",
+    "env_pinned": "Ditetapkan oleh {{env}}. Ubah atau hapus untuk memakai sakelar ini."
   }
 }

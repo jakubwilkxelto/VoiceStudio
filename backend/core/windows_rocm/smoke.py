@@ -61,7 +61,7 @@ def run_smoke(model=None, wav=None):
             [sys.executable, "-m", "backend.core.windows_rocm.smoke", "--child",
              "--model", str(model), "--wav", str(wav)],
             cwd=PROJECT_ROOT, env=environment, timeout=180,
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, errors="replace", check=False,
         )
         if result.returncode:
             raise RuntimeError("Local CT2 inference failed; no speech readiness claimed")

@@ -144,3 +144,21 @@ def test_flush_memory_snapshot_reads_npu(monkeypatch):
 
     assert result["vram_after"] == 0.5
     assert result["vram_reserved"] == 1.25
+
+
+def test_windows_gpu_probe_survives_undecodable_output(monkeypatch):
+    """#3612: a reader-thread decode failure leaves stdout None on Windows.
+
+    The probe runs at import time, so it must return "" instead of stopping
+    the backend from starting."""
+    monkeypatch.setattr(system.sys, "platform", "win32")
+    monkeypatch.setattr(system.shutil, "which", lambda name: "powershell.exe")
+    seen = {}
+
+    def run(*args, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(stdout=None, returncode=0)
+
+    monkeypatch.setattr(system.subprocess, "run", run)
+    assert system._detect_os_gpu_name() == ""
+    assert seen["errors"] == "replace"

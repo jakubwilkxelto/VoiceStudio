@@ -14,7 +14,10 @@ is no longer maintained; if you still run it, follow the
 > downloading dependencies and shows remote-backend guidance instead: use the
 > remote connection controls on the setup screen to point the app at a backend
 > on another machine, or run VoiceStudio on an Apple Silicon Mac, Windows, or
-> Linux.
+> Linux. A source checkout behaves the same way: `bun run setup:api` stops
+> before syncing anything, and the app opens the same remote-backend screen
+> instead of reporting an incomplete Python environment
+> ([#3584](https://github.com/debpalash/VoiceStudio/issues/3584)).
 
 ## Requirements
 

@@ -8,6 +8,11 @@ audio, and — by default — the take is pitch-preservingly time-stretched
 (ffmpeg atempo, clamped to one well-behaved 0.5–2.0 stage) so it lands near
 the source clip's duration.
 
+With ``keep_delivery`` on ("Keep my delivery", #3421) none of that runs:
+the recording itself goes to an engine that converts speech to speech
+(``services.voice_conversion``), so the speaker's timing, rhythm and
+intonation are kept and only the voice changes.
+
 Deliberately reuses the /generate choke points instead of re-deriving them:
 
 * profile row → conditioning via ``generation._resolve_profile_conditioning``
@@ -234,18 +239,127 @@ async def _transcribe_source(
             release()
 
 
+async def _convert_keeping_delivery(row, profile_id: str, source_path: str) -> dict:
+    """"Keep my delivery" (#3421): speech-to-speech, no transcribe/re-speak.
+
+    Runs on the active engine when it converts speech itself, else on an
+    installed engine that does (CosyVoice 3). The take keeps the source
+    timing, so ``match_duration`` does not apply.
+    """
+    from api.routers.generation import (
+        _finalize_generation,
+        _generate_timeout_s,
+        _resolve_profile_conditioning,
+    )
+    from core.device_caps import detect_host_caps
+    from services.engine_routing import runtime_compute_profile_async
+    from services.model_manager import (
+        GpuJobTimeoutError,
+        GpuPoolBusyError,
+        run_on_gpu_pool_guarded,
+    )
+    from services.voice_conversion import (
+        CHARS_PER_SECOND,
+        convert_recording,
+        resolve_voice_conversion_backend,
+    )
+
+    try:
+        backend = await resolve_voice_conversion_backend()
+    except LookupError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "voice_conversion_engine_missing", "message": str(e)},
+        ) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    cond = _resolve_profile_conditioning(row, engine_id=backend.id)
+    if not cond["ref_audio_path"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This voice has no reference recording to convert into. Pick a "
+                "cloned voice, or a designed voice with a saved sample."
+            ),
+        )
+    compute_profile = await runtime_compute_profile_async(backend, detect_host_caps())
+
+    async def _run(job, seconds: float):
+        # Budgeted like a synthesis of that much speech.
+        return await run_on_gpu_pool_guarded(
+            job, what="Voice convert",
+            timeout=_generate_timeout_s(
+                "x" * max(1, int(seconds * CHARS_PER_SECOND)),
+                engine=backend,
+                execution_device=compute_profile["effective_device"],
+                min_vram_gb=compute_profile["min_vram_gb"],
+                hardware_family=compute_profile.get("runtime_hardware_family"),
+                vram_gb=compute_profile.get("runtime_vram_gb"),
+            ),
+            min_vram_gb=compute_profile["min_vram_gb"],
+        )
+
+    used_seed = cond["seed"]
+    if used_seed is None:
+        import random
+        used_seed = random.randint(0, 2**31 - 1)
+    start_time = time.time()
+    try:
+        audio_tensor = await convert_recording(
+            backend, source_path, cond["ref_audio_path"],
+            seed=used_seed, run_job=_run,
+        )
+    except GpuPoolBusyError as e:
+        raise HTTPException(
+            status_code=503, detail=str(e),
+            headers={"Retry-After": str(e.retry_after), "X-OmniVoice-Retryable": "true"},
+        ) from e
+    except GpuJobTimeoutError as e:
+        raise HTTPException(
+            status_code=503, detail=str(e),
+            headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
+        ) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    sample_rate = backend.sample_rate
+
+    from services.watermark import mark_synthetic_async
+    audio_tensor = await mark_synthetic_async(
+        audio_tensor, sample_rate, context="convert.finalize",
+    )
+    _, meta = await _finalize_generation(
+        audio_tensor, sample_rate, text="", history_mode="convert",
+        ref_audio_path=cond["ref_audio_path"], language=cond["language"],
+        instruct=None, resolved_profile_id=profile_id,
+        used_seed=used_seed, start_time=start_time,
+        already_marked=True,
+    )
+    return {
+        "id": meta["id"],
+        "audio_url": f"/audio/{meta['filename']}",
+        "text": "",
+        "duration_s": meta["duration"],
+        "gen_time_s": meta["gen_time"],
+        "engine": backend.id,
+    }
+
+
 @router.post("/convert")
 async def convert_speech(
     audio: UploadFile = File(...),
     profile_id: str = Form(...),
     match_duration: bool = Form(True),
     language: str = Form(""),
+    keep_delivery: bool = Form(False),
 ):
     """Convert a spoken clip into an existing voice profile's voice.
 
     Multipart form: ``audio`` (the source clip), ``profile_id`` (an existing
     voice profile), optional ``match_duration`` (default on — atempo the take
-    toward the source clip's length, clamped to 0.5–2.0×).
+    toward the source clip's length, clamped to 0.5–2.0×), optional
+    ``keep_delivery`` (default off — convert the recording itself so the
+    speaker's timing, rhythm and intonation are kept, #3421; no transcript).
 
     Returns JSON ``{audio_url, text, duration_s, id}`` — the take is saved to
     OUTPUTS_DIR and served from the ``/audio`` mount like every other take.
@@ -280,6 +394,9 @@ async def convert_speech(
         finally:
             tmp.close()
         source_lease = _TempReferenceLease(tmp.name)
+
+        if keep_delivery:
+            return await _convert_keeping_delivery(row, profile_id, tmp.name)
 
         # ── Engine gate before ASR/TTS work: the shared resolver refuses a
         # clone-less engine with the actionable switch-engine message (→ 400),
@@ -348,7 +465,11 @@ async def convert_speech(
                 )
                 cond["ref_text"] = None
             if cond["ref_text"] and cond["persist_ref_text"]:
-                _persist_profile_ref_text(profile_id, cond["ref_text"])
+                _persist_profile_ref_text(
+                    profile_id, cond["ref_text"],
+                    replace=cond.get("replace_ref_text"),
+                    ref_audio_file=cond.get("ref_audio_file"),
+                )
 
         # Source duration for the optional match: the container's own length
         # (ffprobe), falling back to the last ASR segment end. Best-effort —

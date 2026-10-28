@@ -86,20 +86,21 @@ def _patch_install(download, monkeypatch, snapshot_download=None):
 def _run_install(download):
     from utils import hf_progress
 
-    events: list[dict] = []
+    events = []
     listener = hf_progress.register_listener(events.append)
 
-    async def _run():
+    async def install_and_drain():
         await download.install_model(download.InstallModelRequest(repo_id=REPO))
-        pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        current = asyncio.current_task()
+        pending = [task for task in asyncio.all_tasks() if task is not current and not task.done()]
         if pending:
             await asyncio.gather(*pending)
 
     try:
-        asyncio.run(_run())
+        asyncio.run(install_and_drain())
     finally:
         hf_progress.unregister_listener(listener)
-    return [e.get("phase") for e in events if e.get("repo_id") == REPO]
+    return [event["phase"] for event in events if event.get("repo_id") == REPO]
 
 
 def _cancel(download):

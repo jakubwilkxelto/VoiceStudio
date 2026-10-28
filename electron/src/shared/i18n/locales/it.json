@@ -451,7 +451,7 @@
     "addChapter": "Aggiungi capitolo",
     "clearConfirm": "Cancellare tutte le {{count}} voci del copione e il testo importato in sospeso? Questa azione non può essere annullata.",
     "clearScriptHint": "Elimina tutto dallo script: ogni riga e ogni capitolo",
-    "cleared": "Copione svuotato",
+    "cleared": "Script svuotato",
     "chapterN": "Capitolo {{n}}",
     "stems": "Steli",
     "stemsDone": "Gambo/i di carattere {{count}} esportato/i",

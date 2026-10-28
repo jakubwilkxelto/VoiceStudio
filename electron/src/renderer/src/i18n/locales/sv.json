@@ -13,6 +13,16 @@
     "surprised": "Förvåning",
     "calm": "Lugn"
   },
+  "expression": {
+    "direction_label": "Framförandeinstruktion",
+    "direction_ph": "t.ex. nervös i början, sedan entusiastisk",
+    "direction_help": "Gäller hela tagningen, som vägledning för {{engine}}.",
+    "unsupported": "Känsla är inte tillgänglig med {{engine}}. IndexTTS2 erbjuder graderad känsla; CosyVoice 3 och VoxCPM2 tar emot en skriven instruktion.",
+    "tags_hint": "För ögonblick inom en rad lägger du till reaktioner som {{example}} via Infoga i manuset.",
+    "tags_unsupported": "Gråade taggar skulle {{engine}} läsa upp som ord.",
+    "guide": "Guide till uttrycksfullt tal",
+    "tip": "Tips: forma framförandet med Känsla nedan och lägg till reaktioner som skratt eller suckar via Infoga i manuset."
+  },
   "cloneQuality": {
     "title": "Ljudkvalitet",
     "precision": "WAV-precision",
@@ -2782,6 +2792,10 @@
     "pick_voice": "Välj en röstprofil…",
     "match_duration": "Matcha källans längd",
     "match_duration_hint": "Sträcker resultatet i tid (tonhöjden bevaras) så att det hamnar nära källklippets längd.",
+    "keep_delivery": "Behåll mitt framförande",
+    "keep_delivery_hint": "Bara rösten ändras. Din timing, dina pauser och din intonation blir kvar som inspelat. Av: klippet transkriberas och läses upp på nytt.",
+    "keep_delivery_engine_required": "Behåll mitt framförande kräver CosyVoice 3.",
+    "keep_delivery_no_voices": "Ingen röst har en inspelning att konvertera till. Klona en röst från en inspelning eller stäng av Behåll mitt framförande.",
     "source_language": "Språk i källtalet (Auto = röstprofilens språk)",
     "convert": "Konvertera",
     "converting": "Konverterar…",
@@ -4454,5 +4468,45 @@
     "generating": "Vänta tills den aktuella tagningen är klar.",
     "name_required": "Ange ett namn först.",
     "audio_missing": "Den här tagningen har ingen ljudfil att spara."
+  },
+  "ggufQuant": {
+    "label": "Modellkvantisering",
+    "auto": "Auto: {{quant}} ({{target}})",
+    "target_vulkan": "Vulkan – {{device}}",
+    "target_cpu": "CPU",
+    "target_unverified": "CPU eller inbyggt standardval",
+    "option": "{{quant}} · {{size}} MB",
+    "option_installed": "{{quant}} · {{size}} MB · installerad",
+    "download": "Ladda ned {{quant}} ({{size}} MB)",
+    "downloading": "Laddar ned {{quant}}: {{done}} av {{total}} MB",
+    "using_installed": "Den installerade {{quant}} används tills den valda kvantiseringen är nedladdad.",
+    "env_pinned": "Låst till {{quant}} av {{env}}.",
+    "runtime_missing": "Körmiljön omnivoice-tts saknas. Installera om VoiceStudio eller bygg den med scripts/build-omnivoice-tts.sh.",
+    "runtime_placeholder": "Den medföljande omnivoice-tts-filen är en platshållare, inte en fungerande körmiljö. Installera om VoiceStudio.",
+    "runtime_integrity": "Kontrollsumman för omnivoice-tts stämmer inte. Installera om VoiceStudio.",
+    "runtime_quarantined": "Operativsystemet har satt omnivoice-tts i karantän. Tillåt den eller installera om VoiceStudio.",
+    "runtime_other": "Körmiljön omnivoice-tts startar inte. Se motorkontrollen för detaljer.",
+    "weights_missing": "Modellvikterna är inte nedladdade än. Ladda ned dem nu, annars sker det vid första genereringen.",
+    "download_failed": "Nedladdningen av vikter misslyckades"
+  },
+  "gpuOffer": {
+    "title": "Använda grafikkortet för snabbare tal?",
+    "body": "VoiceStudio hittade {{gpu}}. OmniVoice GGUF kan köras på den via Vulkan i stället för på processorn, med modellen {{quant}}.",
+    "body_shared": "VoiceStudio hittade {{gpu}}, som delar systemminnet. OmniVoice GGUF kan köras på den via Vulkan i stället för på processorn, med modellen {{quant}}.",
+    "download": "Laddar ned {{size}} MB en gång.",
+    "no_download": "Inget behöver laddas ned.",
+    "licence": "GGUF-modellen är för icke-kommersiellt bruk; du blir först ombedd att godkänna licensen.",
+    "accept": "Använd GPU",
+    "decline": "Inte nu",
+    "later": "Du kan ändra det senare under Inställningar › {{section}}.",
+    "licence_then_retry": "Godkänn licensen och tryck sedan på Använd GPU igen.",
+    "switched": "{{gpu}} används nu för tal.",
+    "switched_downloading": "{{gpu}} används nu för tal. Laddar ned modellen {{quant}}…"
+  },
+  "pauseFill": {
+    "title": "Pauser",
+    "room_tone": "Fyll pauser med rumston",
+    "room_tone_note": "[pause]-markörer och luckor i ljudböcker får tagningens egen tysta bakgrund i stället för digital tystnad, så att ljudet inte bryts mellan raderna.",
+    "env_pinned": "Styrs av {{env}}. Ändra eller rensa den för att använda det här reglaget."
   }
 }

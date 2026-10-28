@@ -75,27 +75,29 @@ def client():
     return TestClient(app, client=("127.0.0.1", 50000))
 
 
-@pytest.fixture()
+@pytest.fixture
 def make_profile():
-    from core.db import db_conn, init_db
+    from core import db
 
-    init_db()
-    created = []
+    db.init_db()
+    inserted = []
 
-    def _make(language):
-        pid = f"vp-lr-{uuid.uuid4().hex[:8]}"
-        with db_conn() as conn:
+    def make(language):
+        profile_id = f"lang-{uuid.uuid4().hex[:10]}"
+        with db.db_conn() as conn:
             conn.execute(
                 "INSERT INTO voice_profiles (id, name, language, kind, created_at) "
-                "VALUES (?,?,?,?,?)", (pid, "Refusal fixture", language, "clone", 0.0))
-        created.append(pid)
-        return pid
+                "VALUES (?, ?, ?, ?, ?)",
+                (profile_id, "Language fixture", language, "clone", 0.0),
+            )
+        inserted.append(profile_id)
+        return profile_id
 
-    yield _make
-    with db_conn() as conn:
-        for pid in created:
-            conn.execute("DELETE FROM generation_history WHERE profile_id=?", (pid,))
-            conn.execute("DELETE FROM voice_profiles WHERE id=?", (pid,))
+    yield make
+    with db.db_conn() as conn:
+        for profile_id in inserted:
+            conn.execute("DELETE FROM generation_history WHERE profile_id=?", (profile_id,))
+            conn.execute("DELETE FROM voice_profiles WHERE id=?", (profile_id,))
 
 
 def _install(monkeypatch, engine):

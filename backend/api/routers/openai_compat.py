@@ -592,12 +592,10 @@ def _run_tts(backend, text: str, kw: dict):
     # caller asked for an exact `duration`, which a trim would shorten.
     if not kw.get("duration") and torch.is_tensor(wav):
         wav = trim_speech_padding(wav, sr)
-    # Engines that already emit mastered, studio-grade audio (e.g. VoxCPM2's
-    # native 48 kHz) opt out of apply_mastering via `applies_own_mastering`.
-    # That chain's highpass + Compressor is tuned for VoiceStudio's 24 kHz clone
-    # output; applied to a studio engine it adds an audible level pump that
-    # degrades the very output we want clean. Loudness normalisation still
-    # runs — it's a benign peak scale, not dynamics.
+    # Finished studio engines, such as VoxCPM2's native 48 kHz output, declare
+    # that they master themselves.  The shared high-pass/compressor was tuned
+    # for 24 kHz cloned audio and can make studio output pump audibly.  Peak-only
+    # loudness normalisation below remains safe and applies to every engine.
     if not getattr(backend, "applies_own_mastering", False):
         wav = apply_mastering(wav, sample_rate=sr)
     wav = normalize_audio(wav, target_dBFS=-2.0)

@@ -91,13 +91,26 @@ jobs:
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      # linux-aarch64: let the build script's Vulkan path (Honeykrisp GPU
-      # on Asahi) engage instead of silently falling back to CPU.
-      - name: Vulkan dev deps (linux-aarch64 GPU backend)
-        if: matrix.platform == 'linux-aarch64'
+      # Linux: let the build script's Vulkan path engage instead of silently
+      # falling back to CPU — the installers' AMD/Intel GPU path on x64, and
+      # the Honeykrisp GPU on Asahi (aarch64). The module is loaded at runtime
+      # (GGML_BACKEND_DL), so a host without a Vulkan driver still starts on CPU.
+      - name: Vulkan dev deps (Linux GPU backend)
+        if: startsWith(matrix.platform, 'linux-')
         run: |
           sudo apt-get update
           sudo apt-get install -y glslc libvulkan-dev spirv-headers
+
+      # Windows: the LunarG SDK provides glslc and the headers; the build script
+      # detects it through VULKAN_SDK. A failed SDK install degrades to the CPU
+      # build (the check below then warns) rather than failing the release.
+      - name: Vulkan SDK (Windows GPU backend)
+        if: matrix.platform == 'windows-x86_64'
+        continue-on-error: true
+        uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
+        with:
+          vulkan_version: 1.4.309.0
+          cache: true
 
       - name: Build omnivoice-tts
         shell: bash
@@ -110,6 +123,23 @@ jobs:
           bash scripts/build-omnivoice-tts.sh \
             --platform "$PLATFORM" \
             --commit-sha "$PIN_SHA"
+      # The installers' AMD/Intel GPU acceleration is the optional ggml-vulkan
+      # module beside the binary. Linux x64 must ship it (its deps come from
+      # apt above); a Windows leg without it only warns, since its SDK step is
+      # allowed to fail.
+      - name: Check the Vulkan GPU module was built
+        if: matrix.platform == 'linux-x86_64' || matrix.platform == 'windows-x86_64'
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          if ls bin/ | grep -q 'ggml-vulkan'; then
+            echo "Vulkan module: $(ls bin/ | grep 'ggml-vulkan')"
+          elif [ "$PLATFORM" = linux-x86_64 ]; then
+            echo "::error::linux-x86_64 built without the ggml-vulkan module"; exit 1
+          else
+            echo "::warning::$PLATFORM built without the ggml-vulkan module (CPU-only runtime)"
+          fi
       - name: Upload binary artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

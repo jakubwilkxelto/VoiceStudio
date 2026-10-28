@@ -44,7 +44,9 @@ export function SaveTakeProfile({ item }: { item: HistoryItem }) {
             file={file}
             selectOnSave={false}
             metadata={{
-              refText: item.text || '',
+              // Never the raw take text: it may be cut short or carry script
+              // markup the take never spoke (#3062). Empty transcribes the audio.
+              refText: item.transcript ?? '',
               instruct: item.instruct || '',
               language: item.language || 'Auto',
               seed: item.seed,

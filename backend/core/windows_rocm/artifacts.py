@@ -28,24 +28,32 @@ def download_archive(url, destination, size):
 
 
 def checked_wheel(archive_path, destination, config):
-    """Unrelated ZIP paths are never extracted; checks precede pip invocation."""
+    archive_path = Path(archive_path)
     if sha256(archive_path) != config["archive_sha256"]:
-        raise RuntimeError("CTranslate2 archive SHA-256 mismatch")
+        raise RuntimeError("Windows ROCm archive failed SHA-256 verification")
+
     member = config["wheel_member"]
     member_path = PurePosixPath(member)
     if member_path.is_absolute() or ".." in member_path.parts or "\\" in member:
-        raise RuntimeError("Unsafe CTranslate2 wheel member path")
-    wheel_path = Path(destination) / member_path.name
+        raise RuntimeError("Windows ROCm wheel member has an unsafe path")
+    output = Path(destination) / member_path.name
+
     with zipfile.ZipFile(archive_path) as archive:
-        members = [entry for entry in archive.infolist() if entry.filename == member]
-        if len(members) != 1 or members[0].is_dir():
-            raise RuntimeError("CTranslate2 archive must contain exactly one expected wheel")
-        if members[0].file_size > 200 * 1024 * 1024:
-            raise RuntimeError("CTranslate2 wheel exceeds extraction bound")
-        with archive.open(members[0]) as source, wheel_path.open("wb") as target:
-            while chunk := source.read(1024 * 1024):
-                target.write(chunk)
-    if sha256(wheel_path) != config["wheel_sha256"]:
-        wheel_path.unlink()
-        raise RuntimeError("CTranslate2 wheel SHA-256 mismatch")
-    return wheel_path
+        matches = [entry for entry in archive.infolist() if entry.filename == member]
+        if len(matches) != 1 or matches[0].is_dir():
+            raise RuntimeError("Windows ROCm archive must contain exactly one matching wheel file")
+        entry = matches[0]
+        if entry.file_size > 200 * 1024 * 1024:
+            raise RuntimeError("Windows ROCm wheel exceeds the extraction size bound")
+        try:
+            with archive.open(entry) as source, output.open("wb") as target:
+                while chunk := source.read(1024 * 1024):
+                    target.write(chunk)
+        except BaseException:
+            output.unlink(missing_ok=True)
+            raise
+
+    if sha256(output) != config["wheel_sha256"]:
+        output.unlink(missing_ok=True)
+        raise RuntimeError("Windows ROCm wheel failed SHA-256 verification")
+    return output

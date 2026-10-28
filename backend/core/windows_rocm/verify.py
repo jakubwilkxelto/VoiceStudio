@@ -45,6 +45,7 @@ def verify_environment(timeout=90):
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=timeout,
             check=False,
         )
