@@ -93,6 +93,7 @@ def _chain_migrations_after_init_db() -> None:
             # The fork's own database next to the one init_db just used
             # (tests repoint core.db.DB_PATH).
             migrate.upgrade_for(db.DB_PATH)
+        _scope_routers()
         return result
 
     init_db.__xelto_wrapped__ = True
@@ -103,10 +104,11 @@ def _scope_data() -> None:
     """Per-user rows (``get_db`` hook), identity carried into workers, dub job owners."""
     from services import dub_pipeline
 
-    from xelto import db_scope, hooks, propagation
+    from xelto import db_scope, events, hooks, propagation
 
     db_scope.activate()
     propagation.install()
+    events.install()
     for name in ("put_job", "put_and_save_job"):
         original = getattr(dub_pipeline, name)
         if getattr(original, "__xelto_wrapped__", False):
@@ -121,3 +123,50 @@ def _scope_data() -> None:
         functools.update_wrapper(recording, original)
         recording.__xelto_wrapped__ = True
         setattr(dub_pipeline, name, recording)
+
+
+def _scope_routers() -> None:
+    """Owners for what two routers keep outside the database.
+
+    Runs from the wrapped ``init_db`` (startup phase B): by then the deferred
+    boot has imported the routers, and importing them from ``install()``
+    would hold up the early ``/health``.
+    """
+    from api.routers import batch, project_bundles
+
+    from xelto import resources
+    from xelto.identity import use_identity
+
+    # Batch jobs: remember who created each (the in-memory _jobs dict), and run
+    # each as its creator. The worker is started by the first enqueue and
+    # would otherwise run every later job as that first user.
+    if not isinstance(batch._jobs, resources.BatchJobs):
+        batch._jobs = resources.BatchJobs(batch._jobs)
+    run = batch._run_batch_pipeline
+    if not getattr(run, "__xelto_wrapped__", False):
+        @functools.wraps(run)
+        async def run_as_owner(job_id, job, *args, __run=run, **kwargs):
+            owner = resources.batch_owner(job_id)
+            if owner is None:
+                raise RuntimeError("batch job has no owner in multi-user mode")
+            with use_identity(owner):
+                return await __run(job_id, job, *args, **kwargs)
+
+        run_as_owner.__xelto_wrapped__ = True
+        batch._run_batch_pipeline = run_as_owner
+
+    # Project bundles: export and import create a fresh directory per bundle,
+    # always through _directory(); a directory that does not exist yet is the
+    # caller's new bundle.
+    directory = project_bundles._directory
+    if not getattr(directory, "__xelto_wrapped__", False):
+        @functools.wraps(directory)
+        def claiming(identifier, *args, __directory=directory, **kwargs):
+            path = __directory(identifier, *args, **kwargs)
+            user = resources.acting_user()
+            if user is not None and not path.exists():
+                resources.claim(f"bundle/{path.name}", user.sub)
+            return path
+
+        claiming.__xelto_wrapped__ = True
+        project_bundles._directory = claiming

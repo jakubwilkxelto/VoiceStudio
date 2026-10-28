@@ -122,6 +122,55 @@ RULES: list[tuple[str, str, RouteClass]] = [
 ]
 
 
+class Owner(str, Enum):
+    """How the gate checks who owns what a route's path parameters name."""
+
+    DB_VIEW = "db-view"  # the handler reads it through the scoped views
+    SHARED = "shared"  # a shared catalogue entry (gallery, models, ...)
+    DUB = "dub"
+    TASK = "task"
+    JOB = "job"
+    BATCH = "batch"
+    BUNDLE = "bundle"
+    FILE = "file"
+
+
+# (methods, template glob, owner check) for routes with path parameters and
+# the file mounts. First match wins. Every USER route with a parameter must
+# match one: tests/xelto_fork/test_policy_completeness.py fails otherwise.
+PATH_OWNERS: list[tuple[str, str, Owner]] = [
+    (_ANY, "/audio/*", Owner.FILE),
+    (_ANY, "/voice_audio/*", Owner.FILE),
+    (_ANY, "/preview/*", Owner.FILE),
+    # get_job checks dub owners too, but not every /dub route goes through it,
+    # and a delete removes the job's directory whether or not the row is visible.
+    (_ANY, "/dub/*", Owner.DUB),
+    (_ANY, "/tools/video-context/*", Owner.DUB),
+    (_ANY, "/tasks/*", Owner.TASK),
+    (_ANY, "/audiobook/resume/*", Owner.JOB),
+    (_ANY, "/batch/*", Owner.BATCH),
+    (_ANY, "/project-bundles/*", Owner.BUNDLE),
+    *((_ANY, glob, Owner.DB_VIEW) for glob in (
+        "/profiles/*", "/history/*", "/projects/*", "/glossary/*", "/jobs/*",
+        "/export/history/*", "/longform/jobs/*", "/personas/export/*", "/marketplace/export/*",
+    )),
+    *((_ANY, glob, Owner.SHARED) for glob in (
+        "/archetypes/*", "/community/*", "/gallery/*", "/models/*", "/v1/models/*",
+        "/pronunciation/*",
+    )),
+]
+
+
+def path_owner(method: str, template: str) -> Owner | None:
+    method = method.upper()
+    for methods, pattern, owner in PATH_OWNERS:
+        if methods != _ANY and method not in methods.split(","):
+            continue
+        if fnmatch.fnmatchcase(template, pattern):
+            return owner
+    return None
+
+
 def classify(method: str, template: str) -> tuple[RouteClass, bool]:
     """Return the route's class and whether an explicit rule matched."""
     method = method.upper()

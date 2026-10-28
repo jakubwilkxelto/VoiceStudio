@@ -5,12 +5,14 @@ Docker. Pełny plan: `PLAN-26-10-2026.md`.
 
 ## Stan
 
-**Faza P2: logowanie i role działają, wiersze bazy są rozdzielone per user.**
+**Faza P3: logowanie i role działają, dane są rozdzielone per user.**
 Każdy widzi tylko swoje głosy, historię, dubbingi, projekty, glosariusze,
-eksporty i joby (patrz [Izolacja danych](#izolacja-danych-p2)). **Pliki**
-(`/audio`, `/voice_audio`), strumienie zadań w pamięci, `/batch/*` i zdarzenia
-`/ws/events` są jeszcze wspólne (rozdzielenie w P3). Do tego czasu udostępniaj
-serwer tylko zaufanemu zespołowi.
+eksporty i joby (patrz [Izolacja danych](#izolacja-danych-p2)), a także swoje
+pliki, zadania w tle, joby batch, paczki projektów i zdarzenia `/ws/events`
+(patrz [Pliki, pamięć i zdarzenia](#pliki-pamięć-i-zdarzenia-p3)).
+Pliki, których właściciela nie da się ustalić, są w trybie `lenient`
+(domyślnie do P4) **serwowane każdemu zalogowanemu** i logowane. Tryb
+`strict` je odrzuca.
 
 | Flaga | Zachowanie |
 |---|---|
@@ -73,6 +75,7 @@ Uwagi:
 | `OMNIVOICE_MULTIUSER_BOOTSTRAP_OWNER` | username albo `sub`; przy jego pierwszym logowaniu dostaje wszystkie istniejące dane bez właściciela |
 | `OMNIVOICE_MULTIUSER_DB` | opcjonalnie: ścieżka bazy forka (domyślnie `xelto.db` obok `omnivoice.db`) |
 | `OMNIVOICE_MULTIUSER_AUDIT=1` | loguje stos każdego połączenia z bazą otwartego bez tożsamości |
+| `OMNIVOICE_MULTIUSER_FILES` | `lenient` (domyślnie): plik bez ustalonego właściciela jest serwowany i logowany; `strict`: 404 |
 
 Serwer **nie wystartuje**, gdy brakuje którejś z wymaganych zmiennych, gdy
 ustawiono `OMNIVOICE_TRUSTED_NETWORKS` lub `OMNIVOICE_TRUST_HOST_LOOPBACK`,
@@ -114,7 +117,9 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
      konsumenta jak klient LAN; admin to `192.0.2.20` z principalem
      `ADMIN_SESSION`. Reverse proxy ani wywołanie z loopbacka nie dostaną więc
      uprawnień „lokalnej maszyny”;
-  4. uruchamia żądanie w kontekście tożsamości (`ContextVar`).
+  4. sprawdza właściciela tego, co wskazuje ścieżka (job dubbingu, zadanie,
+     job batch, paczka, plik), i odpowiada 404, gdy nie należy do wołającego (P3);
+  5. uruchamia żądanie w kontekście tożsamości (`ContextVar`).
 - **Polityka tras** (`policy.py`) obejmuje wszystkie 360 tras. Klasy:
 
   | Klasa | Przykłady |
@@ -195,6 +200,68 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
   - `test_sql_lint.py`: nowe `RETURNING`, UPSERT, `lastrowid`, `CREATE VIRTUAL TABLE` na tabelach per user
     albo `executescript` gdziekolwiek wymagają przeglądu i wpisu na allowlistę.
 
+### Pliki, pamięć i zdarzenia (P3)
+
+Bez nowych haków w upstreamie: wszystko robi brama i podmiana atrybutów modułów.
+
+- **Kontrola właściciela po parametrach ścieżki** (`resolvers.py`,
+  `policy.PATH_OWNERS`). Każda trasa USER z parametrem ma przypisany sposób
+  sprawdzenia, a test kompletności pada przy nowej trasie upstreamu:
+  - `db-view`: handler czyta przez widoki z P2 (profile, historia, projekty…);
+  - `dub`: właściciel joba dubbingu. Obejmuje też `DELETE /dub/history/{id}`,
+    który upstream wykonuje (razem z usunięciem katalogu joba) nawet wtedy,
+    gdy wiersz jest niewidoczny;
+  - `task`: `/tasks/stream|cancel/{id}` — tożsamość zapamiętana w
+    `task_manager` albo właściciel wiersza `jobs`;
+  - `job`: `/audiobook/resume/{id}`;
+  - `batch`, `bundle`, `file` (niżej);
+  - `shared`: katalogi wspólne (galeria, archetypy, community, modele).
+
+  Odmowa to zawsze 404, żeby nie zdradzać, że zasób istnieje.
+- **Pliki** (`file_guard.py`) — dotyczy `/audio/*`, `/voice_audio/*`,
+  `/audio/{id}.ogg|.opus|/quality` i `/preview/{plik}`. Plik jest serwowany, gdy:
+  1. leży we wspólnym poddrzewie `/audio` (`voice_gallery/`,
+     `archetype_previews/`, `marketplace/`);
+  2. należy do wołającego według rejestru `xelto_file_owner`:
+     - wpisy powstają z odpowiedzi tras (`resources.ResponseTap`): nagłówki
+       `X-Audio-Path` / `X-Audio-Id` oraz adresy `/audio|voice_audio|preview/…`
+       i pole `"output"` w JSON i SSE;
+     - rejestrowane są tylko istniejące pliki, pierwszy właściciel wygrywa;
+  3. baza wiąże go z wołającym:
+     - `generation_history.audio_path`;
+     - job longform (`audiobook_<id>…`, `story_<id>…`);
+     - plik głosu (ścieżka w profilu albo nazwa zaczynająca się od id profilu).
+       Głosy demo są wspólne.
+
+  Cudzy plik to 404. O pliku, którego nic nie wyjaśnia, decyduje
+  `OMNIVOICE_MULTIUSER_FILES`. Log `xelto file guard (lenient): serving unowned …`
+  pokazuje, czego jeszcze brakuje przed P4.
+- **Joby batch** (trzymane tylko w pamięci upstreamu):
+  - `batch._jobs` zastępuje `resources.BatchJobs`, który zapamiętuje twórcę każdego joba;
+  - opakowane `_run_batch_pipeline` wykonuje job jako jego twórca, a job bez właściciela kończy się błędem.
+
+  To naprawia błąd z P2: worker startuje przy pierwszym enqueue i bez tego
+  wykonywał każdy job jako tamten pierwszy user.
+- **Paczki projektów** (`outputs/project_handoff/<uuid>`): opakowane
+  `project_bundles._directory` zapisuje `bundle/<uuid>` dla wołającego, gdy
+  katalog jeszcze nie istnieje (eksport i import zawsze tworzą nowy).
+- **Listy spoza bazy** brama przycina do elementów wołającego:
+  - `GET /batch/jobs`;
+  - `GET /project-bundles`;
+  - `GET /audiobook/jobs` (skan dysku).
+
+  Nieoczekiwany kształt odpowiedzi daje pustą listę (fail-closed).
+- **Zdarzenia** (`events.py`): kolejka każdego słuchacza `/ws/events` staje się `ScopedQueue`.
+  - Zdarzenia o danych usera (`profiles`, `generation_history`, `dub_history`,
+    `export_history`, `projects`, `glossary`) trafiają tylko do słuchaczy
+    zalogowanych jako emitujący. Tożsamość emitującego jest dostępna, bo
+    `emit` planuje rozgłoszenie z kopią jego kontekstu.
+  - Zdarzenie o danych usera wyemitowane bez usera (SYSTEM) nie trafia do nikogo.
+  - Pozostałe (`model_status`, `system_error`) trafiają do wszystkich.
+- Patche routerów zakłada opakowany `init_db` (faza B startu). Przy odroczonym
+  starcie routery importują się dopiero po `install()`.
+- `purge-user` usuwa też wpisy usera z `xelto_file_owner`. Pliki zostają na dysku.
+
 ### Frontend (`electron/src/renderer/src/xelto/`, tylko build web)
 
 - `oidc-gate.tsx`: pyta `/api/auth/oidc/me`. 404 (brak trybu multiuser)
@@ -220,6 +287,13 @@ w katalogach nadrzędnych (`dotenv.load_dotenv()`). Jeśli jest w nim
   `test_ownership.py`, strażnicy oraz macierz izolacji na prawdziwej
   `main.app` (`isolation_probe.py`): bob nie listuje, nie czyta, nie zmienia
   i nie usuwa danych alice w żadnej z 7 tabel.
+- P3:
+  - `test_file_guard.py`, `test_gate_files.py` (rejestr z odpowiedzi, lenient/strict);
+  - `test_event_scope.py`, `test_router_owners.py` (worker batch, paczki, filtry list);
+  - test kompletności `PATH_OWNERS`;
+  - sonda `isolation_runtime_probe.py` na prawdziwej `main.app`: bob dostaje 404
+    na pliki, zadania, joby batch, paczki i dubbing alice, jego listy są puste,
+    a na `/ws/events` nie słyszy jej zdarzeń.
 - `electron/src/renderer/src/xelto/*.test.ts(x)`: stany bramki, zmiana
   użytkownika, filtr admina, parytet tłumaczeń.
 - Smoke test 2026-10-27 na prawdziwym Keycloaku 26.4 z importem realmu:

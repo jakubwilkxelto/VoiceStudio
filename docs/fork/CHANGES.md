@@ -5,6 +5,13 @@ Funkcje i poprawki dodane w forku `jakubwilkxelto/VoiceStudio` ponad upstream
 
 ## Niewydane
 
+- Tryb wieloużytkownikowy, faza P3: rozdzielone są pliki (`/audio`,
+  `/voice_audio`, `/preview`), zadania w tle (`/tasks/*`), joby batch, paczki
+  projektów, lista wznawialnych audiobooków i zdarzenia `/ws/events`. Cudze
+  zasoby dają 404. Pliki bez ustalonego właściciela tryb `lenient` serwuje
+  i loguje, a `OMNIVOICE_MULTIUSER_FILES=strict` je odrzuca. Poprawki P2:
+  - joby batch wykonywały się jako pierwszy user, który coś zakolejkował;
+  - `DELETE /dub/history/{id}` na cudzym jobie usuwał jego katalog z dysku.
 - Tryb wieloużytkownikowy: dane forka (konta, sesje, własność wierszy,
   historia migracji) w osobnym pliku `xelto.db` obok `omnivoice.db`
   (`OMNIVOICE_MULTIUSER_DB` zmienia ścieżkę). `omnivoice.db` nie zawiera już

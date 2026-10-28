@@ -16,6 +16,8 @@ USER_PEER = "192.0.2.10"
 ADMIN_PEER = "192.0.2.20"
 USER_PEER_NETWORK = f"{USER_PEER}/32"
 
+FILES_MODES = ("lenient", "strict")
+
 ADMIN_ROLE = "voicestudio-admin"
 USER_ROLE = "voicestudio-user"
 
@@ -49,6 +51,7 @@ class Settings:
     allow_master_key: bool
     insecure_http: bool
     bootstrap_owner: str
+    files_mode: str = "lenient"  # files nothing accounts for: "lenient" serves, "strict" refuses
 
     @property
     def secure_cookies(self) -> bool:
@@ -106,6 +109,9 @@ def load_settings() -> Settings:
             "OMNIVOICE_PUBLIC_URL must use https (set OMNIVOICE_MULTIUSER_INSECURE_HTTP=1 "
             "only for local testing)"
         )
+    files_mode = _env("OMNIVOICE_MULTIUSER_FILES").lower() or "lenient"
+    if files_mode not in FILES_MODES:
+        problems.append("OMNIVOICE_MULTIUSER_FILES must be one of: " + ", ".join(FILES_MODES))
     secret = _env("OMNIVOICE_MULTIUSER_SECRET")
     if secret and len(secret) < 32:
         problems.append("OMNIVOICE_MULTIUSER_SECRET must be at least 32 characters")
@@ -126,4 +132,5 @@ def load_settings() -> Settings:
         allow_master_key=allow_master,
         insecure_http=insecure,
         bootstrap_owner=_env("OMNIVOICE_MULTIUSER_BOOTSTRAP_OWNER"),
+        files_mode=files_mode,
     )
