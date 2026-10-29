@@ -5,6 +5,13 @@ Funkcje i poprawki dodane w forku `jakubwilkxelto/VoiceStudio` ponad upstream
 
 ## Niewydane
 
+- Jeden wygląd na serwerze multiuser: domyślny ciemny motyw VoiceStudio.
+  - strony logowania Keycloaka mają motyw `voicestudio`
+    (`deploy/keycloak/themes/`): logo, font Inter, kolory, pola i przyciski
+    jak w aplikacji; istniejący realm wymaga jednorazowego ustawienia
+    (`docs/fork/multiuser.md` → *Wygląd: jeden motyw*);
+  - w aplikacji nikt, także admin, nie zmieni motywu: kontrolki motywu są
+    ukryte, a zmieniony motyw wraca do domyślnego ciemnego.
 - Tryb wieloużytkownikowy, poprawki po pierwszym teście w Dockerze:
   - **rozdzielenie danych działa na SQLite z obrazu Dockera (3.50).**
     Wcześniej każde połączenie z bazą dla usera kończyło się błędem

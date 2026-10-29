@@ -88,6 +88,8 @@ services:
     volumes:
       # Imported once, on the first start; later edits happen in the admin console.
       - ./keycloak/realm-voicestudio.json:/opt/keycloak/data/import/realm-voicestudio.json:ro
+      # Sign-in pages in VoiceStudio's default dark theme (realm loginTheme).
+      - ./keycloak/themes/voicestudio:/opt/keycloak/themes/voicestudio:ro
     depends_on:
       - keycloak-db
     restart: unless-stopped

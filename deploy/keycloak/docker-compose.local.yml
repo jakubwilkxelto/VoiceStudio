@@ -20,6 +20,10 @@ services:
   keycloak:
     environment:
       - KC_HOSTNAME=http://auth.localhost
+      # Edits to deploy/keycloak/themes show on reload, without a restart.
+      - KC_SPI_THEME__CACHE_THEMES=false
+      - KC_SPI_THEME__CACHE_TEMPLATES=false
+      - KC_SPI_THEME__STATIC_MAX_AGE=-1
       - VOICESTUDIO_PUBLIC_URL=http://studio.localhost
 
   proxy:

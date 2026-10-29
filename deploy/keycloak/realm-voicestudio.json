@@ -1,6 +1,7 @@
 {
   "realm": "voicestudio",
   "displayName": "VoiceStudio",
+  "loginTheme": "voicestudio",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,

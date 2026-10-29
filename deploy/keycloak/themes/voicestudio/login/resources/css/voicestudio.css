@@ -1,0 +1,315 @@
+/*
+ * XELTO fork: VoiceStudio's default dark theme for the Keycloak sign-in pages.
+ *
+ * Values come from the `@variant dark` block of
+ * electron/src/renderer/src/styles/t3-theme.css (Tailwind v4 colours written
+ * out, since Keycloak has no Tailwind). Change them there first, then here.
+ * Inter is served from this theme: the sign-in page makes no outside requests.
+ */
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../fonts/inter-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../fonts/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ── App tokens (t3-theme.css, dark) ─────────────────────────────── */
+:root {
+  --vs-radius: 0.625rem;
+  --vs-control-radius: calc(var(--vs-radius) - 2px);
+  --vs-background: oklch(0.145 0 0); /* neutral-950 */
+  --vs-card: color-mix(in srgb, var(--vs-background) 97%, white);
+  --vs-foreground: oklch(0.97 0 0); /* neutral-100 */
+  --vs-muted-foreground: color-mix(in srgb, oklch(0.556 0 0) 90%, white);
+  --vs-primary: oklch(0.571 0.21 264);
+  --vs-primary-foreground: white;
+  --vs-border: rgb(255 255 255 / 6%);
+  --vs-input: rgb(255 255 255 / 8%);
+  --vs-ring: color-mix(in srgb, var(--vs-primary) 30%, transparent);
+  --vs-error: color-mix(in srgb, oklch(0.637 0.237 25.331) 90%, white); /* red-500 */
+  --vs-error-foreground: oklch(0.704 0.191 22.216); /* red-400 */
+  --vs-success-foreground: oklch(0.765 0.177 163.223); /* emerald-400 */
+  --vs-warning-foreground: oklch(0.828 0.189 84.429); /* amber-400 */
+  --vs-info-foreground: oklch(0.707 0.165 254.624); /* blue-400 */
+  --vs-font: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ── PatternFly dark tokens → app tokens ─────────────────────────── */
+html.login-pf.pf-v5-theme-dark {
+  color-scheme: dark;
+  --keycloak-card-top-color: transparent;
+  --pf-v5-global--FontFamily--text: var(--vs-font);
+  --pf-v5-global--FontFamily--heading: var(--vs-font);
+  --pf-v5-global--FontFamily--text--vf: var(--vs-font);
+  --pf-v5-global--FontFamily--heading--vf: var(--vs-font);
+  --pf-v5-global--BackgroundColor--100: var(--vs-card);
+  --pf-v5-global--BackgroundColor--200: var(--vs-background);
+  --pf-v5-global--BackgroundColor--dark-100: var(--vs-background);
+  --pf-v5-global--Color--100: var(--vs-foreground);
+  --pf-v5-global--Color--200: var(--vs-muted-foreground);
+  --pf-v5-global--BorderColor--100: var(--vs-border);
+  --pf-v5-global--BorderColor--200: var(--vs-input);
+  --pf-v5-global--BorderColor--300: var(--vs-input);
+  --pf-v5-global--primary-color--100: var(--vs-primary);
+  --pf-v5-global--primary-color--200: color-mix(in srgb, var(--vs-primary) 90%, black);
+  --pf-v5-global--link--Color: var(--vs-info-foreground);
+  --pf-v5-global--link--Color--hover: var(--vs-info-foreground);
+  --pf-v5-global--danger-color--100: var(--vs-error);
+  --pf-v5-global--danger-color--200: var(--vs-error-foreground);
+  --pf-v5-global--BorderRadius--sm: var(--vs-control-radius);
+}
+
+.login-pf body {
+  background: var(--vs-background);
+  color: var(--vs-foreground);
+  font-family: var(--vs-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Header: logo + name, as in the app shell ────────────────────── */
+#kc-header-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--vs-foreground) !important;
+}
+
+#kc-header-wrapper::before {
+  content: '';
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  background: url('../img/logo.svg') no-repeat center / contain;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────── */
+.pf-v5-c-login__main {
+  background: var(--vs-card);
+  border-radius: calc(var(--vs-radius) + 4px);
+  box-shadow:
+    0 0 0 1px var(--vs-border),
+    0 16px 48px rgb(0 0 0 / 40%);
+  overflow: hidden;
+}
+
+.pf-v5-c-login__main-header {
+  border-top: 0;
+}
+
+.pf-v5-c-login__main-header .pf-v5-c-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vs-foreground);
+}
+
+.pf-v5-c-login__main-footer-band {
+  border-color: var(--vs-border);
+  color: var(--vs-muted-foreground);
+}
+
+.pf-v5-c-form__label-text,
+.pf-v5-c-form__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--vs-foreground);
+}
+
+/* ── Inputs: components/ui/input.tsx ─────────────────────────────── */
+.pf-v5-c-form-control {
+  --pf-v5-c-form-control--BackgroundColor: color-mix(in srgb, var(--vs-input) 30%, transparent);
+  --pf-v5-c-form-control--BorderRadius: var(--vs-control-radius);
+  border-radius: var(--vs-control-radius);
+  background-color: color-mix(in srgb, var(--vs-input) 30%, transparent);
+  color: var(--vs-foreground);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after {
+  border: 1px solid var(--vs-input) !important;
+  border-radius: var(--vs-control-radius);
+}
+
+.pf-v5-c-form-control:focus-within {
+  box-shadow: 0 0 0 2px var(--vs-ring);
+}
+
+.pf-v5-c-form-control:focus-within::before,
+.pf-v5-c-form-control:focus-within::after {
+  border-color: var(--vs-primary) !important;
+}
+
+.pf-v5-c-form-control.pf-m-error::before,
+.pf-v5-c-form-control.pf-m-error::after,
+.pf-v5-c-form-control:has(> [aria-invalid='true'])::before,
+.pf-v5-c-form-control:has(> [aria-invalid='true'])::after {
+  border-color: color-mix(in srgb, var(--vs-error) 50%, transparent) !important;
+}
+
+.pf-v5-c-form-control > input::placeholder {
+  color: var(--vs-muted-foreground);
+}
+
+/* The wrapper draws the focus ring; no second one from the browser. */
+.pf-v5-c-form-control > input:focus,
+.pf-v5-c-form-control > input:focus-visible {
+  outline: none;
+}
+
+/* Password + show/hide button read as one control. */
+.pf-v5-c-input-group {
+  border-radius: var(--vs-control-radius);
+}
+
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:last-child) .pf-v5-c-form-control,
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:last-child) .pf-v5-c-form-control::before,
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:last-child) .pf-v5-c-form-control::after {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:first-child) .pf-v5-c-button,
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:first-child) .pf-v5-c-button::after {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:last-child) .pf-v5-c-button,
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:last-child) .pf-v5-c-button::after {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:first-child) .pf-v5-c-form-control,
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:first-child) .pf-v5-c-form-control::before,
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:not(:first-child) .pf-v5-c-form-control::after {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control {
+  --pf-v5-c-button--BorderRadius: var(--vs-control-radius);
+  background: color-mix(in srgb, var(--vs-input) 30%, transparent);
+}
+
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:last-child .pf-v5-c-button,
+.pf-v5-c-input-group > .pf-v5-c-input-group__item:last-child .pf-v5-c-button::after {
+  border-start-end-radius: var(--vs-control-radius);
+  border-end-end-radius: var(--vs-control-radius);
+}
+
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control::after {
+  border: 1px solid var(--vs-input);
+  border-inline-start: 0;
+}
+
+/* ── Buttons: components/ui/button.tsx ───────────────────────────── */
+.pf-v5-c-button {
+  border-radius: var(--vs-control-radius);
+  font-weight: 500;
+}
+
+.pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--vs-primary);
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: color-mix(in srgb, var(--vs-primary) 90%, transparent);
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--vs-primary);
+  --pf-v5-c-button--m-primary--active--BackgroundColor: color-mix(in srgb, var(--vs-primary) 90%, transparent);
+  --pf-v5-c-button--m-primary--Color: var(--vs-primary-foreground);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 5%),
+    inset 0 1px rgb(255 255 255 / 16%);
+}
+
+.pf-v5-c-button.pf-m-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--vs-ring);
+}
+
+.pf-v5-c-button.pf-m-secondary {
+  --pf-v5-c-button--m-secondary--Color: var(--vs-foreground);
+  --pf-v5-c-button--m-secondary--BackgroundColor: rgb(255 255 255 / 3%);
+  --pf-v5-c-button--m-secondary--hover--Color: var(--vs-foreground);
+  --pf-v5-c-button--m-secondary--hover--BackgroundColor: rgb(255 255 255 / 6%);
+  --pf-v5-c-button--after--BorderColor: var(--vs-input);
+  --pf-v5-c-button--m-secondary--hover--after--BorderColor: var(--vs-input);
+}
+
+.pf-v5-c-button.pf-m-control {
+  --pf-v5-c-button--m-control--BackgroundColor: transparent;
+  --pf-v5-c-button--m-control--Color: var(--vs-muted-foreground);
+  --pf-v5-c-button--m-control--after--BorderTopColor: var(--vs-input);
+  --pf-v5-c-button--m-control--after--BorderRightColor: var(--vs-input);
+  --pf-v5-c-button--m-control--after--BorderBottomColor: var(--vs-input);
+  --pf-v5-c-button--m-control--after--BorderLeftColor: var(--vs-input);
+}
+
+.pf-v5-c-button.pf-m-link,
+.pf-v5-c-login a {
+  color: var(--vs-info-foreground);
+}
+
+/* ── Alerts ───────────────────────────────────────────────────────── */
+.pf-v5-c-alert.pf-m-inline {
+  border-radius: var(--vs-control-radius);
+  background: var(--vs-card);
+  box-shadow: 0 0 0 1px var(--vs-border);
+}
+
+.pf-v5-c-alert.pf-m-inline::before {
+  display: none;
+}
+
+.pf-v5-c-alert.pf-m-danger {
+  background: color-mix(in srgb, var(--vs-error) 16%, transparent);
+  --pf-v5-c-alert__icon--Color: var(--vs-error-foreground);
+  --pf-v5-c-alert__title--Color: var(--vs-error-foreground);
+}
+
+.pf-v5-c-alert.pf-m-warning {
+  --pf-v5-c-alert__icon--Color: var(--vs-warning-foreground);
+  --pf-v5-c-alert__title--Color: var(--vs-warning-foreground);
+}
+
+.pf-v5-c-alert.pf-m-success {
+  --pf-v5-c-alert__icon--Color: var(--vs-success-foreground);
+  --pf-v5-c-alert__title--Color: var(--vs-success-foreground);
+}
+
+.pf-v5-c-alert.pf-m-info {
+  --pf-v5-c-alert__icon--Color: var(--vs-info-foreground);
+  --pf-v5-c-alert__title--Color: var(--vs-info-foreground);
+}
+
+.pf-v5-c-helper-text__item.pf-m-error {
+  color: var(--vs-error-foreground);
+}
+
+/* Checkbox ("Remember me") and the language menu. */
+.pf-v5-c-check__input {
+  accent-color: var(--vs-primary);
+}
+
+.pf-v5-c-menu-toggle,
+.pf-v5-c-menu {
+  border-radius: var(--vs-control-radius);
+}

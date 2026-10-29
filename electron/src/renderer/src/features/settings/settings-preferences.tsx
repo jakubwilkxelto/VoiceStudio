@@ -24,6 +24,7 @@ import { setReviewMode, useReviewMode } from '@/hooks/use-review-mode';
 import { setWorkspace, useWorkspace } from '@/lib/store/workspace';
 import i18n, { APP_LANGUAGE_ITEMS, APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { PalettePicker } from './palette-picker';
+import { useXeltoThemeLocked } from '@/xelto/theme-lock'; // XELTO: one theme in multi-user mode
 import { SettingsRow, SettingsSection } from './settings-layout';
 
 /** Settings → Appearance. */
@@ -32,9 +33,12 @@ export function AppearanceSettings() {
   const { mode, setTheme } = useTheme();
   const appearance = useAppearance();
   const workspace = useWorkspace();
+  const themeLocked = useXeltoThemeLocked(); // XELTO: one theme in multi-user mode
   return (
     <SettingsSection icon={PaletteIcon} title={t('preferences.appearance')}>
       <>
+        {/* XELTO: one theme in multi-user mode */}
+        {!themeLocked && (
         <SettingsRow id="theme-label" title={t('preferences.theme')}>
           <Button
             size="sm"
@@ -64,6 +68,7 @@ export function AppearanceSettings() {
             {t('themeAppearance.system')}
           </Button>
         </SettingsRow>
+        )}
         <SettingsRow id="glass-label" title={t('themeAppearance.glass')}>
           <Switch
             aria-labelledby="glass-label"
@@ -82,8 +87,8 @@ export function AppearanceSettings() {
             onCheckedChange={(pinned) => setWorkspace({ autoCollapseSidebar: !pinned })}
           />
         </SettingsRow>
-        <PalettePicker appearance="light" />
-        <PalettePicker appearance="dark" />
+        {!themeLocked && <PalettePicker appearance="light" />}{/* XELTO: one theme */}
+        {!themeLocked && <PalettePicker appearance="dark" />}{/* XELTO: one theme */}
         <SettingsRow id="font-label" title={t('preferences.font')}>
           {(['inter', 'system'] as const).map((font) => (
             <Button
