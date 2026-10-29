@@ -11,7 +11,8 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">내려받기</a> ·
     <a href="#시작하기">시작 안내</a> ·
     <a href="#문서">문서</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
+    <a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_JA.md">日本語</a> · <a href="README_RU.md">Русский</a>
   </p>
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=27272a" alt="CI 상태" /></a>
@@ -20,8 +21,7 @@
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="조회수" /></a>
   </p>
   <p>
-    <sub><a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_JA.md">日本語</a> · <a href="README_RU.md">Русский</a></sub><br />
-    <sub>전략 스폰서</sub> &nbsp; <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="22" /></picture></a>
+    <sub>전략 스폰서</sub> &nbsp; <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="32" align="middle" /></picture></a>
   </p>
 </div>
 
@@ -177,7 +177,7 @@ VoiceStudio는 무료이며, 뒤에 유료 클라우드도 없습니다. 후원�
     <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="48" /></picture></a>
 </p>
 
-**여기에 귀사의 로고를 올려 보세요.** Development, Company, Strategic 후원 자리는 월 100달러부터 열려 있으며, Community 후원사(25달러)는 이름과 링크가 실립니다. 후원으로 얻는 것은 기능이 아니라 크레딧입니다.
+후원에 관심이 있으시면 [sponsor@voicestudio.sh](mailto:sponsor@voicestudio.sh)로 문의해 주세요.
 
 <a href="https://github.com/sponsors/debpalash"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors로 후원하기" /></a>
 [Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [등급과 혜택](../../SPONSORS.md) · [로고 게재 신청](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)

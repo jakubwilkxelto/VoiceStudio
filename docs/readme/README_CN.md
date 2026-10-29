@@ -11,7 +11,8 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">下载</a> ·
     <a href="#开始使用">快速上手</a> ·
     <a href="#文档">文档</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
+    <a href="../../README.md">English</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_RU.md">Русский</a>
   </p>
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=27272a" alt="CI 构建状态" /></a>
@@ -20,8 +21,7 @@
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="访问量" /></a>
   </p>
   <p>
-    <sub><a href="../../README.md">English</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_RU.md">Русский</a></sub><br />
-    <sub>战略赞助商</sub> &nbsp; <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="22" /></picture></a>
+    <sub>战略赞助商</sub> &nbsp; <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="32" align="middle" /></picture></a>
   </p>
 </div>
 
@@ -177,7 +177,7 @@ VoiceStudio 免费使用，背后没有付费云服务。赞助者让它持续�
     <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="48" /></picture></a>
 </p>
 
-**你的标志可以出现在这里。** 开发、企业和战略赞助席位开放中，每月 100 美元起；社区赞助者（25 美元）可获得署名链接。赞助换来的是鸣谢，而不是功能。
+如有赞助意向，请联系 [sponsor@voicestudio.sh](mailto:sponsor@voicestudio.sh)。
 
 <a href="https://github.com/sponsors/debpalash"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white" alt="通过 GitHub Sponsors 赞助" /></a>
 [Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [赞助等级与权益](../../SPONSORS.md) · [申请展示标志](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)

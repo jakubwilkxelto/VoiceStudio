@@ -11,7 +11,8 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Скачать</a> ·
     <a href="#быстрый-старт">Начало работы</a> ·
     <a href="#справка">Документация</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
+    <a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a>
   </p>
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=27272a" alt="Статус CI" /></a>
@@ -20,8 +21,7 @@
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="Число просмотров" /></a>
   </p>
   <p>
-    <sub><a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a></sub><br />
-    <sub>Стратегический спонсор</sub> &nbsp; <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="22" /></picture></a>
+    <sub>Стратегический спонсор</sub> &nbsp; <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="32" align="middle" /></picture></a>
   </p>
 </div>
 
@@ -177,7 +177,7 @@ VoiceStudio бесплатен, и за ним нет платного обла�
     <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="48" /></picture></a>
 </p>
 
-**Здесь может быть ваш логотип.** Места спонсоров уровней Development, Company и Strategic открыты — от 100 $ в месяц; спонсоры уровня Community (25 $) получают именную ссылку. Спонсорство даёт признание, а не функции.
+По вопросам спонсорства пишите на [sponsor@voicestudio.sh](mailto:sponsor@voicestudio.sh).
 
 <a href="https://github.com/sponsors/debpalash"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white" alt="Поддержать через GitHub Sponsors" /></a>
 [Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [Уровни и привилегии](../../SPONSORS.md) · [Разместить логотип](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)
