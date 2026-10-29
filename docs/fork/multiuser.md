@@ -123,6 +123,39 @@ docker compose --env-file deploy/keycloak/.env.local \
 Dwa konta naraz najłatwiej sprawdzić w dwóch profilach przeglądarki (albo
 w oknie zwykłym i incognito): ciasteczko sesji jest per profil.
 
+Nakładka wyłącza też cache motywów Keycloaka: zmiany w
+`deploy/keycloak/themes/` widać po odświeżeniu strony, bez restartu.
+
+### Wygląd: jeden motyw
+
+Na serwerze multiuser wszystko ma domyślny ciemny motyw VoiceStudio
+(paleta `default`, tryb `dark`):
+
+- **Strony logowania Keycloaka** (logowanie, błędy, reset i zmiana hasła,
+  wylogowanie) używają motywu `voicestudio` z
+  `deploy/keycloak/themes/voicestudio/login/`. To `keycloak.v2` z jednym
+  arkuszem CSS (`resources/css/voicestudio.css`), bez szablonów `.ftl`, więc
+  aktualizacje Keycloaka go nie psują. Kolory są przepisane z bloku dark
+  w `electron/src/renderer/src/styles/t3-theme.css`: zmiana tam wymaga zmiany
+  tu. Font Inter i logo są w motywie, więc strona nie pobiera nic z zewnątrz.
+- **Aplikacja**: nikt, także admin, nie zmieni motywu. Przełącznik
+  słońce/księżyc, wybór trybu i palet w Ustawieniach → Wygląd oraz polecenie
+  w palecie poleceń są ukryte, a `xelto/theme-lock.tsx` przywraca motyw, gdy
+  coś go zmieni (np. przycisk „Resetuj”). Desktop i serwer bez multiuser
+  zostają jak w upstreamie.
+
+Realm importuje się tylko przy pierwszym starcie Keycloaka. Na serwerze
+uruchomionym wcześniej:
+
+1. Odtwórz kontener z wolumenem motywu: `docker compose … up -d keycloak`.
+2. Ustaw motyw: konsola admina → realm `voicestudio` → Realm settings →
+   Themes → Login theme = `voicestudio`, albo (pyta o hasło admina konsoli):
+
+   ```sh
+   docker exec -it voicestudio-keycloak /opt/keycloak/bin/kcadm.sh config credentials      --server http://localhost:8080 --realm master --user admin
+   docker exec voicestudio-keycloak /opt/keycloak/bin/kcadm.sh update realms/voicestudio      -s loginTheme=voicestudio
+   ```
+
 ## Jak to jest zbudowane
 
 ### Backend (`backend/xelto/`)
@@ -386,6 +419,8 @@ Bez nowych haków w upstreamie: brama, patche atrybutów modułów i triggery wi
   Przy zmianie użytkownika w tej samej przeglądarce, zanim wyrenderuje
   aplikację, czyści `localStorage` poprzedniego (klucze `xelto_*` zostają),
   `sessionStorage` i bazy IndexedDB.
+- `theme-lock.tsx`: jeden motyw w trybie multiuser (domyślny ciemny), patrz
+  *Wygląd: jeden motyw*.
 - `user-menu.tsx`: nazwa, odznaka admina, „Wyloguj” (kończy też sesję w Keycloaku).
 - `admin-visibility.ts`: zwykły user widzi w Ustawieniach tylko białą listę
   (Ogólne, Wygląd, Wymowa, Wsparcie); nowe strony upstreamu są domyślnie ukryte.

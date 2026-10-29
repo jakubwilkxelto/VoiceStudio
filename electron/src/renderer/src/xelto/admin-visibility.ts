@@ -5,6 +5,7 @@
 // the same split (backend/xelto/policy.py); hiding only spares users 403s.
 import { SETTINGS_ENTRIES } from '@/features/settings/settings-index';
 import { useXeltoRestricted } from './session';
+import { useXeltoThemeLocked } from './theme-lock';
 
 export const USER_SETTINGS_PAGES: ReadonlySet<string> = new Set([
   '/settings',
@@ -35,9 +36,14 @@ const settingsTargetByLabel = new Map(SETTINGS_ENTRIES.map((entry) => [entry.lab
 // Command palette entries that open administration outside SETTINGS_ENTRIES.
 const ADMIN_COMMANDS = new Set(['models']);
 
+// The light/dark switch; the theme is locked in multi-user mode (theme-lock.tsx).
+const THEME_COMMAND = 'theme';
+
 /** Command palette items, without administration for a restricted user. */
 export function useXeltoCommands<T extends { id: string }>(items: T[]): T[] {
   const restricted = useXeltoRestricted();
+  const themeLocked = useXeltoThemeLocked();
+  if (themeLocked) items = items.filter((item) => item.id !== THEME_COMMAND);
   if (!restricted) return items;
   return items.filter((item) => {
     if (ADMIN_COMMANDS.has(item.id)) return false;

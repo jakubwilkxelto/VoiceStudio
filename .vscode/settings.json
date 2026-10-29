@@ -1,0 +1,4 @@
+{
+  // XELTO fork: Docker Compose merge tags (deploy/keycloak/docker-compose.local.yml).
+  "yaml.customTags": ["!override sequence", "!override mapping", "!reset sequence", "!reset mapping"]
+}

@@ -16,6 +16,7 @@ import {
   type BrowserStores,
   type XeltoUser,
 } from './session';
+import { XeltoThemeLock } from './theme-lock';
 
 type Me = { enabled: true; authenticated: false } | ({ enabled: true; authenticated: true } & XeltoUser);
 
@@ -138,5 +139,10 @@ export function XeltoOidcGate({
     );
   }
   if (state.kind === 'off') return <>{children}</>;
-  return <XeltoUserContext.Provider value={state.user}>{children}</XeltoUserContext.Provider>;
+  return (
+    <XeltoUserContext.Provider value={state.user}>
+      <XeltoThemeLock />
+      {children}
+    </XeltoUserContext.Provider>
+  );
 }

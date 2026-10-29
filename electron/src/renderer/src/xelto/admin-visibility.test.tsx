@@ -67,6 +67,21 @@ describe('admin visibility', () => {
     expect(ids).not.toContain('settings-settings.logs');
   });
 
+  it.each([
+    ['a user', USER],
+    ['an admin', ADMIN],
+  ])('drops the theme switch from the command palette for %s', (_, user) => {
+    const items = [{ id: 'clone' }, { id: 'theme' }, { id: 'settings-preferences.theme' }];
+    const { result } = renderHook(() => useXeltoCommands(items), { wrapper: as(user) });
+    expect(result.current.map((item) => item.id)).toEqual(['clone', 'settings-preferences.theme']);
+  });
+
+  it('keeps the theme switch in single-user mode', () => {
+    const items = [{ id: 'theme' }];
+    const { result } = renderHook(() => useXeltoCommands(items), { wrapper: as(null) });
+    expect(result.current).toEqual(items);
+  });
+
   it('allow-list names pages that still exist', () => {
     const known = new Set([
       '/settings',
