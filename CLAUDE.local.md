@@ -75,4 +75,6 @@ git checkout dev && git merge main
 | `backend/core/db.py` (`get_db`) | import + `factory=` w `sqlite3.connect` + `on_connect(conn)` | tryb multiuser: rozdzielenie wierszy (`xelto/db_scope.py`) |
 | `backend/core/tasks.py` (`add_task`, `worker`) | import + `capture()` w `add_task` + `enter(t)` w `worker` | tryb multiuser: tożsamość zadań w kolejce |
 | `backend/services/dub_pipeline.py` (`get_job`) | import + `dub_job_visible(job_id)` na początku | tryb multiuser: właściciel jobów dubbingu w pamięci |
+| `electron/src/renderer/src/components/app-shell/theme-toggle.tsx` (`ThemeToggle`) | import + `if (useXeltoThemeLocked()) return null` | tryb multiuser: jeden motyw (`xelto/theme-lock.tsx`) |
+| `electron/src/renderer/src/features/settings/settings-preferences.tsx` (`AppearanceSettings`) | import + `useXeltoThemeLocked()` + `{!themeLocked && …}` wokół wiersza motywu i obu `<PalettePicker>` | tryb multiuser: jeden motyw |
 | `electron/src/renderer/src/components/setup-gate.tsx` (`SetupGate`) | import + `useXeltoSetup()` + warunek w efekcie `needed` + `<XeltoSetupPending />` | tryb multiuser: kreator raz na serwer, przez admina |
