@@ -61,13 +61,19 @@ for Fedora and Arch packages.
 ```bash
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-bun install
-bun run setup:api  # prepare Python dependencies before starting Electron
 bun run dev
 ```
 
-This launches Electron with hot reload. Run source dependency setup explicitly before launching; the supervisor manages backend
-startup; do not launch a second backend. See [Electron setup](../electron/README.md).
+This installs the source dependencies (skipping local API setup for an external
+backend or Intel Mac) and launches Electron with hot reload. The supervisor
+manages backend startup; do not launch a second backend. See [Electron
+setup](../electron/README.md).
+
+For screenshots, use the maintained Electron capture script described in
+[README media](../docs/media/electron/README.md). To share a runnable app, use
+the release installers or `bun run dist`; source users should clone the
+repository with its lockfiles and follow the setup commands above.
+
 CPU-only Linux/Windows hosts automatically select CPU wheels; see
 [CPU setup and overrides](../electron/README.md#running-without-a-gpu).
 When regenerating `uv.lock` for compute variants, preserve unrelated package
@@ -302,6 +308,10 @@ starting their short test deadline, and join released workers during cleanup.
 Cover delayed startup separately so runner scheduling does not masquerade as a
 native-call timeout or leak work into later tests.
 
+Shared React tests await `cleanupReact()` before resetting persistence and
+disposing JSDOM. Keep deferred focus restoration in that same realm; advance
+only the current fake-timer tick rather than flushing unrelated future timers.
+
 ```bash
 # Run the backend suites CI runs (kept separate: backend/tests is isolated)
 uv run pytest tests/ -q
@@ -367,7 +377,8 @@ Every PR is reviewed by two AI reviewers before a human looks at it:
 
 - **CodeRabbit** posts a short collapsed summary (no diagrams), inline
   findings, and warning-mode pre-merge checks against the project's hard
-  rules (configured in `.coderabbit.yaml`).
+  rules (configured in `.coderabbit.yaml`). Finishing-touch repair prompts
+  for findings, failing CI, and merge conflicts are disabled.
 - **Greptile** reviews with the same project rubrics and learns from 👍/👎
   reactions on its comments — react to train it.
 
