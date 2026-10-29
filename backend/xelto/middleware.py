@@ -36,7 +36,13 @@ from core.auth import (
     CredentialTransport,
     PrincipalKind,
 )
-from core.csrf import SAFE_HTTP_METHODS, cookie_csrf_allowed, origin_allowed
+from core.csrf import (
+    CSRF_HEADER,
+    CSRF_VALUE,
+    SAFE_HTTP_METHODS,
+    cookie_csrf_allowed,
+    origin_allowed,
+)
 from xelto.authn import Authenticator, AuthResult
 from xelto.bff import PREFIX as SIGN_IN_PREFIX
 from xelto.bff import SignInEndpoints
@@ -145,6 +151,9 @@ class XeltoMultiUserMiddleware:
                     return
                 receive = checked
 
+        if result.transport is CredentialTransport.COOKIE and method in SAFE_HTTP_METHODS:
+            scope["headers"] = same_origin_get_headers(scope["headers"],
+                                                       self._auth.settings.public_url)
         started_at = time.time()
         principal, peer = principal_and_peer(result)
         state = scope.setdefault("state", {})
@@ -253,6 +262,26 @@ class XeltoMultiUserMiddleware:
             elif method not in SAFE_HTTP_METHODS and not cookie_csrf_allowed(conn):
                 return 403, "CSRF validation failed"
         return None
+
+
+def same_origin_get_headers(headers: list[tuple[bytes, bytes]],
+                            public_url: str) -> list[tuple[bytes, bytes]]:
+    """Name the app's origin on a same-origin GET the browser sent without one.
+
+    Upstream's side-effectful GETs (``require_admin_action``: LLM model lists,
+    engine probes) accept a cookie only with the CSRF marker, an allowed
+    ``Origin`` and ``Sec-Fetch-Site: same-origin``. Browsers omit ``Origin`` on
+    same-origin GETs, so behind the sign-in cookie these routes always failed
+    (403 "loopback origin required"). ``Sec-Fetch-Site`` is set by the browser
+    and cannot be forged by a page, so with it and the marker present, the
+    origin is the app's own. A request carrying any ``Origin`` keeps it.
+    """
+    present = {name.lower(): value for name, value in headers}
+    if (b"origin" in present
+            or present.get(b"sec-fetch-site") != b"same-origin"
+            or present.get(CSRF_HEADER.encode()) != CSRF_VALUE.encode()):
+        return headers
+    return [*headers, (b"origin", public_url.encode("latin-1"))]
 
 
 def _tapped(send: Send, tap: ResponseTap) -> Send:

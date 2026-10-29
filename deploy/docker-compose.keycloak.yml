@@ -23,6 +23,12 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: voicestudio-multiuser
+    # Fixed on purpose: the image has an empty /etc/machine-id, so upstream
+    # derives the key for saved secrets (LLM keys, HF token) from hostname +
+    # user. Docker's default hostname is the container id, new on every
+    # rebuild, which made saved secrets undecryptable. Changing this value
+    # has the same effect: secrets must then be entered again.
+    hostname: voicestudio
     volumes:
       - voicestudio-data:/app/omnivoice_data
     environment:

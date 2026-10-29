@@ -100,6 +100,35 @@ def test_admin_passes_upstream_admin_gates(admin):
     assert admin.post("/pronunciation", headers=CSRF).status_code == 200
 
 
+# Browsers send no Origin on a same-origin GET; Sec-Fetch-Site is their proof.
+SAME_ORIGIN_GET = {"x-voicestudio-csrf": "1", "sec-fetch-site": "same-origin"}
+MODELS = "/api/settings/llm-providers/google-ai/models"
+
+
+def test_admin_reaches_side_effectful_get_from_the_app(admin):
+    res = admin.get(MODELS, headers=SAME_ORIGIN_GET)
+    assert res.status_code == 200
+    assert res.json() == {"sub": "sub-admin", "client": ADMIN_PEER}
+
+
+@pytest.mark.parametrize("headers", [
+    {},
+    {"x-voicestudio-csrf": "1"},
+    {"sec-fetch-site": "same-origin"},
+    {"x-voicestudio-csrf": "1", "sec-fetch-site": "cross-site"},
+    {"x-voicestudio-csrf": "1", "sec-fetch-site": "same-site"},
+    {**SAME_ORIGIN_GET, "origin": "https://evil.example"},
+])
+def test_side_effectful_get_still_needs_the_browser_proof(admin, headers):
+    assert admin.get(MODELS, headers=headers).status_code == 403
+
+
+def test_side_effectful_get_is_admin_only(alice):
+    res = alice.get(MODELS, headers=SAME_ORIGIN_GET)
+    assert res.status_code == 403
+    assert res.json() == {"detail": "admin role required"}
+
+
 def test_admin_writes_need_csrf_too(admin):
     assert admin.post("/engines/select").status_code == 403
 

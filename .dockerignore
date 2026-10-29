@@ -7,6 +7,8 @@ env/
 
 # Node modules
 node_modules/
+# XELTO: also electron/node_modules from a local checkout (host binaries break the image build)
+**/node_modules/
 bun.lockb
 .turbo/
 

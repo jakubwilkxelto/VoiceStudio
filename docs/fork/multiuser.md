@@ -60,13 +60,18 @@ programowy per user (MCP, back-channel logout) to P5.
 
 Uwagi:
 
-- Buduj z czystego klonu repo (na serwerze: `git clone`). `.dockerignore`
-  upstreamu wyklucza tylko `node_modules/` w katalogu głównym, więc
-  `electron/node_modules` z kopii roboczej dewelopera trafia do obrazu
-  i psuje build (`vite: not found`). Lokalnie: `git worktree add`.
+- Obraz można budować z kopii roboczej dewelopera: fork dopisał do
+  `.dockerignore` `**/node_modules/`, więc `electron/node_modules` hosta
+  nie trafia do obrazu (wcześniej psuło build: `vite: not found`).
 - Compose jest samodzielny, a nie nakładką na `deploy/docker-compose.yml`.
   Plik upstreamu wymaga `OMNIVOICE_API_KEY`, którego tryb multiuser nie przyjmuje.
 - Obraz budowany jest z tego repo (`build: ..`): obraz upstreamu nie zawiera forka.
+- Kontener aplikacji ma stały `hostname: voicestudio`. Obraz ma pusty
+  `/etc/machine-id`, więc upstream szyfruje zapisane sekrety (klucze LLM,
+  token HF) kluczem z nazwy hosta i użytkownika. Domyślna nazwa hosta (ID
+  kontenera) zmienia się przy każdym odtworzeniu kontenera i wcześniej
+  zapisane sekrety przestawały się odszyfrowywać. Zmiana tej wartości ma ten
+  sam skutek: sekrety trzeba wtedy wpisać ponownie.
 - Port 3900 nie jest publikowany. Nie wystawiaj go: cały ruch idzie przez Caddy.
 - Backend rozmawia z Keycloakiem wewnątrz sieci Compose
   (`OIDC_DISCOVERY_URL`, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`), a tokeny

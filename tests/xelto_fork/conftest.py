@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 import core.db as db_module
-from api.dependencies import require_admin, require_consumer
+from api.dependencies import require_admin, require_admin_action, require_consumer
 from xelto import install, migrate
 from xelto.identity import Identity, current_identity
 
@@ -99,6 +99,12 @@ def build_app() -> FastAPI:
 
     @app.post("/pronunciation", dependencies=[Depends(require_admin)])
     def add_pronunciation(request: Request):
+        return who(request)
+
+    # A GET with side effects: upstream wants the browser's same-origin proof.
+    @app.get("/api/settings/llm-providers/{provider_id}/models",
+             dependencies=[Depends(require_admin_action)])
+    def llm_models(provider_id: str, request: Request):
         return who(request)
 
     @app.post("/system/network/enable")

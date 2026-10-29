@@ -5,6 +5,20 @@ Funkcje i poprawki dodane w forku `jakubwilkxelto/VoiceStudio` ponad upstream
 
 ## Niewydane
 
+- Docker multiuser: zapisane klucze LLM i token HF przestawały działać po
+  każdym odtworzeniu kontenera (np. `up --build`). Obraz ma pusty
+  `/etc/machine-id`, więc klucz szyfrowania brał się z losowej nazwy hosta;
+  compose forka ustala teraz `hostname: voicestudio`. Sekrety zapisane
+  wcześniej trzeba wpisać raz jeszcze.
+- Tryb multiuser: admin zalogowany przez Keycloak dostawał 403 („loopback
+  origin required”) na GET-ach upstreamu z efektami ubocznymi
+  (`require_admin_action`: lista modeli dostawcy LLM, sprawdzanie silników).
+  Przeglądarka nie wysyła `Origin` przy GET do tej samej domeny, a upstream
+  go wymaga; gate forka dokłada publiczny origin, gdy przeglądarka sama
+  potwierdziła `Sec-Fetch-Site: same-origin` i jest znacznik CSRF.
+  Obraz trzeba przebudować.
+- Build obrazu z kopii roboczej: `.dockerignore` wyklucza też
+  `electron/node_modules` (wcześniej `vite: not found`).
 - Jeden wygląd na serwerze multiuser: domyślny ciemny motyw VoiceStudio.
   - strony logowania Keycloaka mają motyw `voicestudio`
     (`deploy/keycloak/themes/`): logo, font Inter, kolory, pola i przyciski
