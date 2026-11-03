@@ -182,8 +182,17 @@ After publication, verify each maintained channel:
 | GHCR ROCm           | `docker.yml` (release published)   | `:X.Y.Z-rocm`, `:X.Y-rocm`, `:stable-rocm` manifests                                                                                                         |
 | GHCR CUDA arm64     | `docker.yml` (release published)   | `:X.Y.Z-cuda-arm64`, `:X.Y-cuda-arm64`, `:stable-cuda-arm64` manifests (`linux/arm64`)                                                                       |
 | Docker Hub          | `docker.yml` (release published)   | Matching CUDA/ROCm/CUDA arm64 tags                                                                                                                           |
-| Docker Hub overview | `docker.yml`                       | Read the `Update Docker Hub description` step log; the step may continue after a 403                                                                         |
+| Docker Hub overview | `dockerhub-description.yml`                       | Read the `Update Docker Hub description` step log; the step may continue after a 403                                                                         |
 | Rolling containers  | `docker.yml` on `main` pushes only | `:latest`, `:main`, `:rocm` and `:cuda-arm64` timestamps move; a release never moves them                                                                    |
+
+For the Homebrew installation method, update
+[`Casks/voicestudio.rb` in the official tap](https://github.com/debpalash/homebrew-tap/blob/main/Casks/voicestudio.rb)
+after publishing a stable release: set its version and both architecture-specific
+DMG SHA-256 values from that release’s `SHA256SUMS.txt`. Validate with
+`brew style --cask debpalash/tap/voicestudio`,
+`brew audit --cask --online debpalash/tap/voicestudio` and
+`brew fetch --cask --all-platforms debpalash/tap/voicestudio` before merging the tap
+update. Keep prereleases out of this stable cask.
 
 A missing channel is a release bug. There are no RC tags; the one prerelease is
 the opt-in **Beta** channel (below). Previews between betas are builds from
