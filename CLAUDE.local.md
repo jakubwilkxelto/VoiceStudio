@@ -11,18 +11,41 @@ Gdy reguła stąd koliduje z `CLAUDE.md` / `AGENTS.md`, wygrywa ten plik.
 - Remote'y: `origin` = fork, `upstream` = oryginał.
 - Gałęzie:
   - `main` — czyste lustro `upstream/main`, tylko fast-forward, zero własnych commitów.
-  - `dev` — gałąź forka (własne funkcje + zmergowany upstream).
+  - `dev` — gałąź domyślna forka: **wyłącznie wydania stable upstreamu** (tagi
+    `vX.Y.Z` bez sufiksu) + własne funkcje. Nigdy nie merguj do `dev` gałęzi `main`
+    ani bet (`vX.Y.Z-beta.N`).
+  - `build` — źródło buildów; dostaje `dev` wyłącznie przez ręczny PR `dev → build`.
   - `feat/*`, `fix/*` — od `dev`, mergowane do `dev`.
+  - `sync/upstream-stable` — robocza gałąź automatu (patrz niżej), nie commituj na nią.
 
 ## Synchronizacja z upstreamem
 
+Automat `.github/workflows/xelto-upstream-sync.yml` (codziennie 05:00 UTC lub
+ręcznie, z opcją `dry_run`; pisze sekretem `SYNC_PAT`):
+
+1. wyłącza wszystkie workflowy upstreamu w forku (aktywne zostają tylko `xelto-*`),
+2. przesuwa `main` fast-forwardem na `upstream/main` (tagów do forka nie pushuje),
+3. gdy upstream ma nowszy tag stable niż `dev`, ustawia `sync/upstream-stable` na
+   ten tag i otwiera/aktualizuje PR `sync: upstream vX.Y.Z → dev`.
+
+PR merguj **tylko przez „Create a merge commit”** (squash/rebase = te same
+konflikty przy każdym kolejnym syncu). Konflikty rozwiązuj lokalnie:
+
 ```sh
-git fetch upstream
-git checkout main && git merge --ff-only upstream/main && git push origin main
-git checkout dev && git merge main
+git fetch origin && git checkout dev && git merge origin/sync/upstream-stable
+# ...rozwiąż, przetestuj...
+git push origin dev   # PR zamknie się jako merged
 ```
 
-- Synchronizuj często (co kilka dni) — upstream ma kilkanaście merge'y dziennie.
+Ręczny odpowiednik awaryjny (gdy automat nie działa):
+
+```sh
+git fetch upstream --tags
+git checkout main && git merge --ff-only upstream/main && git push origin main
+git checkout dev && git merge vX.Y.Z   # najnowszy tag stable
+```
+
+- Nie pushuj tagów upstreamu do forka (`git push --tags`) — fork ich nie trzyma.
 - Konflikty w `bun.lock` / `uv.lock`: nie scalaj ręcznie — weź wersję upstreamu,
   potem `bun install` / `uv lock`, żeby dołożyć zależności forka.
 - Po merge'u: testy dotkniętych obszarów (`uv run pytest tests/...`,
@@ -39,7 +62,8 @@ git checkout dev && git merge main
   — idą za upstreamem.
 - Nie edytuj `CHANGELOG.md` ani `changelog.d/` — zmiany forka opisuj w
   `docs/fork/CHANGES.md`.
-- Nie usuwaj plików upstreamu (np. workflowów) — wyłączaj je w ustawieniach GitHuba.
+- Nie usuwaj plików upstreamu (np. workflowów) — automat sync wyłącza je przez API.
+  Własne workflowy nazywaj `.github/workflows/xelto-*.yml`, inaczej zostaną wyłączone.
 - Każdy punkt zaczepienia w kodzie upstreamu dopisz do rejestru poniżej.
 
 ## Które reguły z CLAUDE.md nie obowiązują w forku
