@@ -1,0 +1,198 @@
+# XELTO fork only — upstream (debpalash/VoiceStudio) does not have this file.
+#
+# Daily:
+#   1. disables every upstream workflow in the fork (only xelto-* stay active),
+#   2. fast-forwards `main` to `upstream/main` (no tags are pushed),
+#   3. when upstream has a newer stable tag (vX.Y.Z, no suffix) than `dev`,
+#      points `sync/upstream-stable` at it and opens/updates a PR into `dev`.
+#
+# All writes use the SYNC_PAT secret (fine-grained PAT: Contents, Pull requests,
+# Workflows, Actions — read/write). GITHUB_TOKEN cannot push commits that touch
+# .github/workflows/*, which upstream changes regularly.
+name: xelto-upstream-sync
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only compute and log — no pushes, no PR, no workflow changes"
+        type: boolean
+        default: false
+
+concurrency:
+  group: xelto-upstream-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_URL: https://github.com/debpalash/VoiceStudio.git
+  UPSTREAM_REPO: debpalash/VoiceStudio
+  SYNC_BRANCH: sync/upstream-stable
+  BASE_BRANCH: dev
+  DRY_RUN: ${{ inputs.dry_run == true }}
+
+jobs:
+  sync:
+    if: github.repository == 'jakubwilkxelto/VoiceStudio'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_PAT }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check secret
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret SYNC_PAT is not set (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.SYNC_PAT }}
+          fetch-depth: 0
+
+      - name: Fetch upstream (tags stay local to the runner)
+        run: |
+          git config user.name "xelto-upstream-sync"
+          git config user.email "xelto-upstream-sync@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags origin
+          git fetch upstream main --tags
+          {
+            echo "## Upstream sync"
+            echo
+            echo "- dry run: \`$DRY_RUN\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare workflow-disable helper
+        run: |
+          cat > "$RUNNER_TEMP/disable-upstream-workflows.sh" <<'SCRIPT'
+          mapfile -t rows < <(gh api "repos/$REPO/actions/workflows" --paginate \
+            --jq '.workflows[]
+                  | select(.state == "active")
+                  | select(.path | startswith(".github/workflows/"))
+                  | select(.path | startswith(".github/workflows/xelto-") | not)
+                  | "\(.id)\t\(.path)"')
+          if [ "${#rows[@]}" -eq 0 ]; then
+            echo "No active upstream workflows."
+            exit 0
+          fi
+          echo "- upstream workflows to disable (${STEP_LABEL:-before push}):" >> "$GITHUB_STEP_SUMMARY"
+          for row in "${rows[@]}"; do
+            id="${row%%$'\t'*}"; path="${row#*$'\t'}"
+            echo "  - \`$path\`" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[dry-run] would disable $path"
+            else
+              gh api -X PUT "repos/$REPO/actions/workflows/$id/disable"
+              echo "disabled $path"
+            fi
+          done
+          SCRIPT
+
+      - name: Disable upstream workflows (before push)
+        run: bash "$RUNNER_TEMP/disable-upstream-workflows.sh"
+
+      - name: Fast-forward main to upstream/main
+        run: |
+          behind=$(git rev-list --count origin/main..upstream/main)
+          ahead=$(git rev-list --count upstream/main..origin/main)
+          if [ "$ahead" -ne 0 ]; then
+            msg="origin/main has $ahead commit(s) that are not in upstream/main — main must stay a pure mirror. Fix it by hand."
+            echo "::error::$msg"
+            echo "- ❌ $msg" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "- main: +$behind commit(s) from upstream" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$behind" -eq 0 ]; then
+            echo "main is up to date."
+          elif [ "$DRY_RUN" = "true" ]; then
+            echo "[dry-run] would push upstream/main → origin/main"
+          else
+            # Explicit refspec: pushes only the branch, never tags.
+            git push origin "refs/remotes/upstream/main:refs/heads/main"
+          fi
+
+      - name: Disable upstream workflows (after push — catches newly added ones)
+        env:
+          STEP_LABEL: after push
+        run: bash "$RUNNER_TEMP/disable-upstream-workflows.sh"
+
+      - name: Open/update stable → dev PR
+        run: |
+          tag=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          if [ -z "$tag" ]; then
+            echo "::error::No stable vX.Y.Z tag found upstream."
+            exit 1
+          fi
+          sha=$(git rev-parse "$tag^{commit}")
+          if ! git merge-base --is-ancestor "$sha" upstream/main; then
+            echo "::error::$tag ($sha) is not on upstream/main — refusing to sync it."
+            exit 1
+          fi
+          echo "- latest upstream stable: \`$tag\` (\`${sha:0:9}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+          if git merge-base --is-ancestor "$sha" "origin/$BASE_BRANCH"; then
+            echo "- ✅ $BASE_BRANCH already contains $tag — nothing to do" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          count=$(git rev-list --count "origin/$BASE_BRANCH..$sha")
+          changed=$(git diff --name-only "origin/$BASE_BRANCH...$sha")
+
+          # Files from the hook registry in CLAUDE.local.md that this sync touches.
+          hooks=""
+          if [ -f CLAUDE.local.md ]; then
+            while IFS= read -r f; do
+              [ -n "$f" ] && printf '%s\n' "$changed" | grep -qxF "$f" && hooks+="- \`$f\`"$'\n'
+            done < <(sed -n 's/^| `\([^`]*\)`.*/\1/p' CLAUDE.local.md | sort -u)
+          fi
+          [ -z "$hooks" ] && hooks="- (none)"$'\n'
+
+          title="sync: upstream $tag → $BASE_BRANCH"
+          body_file=$(mktemp)
+          cat > "$body_file" <<EOF
+          Automatic PR from \`xelto-upstream-sync\`.
+
+          Brings upstream stable **$tag** into \`$BASE_BRANCH\`: $count commit(s).
+          Release: https://github.com/$UPSTREAM_REPO/releases/tag/$tag
+
+          > [!WARNING]
+          > Merge **only with "Create a merge commit"**. Squash or rebase breaks the
+          > history, and every later sync would hit the same conflicts again.
+
+          ### Files with XELTO hooks touched by this sync (\`CLAUDE.local.md\` registry)
+          $hooks
+          ### On conflicts
+          \`\`\`sh
+          git fetch origin && git checkout $BASE_BRANCH && git merge origin/$SYNC_BRANCH
+          # bun.lock / uv.lock: take upstream's version, then bun install / uv lock
+          git push origin $BASE_BRANCH   # the PR closes as merged
+          \`\`\`
+
+          After the merge, test the affected areas (see CLAUDE.local.md).
+          EOF
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "- [dry-run] would point \`$SYNC_BRANCH\` at $tag and open/update PR: $title" >> "$GITHUB_STEP_SUMMARY"
+            cat "$body_file"
+            exit 0
+          fi
+
+          git push -f origin "$sha:refs/heads/$SYNC_BRANCH"
+
+          pr=$(gh pr list --repo "$REPO" --base "$BASE_BRANCH" --head "$SYNC_BRANCH" \
+                 --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --repo "$REPO" --title "$title" --body-file "$body_file"
+            echo "- updated PR #$pr: $title" >> "$GITHUB_STEP_SUMMARY"
+          else
+            url=$(gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$SYNC_BRANCH" \
+                    --title "$title" --body-file "$body_file")
+            echo "- opened PR: $url" >> "$GITHUB_STEP_SUMMARY"
+          fi
